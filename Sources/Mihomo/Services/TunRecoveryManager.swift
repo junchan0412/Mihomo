@@ -74,17 +74,13 @@ final class TunRecoveryManager {
         let currentDefault = defaultRoute()
         let shouldRestoreDefault = shouldRestoreDefaultRoute(current: currentDefault, snapshot: snapshot.defaultIPv4Route)
 
-        var privilegedCommands = addedRoutes.map { route in
-            "/sbin/route -n delete \(PrivilegedShell.shellQuote(route.destination)) >/dev/null 2>&1 || true"
+        for route in addedRoutes {
+            _ = try? Shell.run("/sbin/route", ["-n", "delete", route.destination])
         }
 
         if shouldRestoreDefault, let gateway = snapshot.defaultIPv4Route?.gateway, gateway.isEmpty == false {
-            privilegedCommands.append("/sbin/route -n delete default >/dev/null 2>&1 || true")
-            privilegedCommands.append("/sbin/route -n add default \(PrivilegedShell.shellQuote(gateway))")
-        }
-
-        if privilegedCommands.isEmpty == false {
-            _ = try PrivilegedShell.run(privilegedCommands.joined(separator: "\n"))
+            _ = try? Shell.run("/sbin/route", ["-n", "delete", "default"])
+            _ = try Shell.run("/sbin/route", ["-n", "add", "default", gateway])
         }
         _ = try? Shell.run("/usr/bin/dscacheutil", ["-flushcache"])
 
@@ -99,7 +95,11 @@ final class TunRecoveryManager {
     }
 
     func verifyAdministratorAccess() throws {
-        try PrivilegedShell.verifyAdministratorAccess()
+        guard geteuid() == 0 else {
+            throw NSError(domain: "TunRecovery", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "TUN 回滚高权限验证已迁移到 XPC Helper"
+            ])
+        }
     }
 
     private func save(_ snapshot: TunRecoverySnapshot) throws {

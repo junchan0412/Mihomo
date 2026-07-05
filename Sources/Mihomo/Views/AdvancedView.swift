@@ -82,6 +82,33 @@ struct AdvancedView: View {
     private var coreGroup: some View {
         GroupBox("Core 与 LaunchDaemon") {
             VStack(alignment: .leading, spacing: 10) {
+                LabeledContent("XPC Helper") {
+                    Text(store.helperStatus)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                HStack {
+                    Button {
+                        Task { await store.registerHelper() }
+                    } label: {
+                        Label("注册 Helper", systemImage: "person.badge.key")
+                    }
+
+                    Button {
+                        Task { await store.refreshHelperStatus() }
+                    } label: {
+                        Label("检查 Helper", systemImage: "checkmark.shield")
+                    }
+
+                    Button {
+                        Task { await store.unregisterHelper() }
+                    } label: {
+                        Label("卸载 Helper", systemImage: "trash")
+                    }
+                }
+
+                Divider()
+
                 Toggle("使用托管/内置 mihomo core", isOn: $draft.managedCoreEnabled)
                 TextField("Core 下载 URL", text: $draft.managedCoreDownloadURL)
                 LabeledContent("当前有效路径") {

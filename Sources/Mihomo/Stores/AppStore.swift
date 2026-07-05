@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Foundation
+import MihomoShared
 
 @MainActor
 final class AppStore: ObservableObject {
@@ -44,9 +45,9 @@ final class AppStore: ObservableObject {
     @Published var geoUpdateStatus = "未更新"
     @Published var backupStatus = "未备份"
     @Published var launchDaemonStatus = "未安装"
+    @Published var helperStatus = "Helper 未检查"
 
     private let profileStore = ProfileStore()
-    private let coreManager = CoreManager()
     private let systemProxy = SystemProxyManager()
     private let tunRecovery = TunRecoveryManager()
     private let loginItem = LoginItemManager()
@@ -56,7 +57,8 @@ final class AppStore: ObservableObject {
     private let externalUIManager = ExternalUIManager()
     private let geoUpdateManager = GeoUpdateManager()
     private let backupManager = BackupManager()
-    private let launchDaemonManager = LaunchDaemonManager()
+    private let helperClient = MihomoHelperClient()
+    private let helperService = HelperServiceManager()
     private var pollingTask: Task<Void, Never>?
     private var profileRefreshTask: Task<Void, Never>?
     private var profileRefreshQueueRunning = false
@@ -109,7 +111,8 @@ final class AppStore: ObservableObject {
             tunRecoveryStatus = lastTunRecoverySnapshot == nil ? "未捕获 TUN 回滚快照" : "已有 TUN 回滚快照"
             managedCoreStatus = FileManager.default.isExecutableFile(atPath: AppPaths.managedCoreFile.path) ? AppPaths.managedCoreFile.path : (ManagedCoreManager.bundledCorePath ?? "未托管")
             externalUIStatus = externalUIManager.status(name: settings.externalUIName)
-            launchDaemonStatus = launchDaemonManager.plistPath
+            launchDaemonStatus = MihomoHelperConstants.coreLaunchDaemonPlistPath
+            helperStatus = helperService.statusDescription
             refreshConfigArtifacts()
             syncLaunchAtLoginSetting(reportSuccess: false)
             notificationManager.prepare()
@@ -139,9 +142,9 @@ final class AppStore: ObservableObject {
         }
 
         do {
-            if coreManager.isRunning {
+            if isCoreRunning {
                 isExpectedCoreExit = true
-                coreManager.stop()
+                _ = try? await helperClient.stopCore(restoreDNS: false, restoreTun: false)
                 try? await Task.sleep(nanoseconds: 400_000_000)
                 isExpectedCoreExit = false
             }
@@ -153,40 +156,38 @@ final class AppStore: ObservableObject {
                 fragments: configFragments,
                 disabledRules: disabledRules
             )
-            let validation = try coreManager.validateConfig(
-                mihomoPath: mihomoPath,
-                configPath: candidate,
-                workDirectory: AppPaths.runtimeDirectory
-            )
-            lastRuntimeValidation = validation.isEmpty ? "mihomo 配置校验通过" : validation
-            if settings.autoSetSystemDNS {
-                try systemProxy.setDNSServers(settings.systemDNSServers)
-                lastSystemProxySnapshot = systemProxy.loadSnapshot()
-                appendLog("info", "已临时设置系统 DNS：\(settings.systemDNSServers.joined(separator: "、"))")
-            }
-            if settings.tunEnabled {
-                let snapshot = try tunRecovery.capture(systemProxy: systemProxy)
-                lastTunRecoverySnapshot = snapshot
-                tunRecoveryStatus = "已捕获 TUN 回滚快照：\(Formatters.shortDate.string(from: snapshot.createdAt))"
-                appendLog("info", "TUN 启动前已保存 DNS/代理/路由回滚快照")
-            }
             try profileStore.promoteRuntimeConfig(candidate: candidate)
-
-            try coreManager.start(
+            let result = try await helperClient.prepareAndStartCore(
                 mihomoPath: mihomoPath,
                 configPath: AppPaths.runtimeConfigFile,
                 workDirectory: AppPaths.runtimeDirectory,
-                onLog: { [weak self] text in
-                    self?.appendLog("core", text.trimmingCharacters(in: .whitespacesAndNewlines))
-                },
-                onExit: { [weak self] status in
-                    self?.handleCoreExit(status)
-                }
+                logPath: AppPaths.coreLogFile,
+                autoSetDNS: settings.autoSetSystemDNS,
+                dnsServers: settings.systemDNSServers,
+                captureTun: settings.tunEnabled
             )
+            if let validation = result.payload["validation"], validation.isEmpty == false {
+                lastRuntimeValidation = validation
+            } else {
+                lastRuntimeValidation = "mihomo 配置校验通过"
+            }
+            if settings.autoSetSystemDNS {
+                lastSystemProxySnapshot = systemProxy.loadSnapshot()
+                appendLog("info", "Helper 已临时设置系统 DNS：\(settings.systemDNSServers.joined(separator: "、"))")
+            }
+            if settings.tunEnabled {
+                lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
+                if let tunDetail = result.payload["tunDetail"], tunDetail.isEmpty == false {
+                    tunRecoveryStatus = tunDetail
+                } else {
+                    tunRecoveryStatus = "Helper 已捕获 TUN 回滚快照"
+                }
+                appendLog("info", tunRecoveryStatus)
+            }
 
             isCoreRunning = true
             coreStatus = "启动中"
-            appendLog("info", "已用 \(AppPaths.runtimeConfigFile.path) 启动 mihomo")
+            appendLog("info", "\(result.message)：\(AppPaths.runtimeConfigFile.path)")
             try? await Task.sleep(nanoseconds: 800_000_000)
             await refreshController()
         } catch {
@@ -198,21 +199,23 @@ final class AppStore: ObservableObject {
 
     func stopCore() async {
         isExpectedCoreExit = true
-        coreManager.stop()
-        isCoreRunning = false
-        coreStatus = "已停止"
-        appendLog("info", "已停止 mihomo")
-        if settings.tunEnabled && settings.restoreTunOnStop {
-            await restoreTunRecovery()
-        }
-        if settings.autoSetSystemDNS {
-            do {
-                try systemProxy.repairFromSnapshot()
-                lastSystemProxySnapshot = nil
-                appendLog("info", "已恢复启动前系统 DNS")
-            } catch {
-                appendLog("error", "系统 DNS 恢复失败：\(error.localizedDescription)")
+        do {
+            let result = try await helperClient.stopCore(
+                restoreDNS: settings.autoSetSystemDNS,
+                restoreTun: settings.tunEnabled && settings.restoreTunOnStop
+            )
+            isCoreRunning = false
+            coreStatus = "已停止"
+            lastSystemProxySnapshot = systemProxy.loadSnapshot()
+            lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
+            if settings.tunEnabled && settings.restoreTunOnStop {
+                tunRecoveryStatus = result.message
             }
+            appendLog("info", result.message)
+        } catch {
+            isCoreRunning = false
+            coreStatus = "停止失败"
+            appendLog("error", "Helper 停止核心失败：\(error.localizedDescription)")
         }
         try? await Task.sleep(nanoseconds: 500_000_000)
         isExpectedCoreExit = false
@@ -324,40 +327,40 @@ final class AppStore: ObservableObject {
     func toggleSystemProxy() async {
         do {
             if systemProxyEnabled {
-                try systemProxy.disable()
+                let result = try await helperClient.restoreSystemProxy()
                 systemProxyEnabled = false
-                lastSystemProxySnapshot = nil
-                appendLog("info", "系统代理已恢复到原配置")
+                lastSystemProxySnapshot = systemProxy.loadSnapshot()
+                appendLog("info", result.message)
             } else {
-                try systemProxy.enable(host: "127.0.0.1", port: settings.mixedPort, socksPort: settings.socksPort)
+                let result = try await helperClient.setSystemProxy(host: "127.0.0.1", mixedPort: settings.mixedPort, socksPort: settings.socksPort)
                 systemProxyEnabled = true
                 lastSystemProxySnapshot = systemProxy.loadSnapshot()
-                appendLog("info", "系统代理已开启，并保存了原配置快照")
+                appendLog("info", result.message)
             }
         } catch {
-            appendLog("error", "系统代理操作失败：\(error.localizedDescription)")
+            appendLog("error", "Helper 系统代理操作失败：\(error.localizedDescription)")
         }
     }
 
     func repairSystemProxy() async {
         do {
-            try systemProxy.repairFromSnapshot()
+            let result = try await helperClient.restoreSystemProxy()
             systemProxyEnabled = false
-            lastSystemProxySnapshot = nil
-            appendLog("info", "已根据快照修复系统代理/DNS 设置")
+            lastSystemProxySnapshot = systemProxy.loadSnapshot()
+            appendLog("info", result.message)
         } catch {
-            appendLog("error", "系统代理修复失败：\(error.localizedDescription)")
+            appendLog("error", "Helper 系统代理修复失败：\(error.localizedDescription)")
         }
     }
 
     func restoreTunRecovery() async {
         do {
-            let result = try tunRecovery.restore(systemProxy: systemProxy)
-            lastTunRecoverySnapshot = nil
-            tunRecoveryStatus = result.detail
+            let result = try await helperClient.restoreTunSnapshot()
+            lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
+            tunRecoveryStatus = result.message
             systemProxyEnabled = false
-            lastSystemProxySnapshot = nil
-            appendLog("info", result.detail)
+            lastSystemProxySnapshot = systemProxy.loadSnapshot()
+            appendLog("info", result.message)
         } catch {
             tunRecoveryStatus = "TUN 回滚失败：\(error.localizedDescription)"
             appendLog("error", tunRecoveryStatus)
@@ -366,9 +369,9 @@ final class AppStore: ObservableObject {
 
     func verifyTunPrivileges() async {
         do {
-            try tunRecovery.verifyAdministratorAccess()
-            appendLog("info", "管理员授权验证通过，可执行 TUN 路由回滚。")
-            tunRecoveryStatus = "管理员授权验证通过"
+            let result = try await helperClient.verifyPrivileges()
+            appendLog("info", result.message)
+            tunRecoveryStatus = result.message
         } catch {
             tunRecoveryStatus = "管理员授权验证失败：\(error.localizedDescription)"
             appendLog("error", tunRecoveryStatus)
@@ -582,10 +585,10 @@ final class AppStore: ObservableObject {
                     fragments: configFragments,
                     disabledRules: disabledRules
                 )
-                _ = try coreManager.validateConfig(mihomoPath: mihomoPath, configPath: candidate, workDirectory: AppPaths.runtimeDirectory)
-                results.append(.init(title: "运行配置 dry-run", detail: "mihomo -t 校验通过：\(candidate.path)", state: .ok))
+                let result = try await helperClient.validateConfig(mihomoPath: mihomoPath, configPath: candidate, workDirectory: AppPaths.runtimeDirectory)
+                results.append(.init(title: "运行配置 dry-run", detail: "\(result.message)：\(candidate.path)", state: .ok))
             } catch {
-                results.append(.init(title: "运行配置 dry-run", detail: error.localizedDescription, state: .failed))
+                results.append(.init(title: "运行配置 dry-run", detail: "Helper 校验失败：\(error.localizedDescription)", state: .failed))
             }
         } else {
             results.append(.init(title: "当前配置", detail: "没有启用的配置。", state: .failed))
@@ -663,6 +666,15 @@ final class AppStore: ObservableObject {
             detail: "当前有效路径：\(mihomoPath)\n托管路径：\(AppPaths.managedCoreFile.path)\n内置路径：\(ManagedCoreManager.bundledCorePath ?? "未随包提供")",
             state: FileManager.default.isExecutableFile(atPath: mihomoPath) ? .ok : .failed
         ))
+
+        do {
+            let helper = try await helperClient.version()
+            helperStatus = "\(helper.message)，\(helperService.statusDescription)"
+            results.append(.init(title: "XPC Helper", detail: helperStatus, state: .ok))
+        } catch {
+            helperStatus = "\(helperService.statusDescription)：\(error.localizedDescription)"
+            results.append(.init(title: "XPC Helper", detail: helperStatus, state: .failed))
+        }
 
         results.append(.init(
             title: "远程 HTTP API",
@@ -828,6 +840,39 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func refreshHelperStatus() async {
+        do {
+            let result = try await helperClient.version()
+            helperStatus = "\(result.message)，\(helperService.statusDescription)"
+        } catch {
+            helperStatus = "\(helperService.statusDescription)：\(error.localizedDescription)"
+        }
+    }
+
+    func registerHelper() async {
+        do {
+            try helperService.register()
+            helperStatus = helperService.statusDescription
+            appendLog("info", "XPC Helper 注册请求已提交：\(helperStatus)")
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            await refreshHelperStatus()
+        } catch {
+            helperStatus = "XPC Helper 注册失败：\(error.localizedDescription)"
+            appendLog("error", helperStatus)
+        }
+    }
+
+    func unregisterHelper() async {
+        do {
+            try helperService.unregister()
+            helperStatus = helperService.statusDescription
+            appendLog("info", "XPC Helper 已取消注册：\(helperStatus)")
+        } catch {
+            helperStatus = "XPC Helper 卸载失败：\(error.localizedDescription)"
+            appendLog("error", helperStatus)
+        }
+    }
+
     func installLaunchDaemon() async {
         guard let activeProfile else {
             launchDaemonStatus = "没有可用配置"
@@ -841,16 +886,17 @@ final class AppStore: ObservableObject {
                 disabledRules: disabledRules
             )
             try profileStore.promoteRuntimeConfig(candidate: candidate)
-            let path = try launchDaemonManager.install(
+            let result = try await helperClient.installCoreLaunchDaemon(
                 corePath: effectiveMihomoPath,
                 configPath: AppPaths.runtimeConfigFile,
-                workDirectory: AppPaths.runtimeDirectory
+                workDirectory: AppPaths.runtimeDirectory,
+                logPath: AppPaths.coreLogFile
             )
-            launchDaemonStatus = "已安装：\(path)"
+            launchDaemonStatus = result.payload["path"].map { "已安装：\($0)" } ?? result.message
             var updated = settings
             updated.launchDaemonEnabled = true
             await saveSettings(updated)
-            appendLog("info", "LaunchDaemon 已安装并加载")
+            appendLog("info", result.message)
         } catch {
             launchDaemonStatus = "LaunchDaemon 安装失败：\(error.localizedDescription)"
             appendLog("error", launchDaemonStatus)
@@ -859,12 +905,12 @@ final class AppStore: ObservableObject {
 
     func uninstallLaunchDaemon() async {
         do {
-            try launchDaemonManager.uninstall()
-            launchDaemonStatus = "已卸载"
+            let result = try await helperClient.uninstallCoreLaunchDaemon()
+            launchDaemonStatus = result.message
             var updated = settings
             updated.launchDaemonEnabled = false
             await saveSettings(updated)
-            appendLog("info", "LaunchDaemon 已卸载")
+            appendLog("info", result.message)
         } catch {
             launchDaemonStatus = "LaunchDaemon 卸载失败：\(error.localizedDescription)"
             appendLog("error", launchDaemonStatus)
@@ -1046,16 +1092,10 @@ final class AppStore: ObservableObject {
     func shutdown() async {
         shutdownRequested = true
         profileRefreshTask?.cancel()
-        coreManager.stop()
-        if settings.restoreSystemProxyOnQuit, systemProxyEnabled {
-            try? systemProxy.disable()
-        }
-        if settings.autoSetSystemDNS {
-            try? systemProxy.repairFromSnapshot()
-        }
-        if settings.tunEnabled && settings.restoreTunOnStop {
-            _ = try? tunRecovery.restore(systemProxy: systemProxy)
-        }
+        _ = try? await helperClient.stopCore(
+            restoreDNS: settings.autoSetSystemDNS || (settings.restoreSystemProxyOnQuit && systemProxyEnabled),
+            restoreTun: settings.tunEnabled && settings.restoreTunOnStop
+        )
     }
 
     private func saveConfigFragments() {

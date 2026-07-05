@@ -158,6 +158,24 @@ flowchart LR
 | Gist 同步 | 已实现 | 使用 `mihomo-backup.json` 同步设置、Profile、片段和禁用规则。 |
 | 深链导入 | 已实现 | 注册 `mihomo://`，支持导入 Profile 和覆写片段。 |
 
+## 5.2 v0.6.0 Helper 架构状态
+
+第六版 MVP 的路线是保留 LaunchDaemon 托管 mihomo core，同时新增 XPC Helper 承担高权限操作。主 App 回到 UI、状态和普通文件管理职责，不再直接执行管理员 shell。
+
+| 第六版要求 | v0.6.0 状态 | 主要落点 |
+| --- | --- | --- |
+| 保留 LaunchDaemon 托管 core | 已保留并收口 | `/Library/LaunchDaemons/dev.codex.Mihomo.core.plist` 仍用于长期运行、KeepAlive、开机启动，但安装/卸载/启动/停止由 Helper API 执行。 |
+| 增加 XPC Helper | 已实现 | 新增 `MihomoShared` XPC 协议目标和 `MihomoHelper` 可执行目标，Mach service 为 `dev.codex.Mihomo.Helper`。 |
+| Helper 安装/注册 | 已实现 | App bundle 内包含 `Contents/Library/LaunchDaemons/dev.codex.Mihomo.Helper.plist` 与 `Contents/Library/LaunchServices/MihomoHelper`，高级页使用 `SMAppService.daemon` 注册/卸载。 |
+| 安装/卸载 LaunchDaemon | 已迁移到 Helper | `HelperService.installCoreLaunchDaemon`、`uninstallCoreLaunchDaemon`、`startCoreLaunchDaemon`、`stopCoreLaunchDaemon`。 |
+| 启停 mihomo core | 已迁移到 Helper | `prepareAndStartCore` 先 dry-run 校验，再由 Helper 启动 core 并写入 core log；`stopCore` 负责停止和回滚。 |
+| 设置/恢复系统 DNS | 已迁移到 Helper | Helper 通过 `networksetup` 捕获快照、设置 DNS、恢复快照。 |
+| 设置/恢复系统代理 | 已迁移到 Helper | Helper 通过 `networksetup` 设置 HTTP/HTTPS/SOCKS 代理并恢复原状态。 |
+| TUN 路由快照与回滚 | 已迁移到 Helper | Helper 捕获网络代理/DNS、IPv4/IPv6 路由、默认路由，并在停止/修复时删除新增 utun 路由和恢复默认路由。 |
+| 权限修复/验证 | 已迁移到 Helper | 主 App 调用 `verifyPrivileges`，Helper 检查自身是否 root 运行。 |
+| 校验 runtime config 后再启动 | 已实现 | Helper 的 `prepareAndStartCore` 调用 `mihomo -t -d ... -f ...` 成功后才启动核心。 |
+| 主 App 只做 UI 和状态管理 | 已收口 | `AppStore` 生成候选配置、保存设置、刷新 UI；高权限操作统一通过 `MihomoHelperClient`。旧 `PrivilegedShell` 已移除。 |
+
 ## 6. 建议 MVP 范围
 
 第一版建议控制在“稳定运行 + 高质量原生体验”：
@@ -173,7 +191,7 @@ flowchart LR
 | 诊断 | 一键检查核心、controller、系统代理、TUN、DNS、订阅可达性。 |
 | 菜单栏 | 速率、开关、当前 Profile、出站模式、打开主窗口。 |
 
-早期建议将 Sub-Store 深度集成、复杂主题、自定义图标和完整 XPC Helper 后置。v0.5.0 已把 JS 覆写、WebDAV/Gist 同步和远程 HTTP API 做成高级页能力，并保持默认关闭或显式启用。
+早期建议将 Sub-Store 深度集成、复杂主题、自定义图标和完整 XPC Helper 后置。v0.5.0 已把 JS 覆写、WebDAV/Gist 同步和远程 HTTP API 做成高级页能力；v0.6.0 已加入 XPC Helper 边界，后续重点转向签名、公证、审计和权限硬化。
 
 ## 7. 数据与配置设计
 
@@ -223,7 +241,7 @@ flowchart LR
 
 后续建议围绕稳定性和分发硬化继续收敛，而不是继续横向扩功能。最推荐的下一轮组合是：
 
-- 完整 XPC Helper 与签名/公证流程。
+- Helper 签名、公证、授权审计与恢复体验硬化。
 - Keychain 存储 Gist/WebDAV/Controller secret。
 - 更严格的 YAML AST 合并与 provider/rule 命中统计。
 - Sub-Store 作为独立高级集成，而不是主体验依赖。
