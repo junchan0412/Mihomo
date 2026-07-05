@@ -39,7 +39,7 @@ flowchart LR
   B --> D["Privileged Helper<br/>SMAppService / LaunchDaemon"]
   D --> E["mihomo Core Process"]
   D --> F["System Proxy / DNS / TUN Privilege"]
-  B --> G["Local Storage<br/>YAML / SQLite / Keychain"]
+  B --> G["Local Storage<br/>YAML / SQLite / Secret Vault"]
   B --> H["Subscription / Provider Updater"]
   A --> I["Menu Bar Extra<br/>Status / Quick Switch"]
 ```
@@ -51,7 +51,7 @@ flowchart LR
 | macOS 主 App | UI、状态展示、用户操作、偏好设置 | SwiftUI 为主，AppKit 承接 NSTableView、NSStatusItem、窗口细节 |
 | Core Manager | 生成运行配置、启动/停止 mihomo、连接 controller | Swift service 层，必要时委托 Helper |
 | Privileged Helper | TUN、DNS、系统代理、核心进程托管、权限修复 | SMAppService 注册 helper，XPC 或本地 Unix Socket 通信 |
-| Profile Store | 订阅、本地配置、覆写片段、当前配置 | YAML 文件 + SQLite 元数据，敏感信息放 Keychain |
+| Profile Store | 订阅、本地配置、覆写片段、当前配置 | YAML 文件 + SQLite 元数据，敏感信息放本机加密 Secret Vault |
 | Controller API | `/proxies`、`/rules`、`/connections`、`/traffic`、`/logs` 等 | 封装为 typed client，UI 不直接拼 API |
 | Event Bus | 流量、连接、日志、核心事件、系统代理状态 | Combine / AsyncSequence |
 | Updater | mihomo core、Geo 数据、外部资源更新 | 独立任务队列，支持失败重试 |
@@ -93,7 +93,7 @@ flowchart LR
 | 待选 | 订阅自动更新 | Sparkle profile updater | 每 Profile 设置更新周期、失败通知、手动刷新 | P1 | 中 | 任务队列化，避免 UI 卡顿。 |
 | 待选 | 订阅流量信息 | Sparkle 解析 `subscription-userinfo` | Profile 列表显示用量、到期、更新时间 | P1 | 低 | 需要兼容不同机场头格式。 |
 | 待选 | 证书指纹校验 | Sparkle remote profile | 远程 Profile 可选 pinning | P2 | 中 | 安全高级项，默认隐藏。 |
-| 待选 | Age 加密 Profile | Sparkle profile encryption | 敏感配置加密存储，密钥放 Keychain | P2 | 中 | 可简化为“加密本地配置”。 |
+| 待选 | Age 加密 Profile | Sparkle profile encryption | 敏感配置加密存储，密钥走 Secret Vault 或未来稳定签名后的 Keychain | P2 | 中 | 可简化为“加密本地配置”。 |
 | 待选 | 运行配置生成 | Sparkle factory merge | 订阅 + 控制配置 + 片段合成 runtime config | P0 | 高 | 这是稳定性的核心。 |
 | 待选 | YAML 覆写片段 | Sparkle override YAML | 以“配置片段”形式管理，支持预览 diff | P1 | 中 | 比脚本覆写更安全。 |
 | 待选 | JS 脚本覆写 | Sparkle override JS | 作为高级实验功能，默认关闭，沙盒运行 | P3 | 高 | 风险高，建议后置。 |
@@ -176,6 +176,37 @@ flowchart LR
 | 校验 runtime config 后再启动 | 已实现 | Helper 的 `prepareAndStartCore` 调用 `mihomo -t -d ... -f ...` 成功后才启动核心。 |
 | 主 App 只做 UI 和状态管理 | 已收口 | `AppStore` 生成候选配置、保存设置、刷新 UI；高权限操作统一通过 `MihomoHelperClient`。旧 `PrivilegedShell` 已移除。 |
 
+## 5.3 v0.7.0 分发、安全与配置合并状态
+
+第七版聚焦“可长期自用分发”和诊断硬化：在没有 Apple Developer 账号的前提下，不伪装成已公证软件，而是采用固定 ad-hoc identifier、首次移除隔离属性、后续应用内校验更新的路径。
+
+| 第七版要求 | v0.7.0 状态 | 主要落点 |
+| --- | --- | --- |
+| 配置页/设置页 UI 修复 | 已优化 | 配置页重做为紧凑 Header、订阅条、队列状态和稳定 Split View；设置页改为原生分段设置面板，减少 Form 变形和底部按钮裁切。 |
+| 固定签名安装/更新 | 已实现基础链路 | `build_and_run.sh` 为 App、Helper、内置 core 使用固定 ad-hoc signing identifier；`package_release.sh` 生成 zip 和 update manifest；高级页支持 manifest 检查、SHA-256 校验、bundle id/signing identifier 校验后退出替换。 |
+| 无公证分发边界 | 已明确 | 无 Apple Developer ID 时不能 notarize。首次下载仍需 `xattr -dr com.apple.quarantine /Applications/Mihomo.app`；后续应用内更新会在替换后清理隔离属性。 |
+| Helper 签名/授权审计 | 已增强 | 诊断与高级页可审计 Helper bundle 布局、plist、SMAppService 状态、App/Helper 签名 identifier、公证状态说明和 root XPC 可达性。 |
+| Helper XPC 授权边界 | 已增强 | Helper listener 校验连接方进程必须来自 `dev.codex.Mihomo` app bundle，并通过 `codesign` identifier 检查后才接受连接。 |
+| Helper 恢复体验 | 已增强 | 高级页新增 Helper 审计与修复注册入口，可重建 SMAppService 注册并跳转诊断结果。 |
+| Secret 存储 | 已改为非 Keychain vault | 因 ad-hoc 更新会导致 Keychain 反复授权，Controller/WebDAV/Gist secret 改存 `secrets.vault`，使用 CryptoKit AES-GCM 与本机/用户派生密钥；`settings.json` 和 Gist payload 默认脱敏。 |
+| YAML AST 合并 | 已实现 | 引入 Yams，runtime config 从结构化 YAML map 合并，移除 App 管理键、合并 YAML 片段、过滤禁用规则，再写入 App overlay。解析错误会阻止预览/启动。 |
+| Provider/Rule 命中统计 | 已实现基础统计 | Controller 连接刷新后回填规则命中；Rule Provider 按 `RULE-SET` payload 统计；Proxy Provider 在 Controller 返回成员节点时按 chain 归属统计。 |
+| Sub-Store | 后置 | 等主体验与分发链路稳定后再作为高级集成实现。 |
+
+## 5.4 v0.8.0 配置编辑、Profile 加密与更新签名状态
+
+第八版把“能运行”继续推进到“能维护配置”：用户不必只靠 YAML 文本编辑完成常见策略组/规则维护，同时更新链路不再只依赖托管源可信。
+
+| 第八版要求 | v0.8.0 状态 | 主要落点 |
+| --- | --- | --- |
+| Ed25519 update manifest | 已实现 | `sign_update_manifest.swift` 使用本机私钥签名 manifest；App 内置公钥，在检查更新时先验证 Ed25519 签名，再校验 SHA-256、bundle id 和 signing identifier。 |
+| 更新私钥管理 | 已实现本机方案 | 私钥读取自 `MIHOMO_UPDATE_PRIVATE_KEY` 或 `~/.mihomo-update-signing/ed25519.private`；仓库只保存公钥常量。 |
+| 策略组 UI 增删改 | 已实现 | Profile 页新增“结构”编辑模式，可添加、修改、删除 `proxy-groups`，编辑类型、节点列表和 provider 引用。 |
+| 删除策略组引用处理 | 已实现 | 删除被规则引用的策略组时会提示引用数量，可选择将相关规则替换到其他策略或删除引用规则。 |
+| 规则 UI 增删改 | 已实现 | Profile 结构编辑可添加、修改、删除 `rules`，支持设置规则类型、匹配 payload、目标策略组和附加参数。 |
+| Age Profile 加密 | 已实现基础链路 | 高级页可安装托管 `age`/`age-keygen`、生成 identity/recipient，并在 ProfileStore 读写 Profile YAML 时透明加解密。启用后磁盘 Profile 可为标准 Age armor。 |
+| 备份与运行时兼容 | 已实现 | 运行时配置生成使用解密后的 Profile；Gist payload 保存磁盘原文，因此启用 Age 后不会把 Profile 明文写入云端 JSON。 |
+
 ## 6. 建议 MVP 范围
 
 第一版建议控制在“稳定运行 + 高质量原生体验”：
@@ -191,7 +222,7 @@ flowchart LR
 | 诊断 | 一键检查核心、controller、系统代理、TUN、DNS、订阅可达性。 |
 | 菜单栏 | 速率、开关、当前 Profile、出站模式、打开主窗口。 |
 
-早期建议将 Sub-Store 深度集成、复杂主题、自定义图标和完整 XPC Helper 后置。v0.5.0 已把 JS 覆写、WebDAV/Gist 同步和远程 HTTP API 做成高级页能力；v0.6.0 已加入 XPC Helper 边界，后续重点转向签名、公证、审计和权限硬化。
+早期建议将 Sub-Store 深度集成、复杂主题和自定义图标后置。v0.5.0 已把 JS 覆写、WebDAV/Gist 同步和远程 HTTP API 做成高级页能力；v0.6.0 已加入 XPC Helper 边界；v0.7.0 已完成无 Apple Developer 账号路径下的固定签名更新、Helper 审计、非 Keychain secret vault、Yams 合并和命中统计；v0.8.0 已补上 Ed25519 更新签名、策略组/规则结构化编辑和 Age Profile 加密。
 
 ## 7. 数据与配置设计
 
@@ -204,7 +235,7 @@ flowchart LR
 | Runtime config | `~/Library/Application Support/<AppName>/Runtime/config.yaml` |
 | Logs | `~/Library/Logs/<AppName>/` |
 | Helper 配置 | `/Library/Application Support/<AppName>/` 或 Helper 自有目录 |
-| 密钥/Token | Keychain |
+| 密钥/Token | 无 Apple Developer 账号分发时使用本机派生密钥加密的 `secrets.vault`；若未来改用 Developer ID 稳定签名，可迁回 Keychain |
 
 运行配置生成流程：
 
@@ -239,11 +270,11 @@ flowchart LR
 
 ## 10. 下一步决策
 
-后续建议围绕稳定性和分发硬化继续收敛，而不是继续横向扩功能。最推荐的下一轮组合是：
+后续建议围绕稳定性、体验打磨和真实使用反馈继续收敛，而不是继续横向扩功能。最推荐的下一轮组合是：
 
-- Helper 签名、公证、授权审计与恢复体验硬化。
-- Keychain 存储 Gist/WebDAV/Controller secret。
-- 更严格的 YAML AST 合并与 provider/rule 命中统计。
+- 对 v0.8.0 的更新替换流程做真实 release 验证，包括从 GitHub Release manifest 更新到下一版。
+- 继续打磨配置页、设置页和高级页的信息密度，减少 GroupBox/Form 造成的视觉膨胀。
+- 为结构化配置编辑增加更完整的 mihomo rule schema 校验，例如规则参数合法性、provider 类型约束和 proxy 节点存在性。
 - Sub-Store 作为独立高级集成，而不是主体验依赖。
 
 这样可以把当前“像 Surge 一样专业，但底层是 mihomo”的 macOS 原生产品骨架，继续推进到可长期分发和日常托管的 Beta 质量。

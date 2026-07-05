@@ -1,6 +1,7 @@
 import Foundation
 
 public enum MihomoHelperConstants {
+    public static let appBundleIdentifier = "dev.codex.Mihomo"
     public static let machServiceName = "dev.codex.Mihomo.Helper"
     public static let daemonPlistName = "dev.codex.Mihomo.Helper.plist"
     public static let helperExecutableName = "MihomoHelper"

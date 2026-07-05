@@ -173,6 +173,13 @@ struct AppSettings: Codable, Hashable {
     var backupWebDAVPassword: String
     var gistToken: String
     var gistID: String
+    var softwareUpdateManifestURL: String
+    var profileEncryptionEnabled: Bool
+    var ageBinaryPath: String
+    var ageKeygenPath: String
+    var ageIdentityPath: String
+    var ageRecipient: String
+    var ageDownloadURL: String
 
     static let `default` = AppSettings()
 
@@ -227,7 +234,14 @@ struct AppSettings: Codable, Hashable {
         backupWebDAVUsername: String = "",
         backupWebDAVPassword: String = "",
         gistToken: String = "",
-        gistID: String = ""
+        gistID: String = "",
+        softwareUpdateManifestURL: String = "",
+        profileEncryptionEnabled: Bool = false,
+        ageBinaryPath: String = "",
+        ageKeygenPath: String = "",
+        ageIdentityPath: String = "",
+        ageRecipient: String = "",
+        ageDownloadURL: String = "https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-darwin-arm64.tar.gz"
     ) {
         self.mihomoPath = mihomoPath
         self.activeProfileID = activeProfileID
@@ -280,6 +294,13 @@ struct AppSettings: Codable, Hashable {
         self.backupWebDAVPassword = backupWebDAVPassword
         self.gistToken = gistToken
         self.gistID = gistID
+        self.softwareUpdateManifestURL = softwareUpdateManifestURL
+        self.profileEncryptionEnabled = profileEncryptionEnabled
+        self.ageBinaryPath = ageBinaryPath
+        self.ageKeygenPath = ageKeygenPath
+        self.ageIdentityPath = ageIdentityPath
+        self.ageRecipient = ageRecipient
+        self.ageDownloadURL = ageDownloadURL
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -334,6 +355,13 @@ struct AppSettings: Codable, Hashable {
         case backupWebDAVPassword
         case gistToken
         case gistID
+        case softwareUpdateManifestURL
+        case profileEncryptionEnabled
+        case ageBinaryPath
+        case ageKeygenPath
+        case ageIdentityPath
+        case ageRecipient
+        case ageDownloadURL
     }
 
     init(from decoder: Decoder) throws {
@@ -390,6 +418,13 @@ struct AppSettings: Codable, Hashable {
         backupWebDAVPassword = try container.decodeIfPresent(String.self, forKey: .backupWebDAVPassword) ?? fallback.backupWebDAVPassword
         gistToken = try container.decodeIfPresent(String.self, forKey: .gistToken) ?? fallback.gistToken
         gistID = try container.decodeIfPresent(String.self, forKey: .gistID) ?? fallback.gistID
+        softwareUpdateManifestURL = try container.decodeIfPresent(String.self, forKey: .softwareUpdateManifestURL) ?? fallback.softwareUpdateManifestURL
+        profileEncryptionEnabled = try container.decodeIfPresent(Bool.self, forKey: .profileEncryptionEnabled) ?? fallback.profileEncryptionEnabled
+        ageBinaryPath = try container.decodeIfPresent(String.self, forKey: .ageBinaryPath) ?? fallback.ageBinaryPath
+        ageKeygenPath = try container.decodeIfPresent(String.self, forKey: .ageKeygenPath) ?? fallback.ageKeygenPath
+        ageIdentityPath = try container.decodeIfPresent(String.self, forKey: .ageIdentityPath) ?? fallback.ageIdentityPath
+        ageRecipient = try container.decodeIfPresent(String.self, forKey: .ageRecipient) ?? fallback.ageRecipient
+        ageDownloadURL = try container.decodeIfPresent(String.self, forKey: .ageDownloadURL) ?? fallback.ageDownloadURL
     }
 }
 
@@ -419,6 +454,7 @@ struct RuleItem: Identifiable, Hashable {
     var index: Int
     var content: String
     var disabled: Bool
+    var hitCount: Int = 0
 }
 
 struct ProviderItem: Identifiable, Hashable {
@@ -426,6 +462,39 @@ struct ProviderItem: Identifiable, Hashable {
     var kind: String
     var name: String
     var detail: String
+    var ruleCount: Int = 0
+    var hitCount: Int = 0
+    var memberNames: [String] = []
+}
+
+struct EditablePolicyGroup: Identifiable, Hashable {
+    var id: String { name }
+    var name: String
+    var type: String
+    var proxies: [String]
+    var uses: [String]
+}
+
+struct EditableProfileRule: Identifiable, Hashable {
+    var id: String { "\(index)-\(content)" }
+    var index: Int
+    var type: String
+    var payload: String
+    var target: String
+    var options: [String]
+
+    var content: String {
+        if payload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return ([type, target] + options).joined(separator: ",")
+        }
+        return ([type, payload, target] + options).joined(separator: ",")
+    }
+}
+
+struct ProfileStructureSnapshot: Hashable {
+    var groups: [EditablePolicyGroup]
+    var rules: [EditableProfileRule]
+    var proxyNames: [String]
 }
 
 struct ProxyNode: Identifiable, Hashable {
@@ -456,6 +525,8 @@ struct ConnectionItem: Identifiable, Hashable {
     var process: String
     var network: String
     var rule: String
+    var ruleType: String = ""
+    var rulePayload: String = ""
     var chain: String
     var upload: Int64
     var download: Int64

@@ -62,6 +62,13 @@ struct RulesView: View {
                             .textSelection(.enabled)
                     }
                     .toggleStyle(.checkbox)
+
+                    Spacer()
+
+                    Text("\(rule.hitCount)")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(rule.hitCount > 0 ? .primary : .secondary)
+                        .frame(width: 48, alignment: .trailing)
                 }
                 .padding(.vertical, 3)
             }

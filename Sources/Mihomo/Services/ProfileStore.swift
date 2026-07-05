@@ -5,6 +5,8 @@ final class ProfileStore {
     private let decoder = JSONDecoder()
     private let runtimeConfigBuilder = RuntimeConfigBuilder()
     private let jsOverrideRunner = JSOverrideRunner()
+    private let secretVault = LocalSecretVault()
+    private let ageService = ProfileAgeService()
 
     init() {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -21,12 +23,24 @@ final class ProfileStore {
             return settings
         }
         let data = try Data(contentsOf: AppPaths.settingsFile)
-        return try decoder.decode(AppSettings.self, from: data)
+        var settings = try decoder.decode(AppSettings.self, from: data)
+        let inlineSecrets = AppSecretValues(settings: settings)
+        let vaultSecrets = (try? secretVault.loadSecrets()) ?? .empty
+
+        if inlineSecrets.isEmpty {
+            settings.applySecrets(vaultSecrets)
+        } else {
+            settings.applySecrets(mergedSecrets(inlineSecrets: inlineSecrets, vaultSecrets: vaultSecrets))
+            try saveSettings(settings)
+        }
+
+        return settings
     }
 
     func saveSettings(_ settings: AppSettings) throws {
         try AppPaths.ensureBaseDirectories()
-        let data = try encoder.encode(settings)
+        try secretVault.saveSecrets(AppSecretValues(settings: settings))
+        let data = try encoder.encode(settings.redactedSecretsForDisk)
         try data.write(to: AppPaths.settingsFile, options: .atomic)
     }
 
@@ -68,13 +82,13 @@ final class ProfileStore {
         )
     }
 
-    func importLocalProfile(fileURL: URL, name: String? = nil) throws -> ProfileItem {
+    func importLocalProfile(fileURL: URL, name: String? = nil, settings: AppSettings = .default) throws -> ProfileItem {
         try AppPaths.ensureBaseDirectories()
         let id = UUID()
         let fileName = "\(id.uuidString).yaml"
         let target = AppPaths.profilesDirectory.appendingPathComponent(fileName)
         let content = try String(contentsOf: fileURL, encoding: .utf8)
-        try content.write(to: target, atomically: true, encoding: .utf8)
+        try writeProfileContent(content, to: target, settings: settings)
         return ProfileItem(
             id: id,
             name: name?.isEmpty == false ? name! : fileURL.deletingPathExtension().lastPathComponent,
@@ -85,7 +99,7 @@ final class ProfileStore {
         )
     }
 
-    func importRemoteProfile(urlString: String, name: String? = nil) async throws -> ProfileItem {
+    func importRemoteProfile(urlString: String, name: String? = nil, settings: AppSettings = .default) async throws -> ProfileItem {
         guard let url = URL(string: urlString) else {
             throw NSError(domain: "Mihomo", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid subscription URL"])
         }
@@ -98,7 +112,8 @@ final class ProfileStore {
         let id = UUID()
         let fileName = "\(id.uuidString).yaml"
         let target = AppPaths.profilesDirectory.appendingPathComponent(fileName)
-        try data.write(to: target, options: .atomic)
+        let content = try profileString(data: data)
+        try writeProfileContent(content, to: target, settings: settings)
 
         var item = ProfileItem(
             id: id,
@@ -113,7 +128,7 @@ final class ProfileStore {
         return item
     }
 
-    func refreshRemoteProfile(_ profile: ProfileItem) async throws -> ProfileItem {
+    func refreshRemoteProfile(_ profile: ProfileItem, settings: AppSettings = .default) async throws -> ProfileItem {
         guard profile.source == .remote, let url = URL(string: profile.location) else {
             return profile
         }
@@ -122,7 +137,8 @@ final class ProfileStore {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "Mihomo", code: 3, userInfo: [NSLocalizedDescriptionKey: "Subscription refresh failed"])
         }
-        try data.write(to: profileFile(profile), options: .atomic)
+        let content = try profileString(data: data)
+        try writeProfileContent(content, to: profileFile(profile), settings: settings)
         var updated = profile
         updated.updatedAt = Date()
         updated.certificateFingerprint = fingerprint ?? profile.certificateFingerprint
@@ -134,20 +150,32 @@ final class ProfileStore {
         AppPaths.profilesDirectory.appendingPathComponent(profile.fileName)
     }
 
-    func loadProfileContent(_ profile: ProfileItem) throws -> String {
+    func loadProfileContent(_ profile: ProfileItem, settings: AppSettings = .default) throws -> String {
+        let stored = try loadProfileStoredContent(profile)
+        return try ageService.decryptedContent(stored, settings: settings)
+    }
+
+    func loadProfileStoredContent(_ profile: ProfileItem) throws -> String {
         try String(contentsOf: profileFile(profile), encoding: .utf8)
     }
 
-    func saveProfileContent(_ profile: ProfileItem, content: String) throws -> ProfileItem {
+    func saveProfileContent(_ profile: ProfileItem, content: String, settings: AppSettings = .default) throws -> ProfileItem {
         try AppPaths.ensureBaseDirectories()
         guard content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             throw NSError(domain: "Mihomo", code: 4, userInfo: [NSLocalizedDescriptionKey: "Profile content cannot be empty"])
         }
 
-        try content.write(to: profileFile(profile), atomically: true, encoding: .utf8)
+        try writeProfileContent(content, to: profileFile(profile), settings: settings)
         var updated = profile
         updated.updatedAt = Date()
         return updated
+    }
+
+    func migrateProfileEncryption(_ profiles: [ProfileItem], settings: AppSettings) throws {
+        for profile in profiles {
+            let plain = try loadProfileContent(profile, settings: settings)
+            try writeProfileContent(plain, to: profileFile(profile), settings: settings)
+        }
     }
 
     func generateRuntimeConfig(profile: ProfileItem, settings: AppSettings) throws -> URL {
@@ -167,11 +195,11 @@ final class ProfileStore {
         disabledRules: Set<String>
     ) throws -> URL {
         try AppPaths.ensureBaseDirectories()
-        var profileContent = try String(contentsOf: profileFile(profile), encoding: .utf8)
+        var profileContent = try loadProfileContent(profile, settings: settings)
         if settings.jsOverrideEnabled {
             profileContent = try jsOverrideRunner.apply(fragments: fragments, to: profileContent)
         }
-        let content = runtimeConfigBuilder.build(
+        let content = try runtimeConfigBuilder.build(
             profileContent: profileContent,
             settings: settings,
             fragments: fragments,
@@ -241,6 +269,26 @@ final class ProfileStore {
         if let expire = pairs["expire"] {
             item.expireAt = Date(timeIntervalSince1970: TimeInterval(expire))
         }
+    }
+
+    private func writeProfileContent(_ content: String, to url: URL, settings: AppSettings) throws {
+        let stored = try ageService.encryptedContent(content, settings: settings)
+        try stored.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func profileString(data: Data) throws -> String {
+        guard let content = String(data: data, encoding: .utf8) else {
+            throw NSError(domain: "Mihomo", code: 5, userInfo: [NSLocalizedDescriptionKey: "Profile content is not UTF-8 text"])
+        }
+        return content
+    }
+
+    private func mergedSecrets(inlineSecrets: AppSecretValues, vaultSecrets: AppSecretValues) -> AppSecretValues {
+        AppSecretValues(
+            controllerSecret: inlineSecrets.controllerSecret.isEmpty ? vaultSecrets.controllerSecret : inlineSecrets.controllerSecret,
+            backupWebDAVPassword: inlineSecrets.backupWebDAVPassword.isEmpty ? vaultSecrets.backupWebDAVPassword : inlineSecrets.backupWebDAVPassword,
+            gistToken: inlineSecrets.gistToken.isEmpty ? vaultSecrets.gistToken : inlineSecrets.gistToken
+        )
     }
 
     private var defaultProfileYAML: String {

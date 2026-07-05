@@ -14,6 +14,8 @@ if [[ -z "${DEVELOPER_DIR:-}" && -d "$DEFAULT_DEVELOPER_DIR" ]]; then
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_VERSION="${APP_VERSION:-0.7.0-dev}"
+APP_BUILD="${APP_BUILD:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%d%H%M%S)}"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -92,6 +94,10 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
   <string>$APP_NAME</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$APP_VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$APP_BUILD</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>LSMinimumSystemVersion</key>
@@ -116,8 +122,19 @@ cat >"$INFO_PLIST" <<PLIST
 PLIST
 
 if command -v codesign >/dev/null 2>&1; then
-  /usr/bin/codesign --force --sign - "$HELPER_BINARY" >/dev/null 2>&1 || true
-  /usr/bin/codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true
+  sign_item() {
+    local identifier="$1"
+    local path="$2"
+    [[ -e "$path" ]] || return 0
+    /usr/bin/codesign --force --sign - --timestamp=none --identifier "$identifier" "$path" >/dev/null
+  }
+
+  if [[ -x "$APP_CORE/mihomo" ]]; then
+    sign_item "$BUNDLE_ID.core.mihomo" "$APP_CORE/mihomo"
+  fi
+  sign_item "$HELPER_LABEL" "$HELPER_BINARY"
+  sign_item "$BUNDLE_ID" "$APP_BUNDLE"
+  /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE"
 fi
 
 open_app() {

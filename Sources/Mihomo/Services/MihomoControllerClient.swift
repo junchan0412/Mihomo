@@ -83,11 +83,12 @@ struct MihomoControllerClient {
         let items = rows.map { row -> ConnectionItem in
             let metadata = row["metadata"] as? [String: Any] ?? [:]
             let chains = row["chains"] as? [String] ?? []
+            let ruleType = row["rule"] as? String ?? ""
+            let rulePayload = row["rulePayload"] as? String ?? ""
             let rule = [
-                row["rule"] as? String,
-                row["rulePayload"] as? String
+                ruleType,
+                rulePayload
             ]
-                .compactMap { $0 }
                 .filter { !$0.isEmpty }
                 .joined(separator: " ")
             return ConnectionItem(
@@ -99,6 +100,8 @@ struct MihomoControllerClient {
                 process: (metadata["process"] as? String) ?? (metadata["processPath"] as? String) ?? "-",
                 network: (metadata["network"] as? String) ?? "-",
                 rule: rule.isEmpty ? "-" : rule,
+                ruleType: ruleType,
+                rulePayload: rulePayload,
                 chain: chains.joined(separator: " -> "),
                 upload: number(row["upload"]),
                 download: number(row["download"]),
@@ -125,14 +128,52 @@ struct MihomoControllerClient {
         let json = try await getJSON(path)
         guard let providers = json["providers"] as? [String: [String: Any]] else { return [] }
         return providers.map { name, detail in
+            let count = providerEntryCount(kind: kind, detail: detail)
+            let members = providerMemberNames(kind: kind, detail: detail)
             let pieces = [
                 detail["type"].map { "type: \($0)" },
                 detail["vehicleType"].map { "vehicle: \($0)" },
-                detail["updatedAt"].map { "updated: \($0)" }
+                detail["updatedAt"].map { "updated: \($0)" },
+                count > 0 ? "items: \(count)" : nil
             ].compactMap { $0 }
-            return ProviderItem(kind: kind, name: name, detail: pieces.isEmpty ? "-" : pieces.joined(separator: " · "))
+            return ProviderItem(
+                kind: kind,
+                name: name,
+                detail: pieces.isEmpty ? "-" : pieces.joined(separator: " · "),
+                ruleCount: count,
+                memberNames: members
+            )
         }
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private func providerEntryCount(kind: String, detail: [String: Any]) -> Int {
+        if kind == "Proxy" {
+            if let proxies = detail["proxies"] as? [Any] { return proxies.count }
+        } else {
+            if let rules = detail["rules"] as? [Any] { return rules.count }
+            if let count = detail["ruleCount"] as? Int { return count }
+        }
+        return 0
+    }
+
+    private func providerMemberNames(kind: String, detail: [String: Any]) -> [String] {
+        let entries: [Any]
+        if kind == "Proxy" {
+            entries = detail["proxies"] as? [Any] ?? []
+        } else {
+            entries = detail["rules"] as? [Any] ?? []
+        }
+
+        return entries.compactMap { entry in
+            if let name = entry as? String { return name }
+            if let map = entry as? [String: Any] {
+                return (map["name"] as? String)
+                    ?? (map["payload"] as? String)
+                    ?? (map["rule"] as? String)
+            }
+            return nil
+        }
     }
 
     private func getJSON(_ path: String) async throws -> [String: Any] {

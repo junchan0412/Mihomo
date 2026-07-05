@@ -10,6 +10,9 @@ let package = Package(
         .executable(name: "Mihomo", targets: ["Mihomo"]),
         .executable(name: "MihomoHelper", targets: ["MihomoHelper"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/jpsim/Yams.git", from: "5.1.3")
+    ],
     targets: [
         .target(
             name: "MihomoShared",
@@ -17,7 +20,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "Mihomo",
-            dependencies: ["MihomoShared"],
+            dependencies: [
+                "MihomoShared",
+                .product(name: "Yams", package: "Yams")
+            ],
             path: "Sources/Mihomo"
         ),
         .executableTarget(

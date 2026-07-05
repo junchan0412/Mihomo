@@ -15,6 +15,8 @@ struct AdvancedView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 coreGroup
+                profileEncryptionGroup
+                softwareUpdateGroup
                 controllerGroup
                 dnsGroup
                 snifferGroup
@@ -101,6 +103,18 @@ struct AdvancedView: View {
                     }
 
                     Button {
+                        Task { await store.auditHelper() }
+                    } label: {
+                        Label("审计 Helper", systemImage: "checklist")
+                    }
+
+                    Button {
+                        Task { await store.repairHelperRegistration() }
+                    } label: {
+                        Label("修复注册", systemImage: "wrench.adjustable")
+                    }
+
+                    Button {
                         Task { await store.unregisterHelper() }
                     } label: {
                         Label("卸载 Helper", systemImage: "trash")
@@ -177,6 +191,114 @@ struct AdvancedView: View {
                 }
             }
             .textFieldStyle(.roundedBorder)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var softwareUpdateGroup: some View {
+        GroupBox("软件更新") {
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                GridRow {
+                    Text("Manifest URL")
+                    TextField("https://example.com/mihomo-update.json", text: $draft.softwareUpdateManifestURL)
+                }
+                GridRow {
+                    Text("状态")
+                    HStack {
+                        Text(store.softwareUpdateStatus)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button {
+                            Task {
+                                await store.saveSettings(draft)
+                                await store.checkForSoftwareUpdate()
+                            }
+                        } label: {
+                            Label("检查", systemImage: "arrow.clockwise")
+                        }
+
+                        Button {
+                            Task {
+                                await store.saveSettings(draft)
+                                await store.installSoftwareUpdate()
+                            }
+                        } label: {
+                            Label("安装更新", systemImage: "square.and.arrow.down")
+                        }
+                        .disabled(store.availableUpdate == nil)
+                    }
+                }
+            }
+            .textFieldStyle(.roundedBorder)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var profileEncryptionGroup: some View {
+        GroupBox("Profile 加密") {
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("使用 Age 加密本地 Profile YAML", isOn: $draft.profileEncryptionEnabled)
+
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                    GridRow {
+                        Text("Age 下载 URL")
+                        TextField("age darwin arm64 tar.gz", text: $draft.ageDownloadURL)
+                    }
+                    GridRow {
+                        Text("age")
+                        TextField("age 可执行文件路径", text: $draft.ageBinaryPath)
+                    }
+                    GridRow {
+                        Text("age-keygen")
+                        TextField("age-keygen 可执行文件路径", text: $draft.ageKeygenPath)
+                    }
+                    GridRow {
+                        Text("Identity")
+                        TextField(AppPaths.ageIdentityFile.path, text: $draft.ageIdentityPath)
+                    }
+                    GridRow {
+                        Text("Recipient")
+                        TextField("age1...", text: $draft.ageRecipient)
+                    }
+                    GridRow {
+                        Text("状态")
+                        Text(store.ageStatus)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+                .textFieldStyle(.roundedBorder)
+
+                HStack {
+                    Button {
+                        Task {
+                            await store.installAgeTools(downloadURL: draft.ageDownloadURL)
+                            draft = store.settings
+                        }
+                    } label: {
+                        Label("安装 Age", systemImage: "square.and.arrow.down")
+                    }
+
+                    Button {
+                        Task {
+                            await store.generateAgeIdentity(draftSettings: draft)
+                            draft = store.settings
+                        }
+                    } label: {
+                        Label("生成身份", systemImage: "key")
+                    }
+
+                    Button {
+                        Task {
+                            await store.saveSettings(draft)
+                            await store.migrateProfileEncryptionNow()
+                        }
+                    } label: {
+                        Label(draft.profileEncryptionEnabled ? "加密现有 Profile" : "解密现有 Profile", systemImage: "lock.rotation")
+                    }
+                }
+            }
             .padding(.vertical, 4)
         }
     }

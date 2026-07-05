@@ -60,6 +60,9 @@ struct ResourcesView: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
                             .textSelection(.enabled)
+                        Text("条目 \(provider.ruleCount) · 命中 \(provider.hitCount)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     Spacer()

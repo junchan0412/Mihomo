@@ -44,8 +44,11 @@ final class AppStore: ObservableObject {
     @Published var externalUIStatus = "未安装"
     @Published var geoUpdateStatus = "未更新"
     @Published var backupStatus = "未备份"
+    @Published var ageStatus = "Profile 加密未启用"
     @Published var launchDaemonStatus = "未安装"
     @Published var helperStatus = "Helper 未检查"
+    @Published var softwareUpdateStatus = "未检查"
+    @Published var availableUpdate: AppUpdateManifest?
 
     private let profileStore = ProfileStore()
     private let systemProxy = SystemProxyManager()
@@ -57,8 +60,11 @@ final class AppStore: ObservableObject {
     private let externalUIManager = ExternalUIManager()
     private let geoUpdateManager = GeoUpdateManager()
     private let backupManager = BackupManager()
+    private let profileAgeService = ProfileAgeService()
     private let helperClient = MihomoHelperClient()
     private let helperService = HelperServiceManager()
+    private let helperAuditService = HelperAuditService()
+    private let softwareUpdateManager = SoftwareUpdateManager()
     private var pollingTask: Task<Void, Never>?
     private var profileRefreshTask: Task<Void, Never>?
     private var profileRefreshQueueRunning = false
@@ -111,6 +117,7 @@ final class AppStore: ObservableObject {
             tunRecoveryStatus = lastTunRecoverySnapshot == nil ? "未捕获 TUN 回滚快照" : "已有 TUN 回滚快照"
             managedCoreStatus = FileManager.default.isExecutableFile(atPath: AppPaths.managedCoreFile.path) ? AppPaths.managedCoreFile.path : (ManagedCoreManager.bundledCorePath ?? "未托管")
             externalUIStatus = externalUIManager.status(name: settings.externalUIName)
+            ageStatus = settings.profileEncryptionEnabled ? "Profile 加密已启用" : "Profile 加密未启用"
             launchDaemonStatus = MihomoHelperConstants.coreLaunchDaemonPlistPath
             helperStatus = helperService.statusDescription
             refreshConfigArtifacts()
@@ -240,6 +247,7 @@ final class AppStore: ObservableObject {
             proxyGroups = try await groups
             let (items, up, down) = try await connectionResult
             connections = items
+            updateRuleProviderHitStatistics()
             updateTrafficRates(uploadTotal: up, downloadTotal: down)
             if isCoreRunning {
                 crashRestartCount = 0
@@ -384,7 +392,8 @@ final class AppStore: ObservableObject {
         do {
             let item = try await profileStore.importRemoteProfile(
                 urlString: url,
-                name: newRemoteName.trimmingCharacters(in: .whitespacesAndNewlines)
+                name: newRemoteName.trimmingCharacters(in: .whitespacesAndNewlines),
+                settings: settings
             )
             profiles.append(item)
             settings.activeProfileID = item.id
@@ -401,7 +410,7 @@ final class AppStore: ObservableObject {
 
     func importLocalProfile(url: URL) async {
         do {
-            let item = try profileStore.importLocalProfile(fileURL: url)
+            let item = try profileStore.importLocalProfile(fileURL: url, settings: settings)
             profiles.append(item)
             settings.activeProfileID = item.id
             try profileStore.saveProfiles(profiles)
@@ -415,7 +424,7 @@ final class AppStore: ObservableObject {
 
     func refreshProfile(_ profile: ProfileItem) async {
         do {
-            let updated = try await profileStore.refreshRemoteProfile(profile)
+            let updated = try await profileStore.refreshRemoteProfile(profile, settings: settings)
             if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
                 profiles[index] = updated
                 try profileStore.saveProfiles(profiles)
@@ -458,6 +467,7 @@ final class AppStore: ObservableObject {
         var pendingProfiles = remoteProfiles
         var runningTasks: [Task<ProfileRefreshResult, Never>] = []
         let maxConcurrent = max(1, settings.profileRefreshMaxConcurrent)
+        let refreshSettings = settings
         var completed = 0
         var succeeded = 0
         var failed = 0
@@ -469,7 +479,7 @@ final class AppStore: ObservableObject {
                 runningTasks.append(Task {
                     let store = ProfileStore()
                     do {
-                        let updated = try await store.refreshRemoteProfile(profile)
+                        let updated = try await store.refreshRemoteProfile(profile, settings: refreshSettings)
                         return ProfileRefreshResult(profileID: profile.id, updated: updated, errorMessage: nil)
                     } catch {
                         return ProfileRefreshResult(profileID: profile.id, updated: nil, errorMessage: error.localizedDescription)
@@ -520,7 +530,7 @@ final class AppStore: ObservableObject {
 
     func profileContent(for profile: ProfileItem) -> String {
         do {
-            return try profileStore.loadProfileContent(profile)
+            return try profileStore.loadProfileContent(profile, settings: settings)
         } catch {
             appendLog("error", "读取配置失败：\(error.localizedDescription)")
             return ""
@@ -532,7 +542,7 @@ final class AppStore: ObservableObject {
         do {
             var profile = profiles[index]
             profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? profile.name : name
-            let updated = try profileStore.saveProfileContent(profile, content: content)
+            let updated = try profileStore.saveProfileContent(profile, content: content, settings: settings)
             profiles[index] = updated
             try profileStore.saveProfiles(profiles)
             refreshConfigArtifacts()
@@ -544,8 +554,13 @@ final class AppStore: ObservableObject {
 
     func saveSettings(_ settings: AppSettings) async {
         do {
+            let previous = self.settings
+            if previous.profileEncryptionEnabled != settings.profileEncryptionEnabled {
+                try profileStore.migrateProfileEncryption(profiles, settings: settings)
+            }
             self.settings = settings
             try profileStore.saveSettings(settings)
+            ageStatus = settings.profileEncryptionEnabled ? "Profile 加密已启用" : "Profile 加密未启用"
             syncLaunchAtLoginSetting(reportSuccess: true)
             startProfileAutoRefreshIfNeeded()
             if settings.lightweightMode {
@@ -667,10 +682,13 @@ final class AppStore: ObservableObject {
             state: FileManager.default.isExecutableFile(atPath: mihomoPath) ? .ok : .failed
         ))
 
+        results.append(contentsOf: helperAuditService.localAuditResults(helperStatus: helperService.statusDescription))
         do {
             let helper = try await helperClient.version()
             helperStatus = "\(helper.message)，\(helperService.statusDescription)"
             results.append(.init(title: "XPC Helper", detail: helperStatus, state: .ok))
+            let privilege = try await helperClient.verifyPrivileges()
+            results.append(.init(title: "Helper 授权", detail: privilege.message, state: .ok))
         } catch {
             helperStatus = "\(helperService.statusDescription)：\(error.localizedDescription)"
             results.append(.init(title: "XPC Helper", detail: helperStatus, state: .failed))
@@ -717,7 +735,7 @@ final class AppStore: ObservableObject {
         }
 
         do {
-            let original = try profileStore.loadProfileContent(activeProfile)
+            let original = try profileStore.loadProfileContent(activeProfile, settings: settings)
             rules = configFragmentStore.parseRules(profileContent: original, disabledRules: disabledRules)
             providers = configFragmentStore.parseProviders(profileContent: original)
             let candidate = try profileStore.generateRuntimeConfigCandidate(
@@ -728,6 +746,7 @@ final class AppStore: ObservableObject {
             )
             configPreview = try String(contentsOf: candidate, encoding: .utf8)
             configDiff = configFragmentStore.makeDiff(original: original, generated: configPreview)
+            updateRuleProviderHitStatistics()
             advancedStatus = "配置预览已更新：\(Formatters.shortDate.string(from: Date()))"
         } catch {
             advancedStatus = "配置预览失败：\(error.localizedDescription)"
@@ -738,6 +757,7 @@ final class AppStore: ObservableObject {
     func refreshProvidersFromController() async {
         do {
             providers = try await controllerClient().providers()
+            updateRuleProviderHitStatistics()
             advancedStatus = "已从 Controller 读取 \(providers.count) 个 Provider"
         } catch {
             appendLog("warning", "Controller Provider 读取失败，保留本地解析结果：\(error.localizedDescription)")
@@ -840,6 +860,60 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func installAgeTools(downloadURL: String? = nil) async {
+        do {
+            ageStatus = "正在下载 Age 工具"
+            let source = downloadURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? downloadURL! : settings.ageDownloadURL
+            let tools = try await profileAgeService.installTools(from: source)
+            var updated = settings
+            updated.ageDownloadURL = source
+            updated.ageBinaryPath = tools.agePath
+            updated.ageKeygenPath = tools.keygenPath
+            try profileStore.saveSettings(updated)
+            settings = updated
+            ageStatus = "Age 工具已安装：\(tools.agePath)"
+            appendLog("info", ageStatus)
+        } catch {
+            ageStatus = "Age 工具安装失败：\(error.localizedDescription)"
+            appendLog("error", ageStatus)
+        }
+    }
+
+    func generateAgeIdentity(draftSettings: AppSettings? = nil) async {
+        do {
+            var draft = draftSettings ?? settings
+            if draft.ageIdentityPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                draft.ageIdentityPath = AppPaths.ageIdentityFile.path
+            }
+            let identity = try profileAgeService.ensureIdentity(settings: draft)
+            var updated = settings
+            updated.ageDownloadURL = draft.ageDownloadURL
+            updated.ageBinaryPath = draft.ageBinaryPath
+            updated.ageKeygenPath = draft.ageKeygenPath
+            updated.ageIdentityPath = identity.identityPath
+            updated.ageRecipient = identity.recipient
+            try profileStore.saveSettings(updated)
+            settings = updated
+            ageStatus = "Age 身份已就绪：\(identity.recipient)"
+            appendLog("info", ageStatus)
+        } catch {
+            ageStatus = "Age 身份生成失败：\(error.localizedDescription)"
+            appendLog("error", ageStatus)
+        }
+    }
+
+    func migrateProfileEncryptionNow() async {
+        do {
+            try profileStore.migrateProfileEncryption(profiles, settings: settings)
+            ageStatus = settings.profileEncryptionEnabled ? "现有 Profile 已加密" : "现有 Profile 已解密"
+            refreshConfigArtifacts()
+            appendLog("info", ageStatus)
+        } catch {
+            ageStatus = "Profile 加密迁移失败：\(error.localizedDescription)"
+            appendLog("error", ageStatus)
+        }
+    }
+
     func refreshHelperStatus() async {
         do {
             let result = try await helperClient.version()
@@ -847,6 +921,22 @@ final class AppStore: ObservableObject {
         } catch {
             helperStatus = "\(helperService.statusDescription)：\(error.localizedDescription)"
         }
+    }
+
+    func auditHelper() async {
+        var results = helperAuditService.localAuditResults(helperStatus: helperService.statusDescription)
+        do {
+            let version = try await helperClient.version()
+            helperStatus = "\(version.message)，\(helperService.statusDescription)"
+            results.append(.init(title: "XPC Helper", detail: helperStatus, state: .ok))
+            let privilege = try await helperClient.verifyPrivileges()
+            results.append(.init(title: "Helper 授权", detail: privilege.message, state: .ok))
+        } catch {
+            helperStatus = "\(helperService.statusDescription)：\(error.localizedDescription)"
+            results.append(.init(title: "XPC Helper", detail: helperStatus, state: .failed))
+        }
+        diagnostics = results
+        selectedSection = .diagnostics
     }
 
     func registerHelper() async {
@@ -869,6 +959,21 @@ final class AppStore: ObservableObject {
             appendLog("info", "XPC Helper 已取消注册：\(helperStatus)")
         } catch {
             helperStatus = "XPC Helper 卸载失败：\(error.localizedDescription)"
+            appendLog("error", helperStatus)
+        }
+    }
+
+    func repairHelperRegistration() async {
+        do {
+            helperStatus = "正在重建 Helper 注册"
+            try? helperService.unregister()
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            try helperService.register()
+            appendLog("info", "XPC Helper 注册已重建")
+            try? await Task.sleep(nanoseconds: 800_000_000)
+            await auditHelper()
+        } catch {
+            helperStatus = "XPC Helper 修复失败：\(error.localizedDescription)"
             appendLog("error", helperStatus)
         }
     }
@@ -1004,6 +1109,50 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func checkForSoftwareUpdate() async {
+        do {
+            softwareUpdateStatus = "正在检查更新"
+            let result = try await softwareUpdateManager.checkForUpdate(manifestURLString: settings.softwareUpdateManifestURL)
+            if result.isNewer {
+                availableUpdate = result.manifest
+                softwareUpdateStatus = "发现 \(result.manifest.version)，当前 \(result.currentVersion)"
+            } else {
+                availableUpdate = nil
+                softwareUpdateStatus = "已是最新：\(result.currentVersion)"
+            }
+            appendLog("info", softwareUpdateStatus)
+        } catch {
+            softwareUpdateStatus = "更新检查失败：\(error.localizedDescription)"
+            appendLog("error", softwareUpdateStatus)
+        }
+    }
+
+    func installSoftwareUpdate() async {
+        do {
+            let manifest: AppUpdateManifest
+            if let availableUpdate {
+                manifest = availableUpdate
+            } else {
+                let result = try await softwareUpdateManager.checkForUpdate(manifestURLString: settings.softwareUpdateManifestURL)
+                guard result.isNewer else {
+                    softwareUpdateStatus = "已是最新：\(result.currentVersion)"
+                    return
+                }
+                manifest = result.manifest
+            }
+
+            softwareUpdateStatus = "正在下载 \(manifest.version)"
+            let message = try await softwareUpdateManager.installUpdate(manifest, manifestURLString: settings.softwareUpdateManifestURL)
+            softwareUpdateStatus = message
+            appendLog("info", message)
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            NSApp.terminate(nil)
+        } catch {
+            softwareUpdateStatus = "更新安装失败：\(error.localizedDescription)"
+            appendLog("error", softwareUpdateStatus)
+        }
+    }
+
     func handleDeepLink(_ url: URL) async {
         guard url.scheme == "mihomo" else { return }
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
@@ -1017,11 +1166,11 @@ final class AppStore: ObservableObject {
             case "install-profile", "profile":
                 guard let value = query["url"], let importURL = URL(string: value) else { return }
                 if importURL.isFileURL {
-                    let item = try profileStore.importLocalProfile(fileURL: importURL, name: query["name"])
+                    let item = try profileStore.importLocalProfile(fileURL: importURL, name: query["name"], settings: settings)
                     profiles.append(item)
                     settings.activeProfileID = item.id
                 } else {
-                    let item = try await profileStore.importRemoteProfile(urlString: value, name: query["name"])
+                    let item = try await profileStore.importRemoteProfile(urlString: value, name: query["name"], settings: settings)
                     profiles.append(item)
                     settings.activeProfileID = item.id
                 }
@@ -1118,11 +1267,11 @@ final class AppStore: ObservableObject {
 
     private func makeBackupPayload() throws -> BackupPayload {
         let contents = Dictionary(uniqueKeysWithValues: try profiles.map { profile in
-            (profile.fileName, try profileStore.loadProfileContent(profile))
+            (profile.fileName, try profileStore.loadProfileStoredContent(profile))
         })
         return BackupPayload(
             createdAt: Date(),
-            settings: settings,
+            settings: settings.redactedSecretsForDisk,
             profiles: profiles,
             fragments: configFragments,
             disabledRules: disabledRules.sorted(),
@@ -1146,6 +1295,59 @@ final class AppStore: ObservableObject {
             }
         }
         refreshConfigArtifacts()
+    }
+
+    private func updateRuleProviderHitStatistics() {
+        let ruleHits = connections.reduce(into: [String: Int]()) { result, connection in
+            let key = ruleHitKey(type: connection.ruleType, payload: connection.rulePayload)
+            guard key.isEmpty == false else { return }
+            result[key, default: 0] += 1
+        }
+
+        rules = rules.map { rule in
+            var updated = rule
+            updated.hitCount = ruleHits[ruleHitKey(content: rule.content), default: 0]
+            return updated
+        }
+
+        let ruleProviderHits = connections.reduce(into: [String: Int]()) { result, connection in
+            guard connection.ruleType.uppercased() == "RULE-SET",
+                  connection.rulePayload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            else { return }
+            result[connection.rulePayload, default: 0] += 1
+        }
+
+        providers = providers.map { provider in
+            var updated = provider
+            if provider.kind == "Rule" {
+                updated.hitCount = ruleProviderHits[provider.name, default: 0]
+            } else if provider.memberNames.isEmpty == false {
+                let members = Set(provider.memberNames)
+                updated.hitCount = connections.filter { connection in
+                    connection.chain
+                        .components(separatedBy: " -> ")
+                        .contains { members.contains($0) }
+                }.count
+            }
+            return updated
+        }
+    }
+
+    private func ruleHitKey(content: String) -> String {
+        let parts = content.split(separator: ",", omittingEmptySubsequences: false)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        guard parts.isEmpty == false else { return "" }
+        if parts.count >= 2 {
+            return ruleHitKey(type: parts[0], payload: parts[1])
+        }
+        return parts[0].uppercased()
+    }
+
+    private func ruleHitKey(type: String, payload: String) -> String {
+        let normalizedType = type.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let normalizedPayload = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedType.isEmpty == false else { return "" }
+        return normalizedPayload.isEmpty ? normalizedType : "\(normalizedType),\(normalizedPayload)"
     }
 
     private func controllerClient() -> MihomoControllerClient {

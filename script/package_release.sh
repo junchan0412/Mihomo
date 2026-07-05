@@ -9,7 +9,7 @@ APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
 ZIP_PATH="$RELEASE_DIR/$APP_NAME-$VERSION-macOS-arm64.zip"
 
 "$ROOT_DIR/script/prepare_core_bundle.sh" >/dev/null
-RELEASE_BUILD=1 "$ROOT_DIR/script/build_and_run.sh" --verify
+APP_VERSION="$VERSION" RELEASE_BUILD=1 "$ROOT_DIR/script/build_and_run.sh" --verify
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 mkdir -p "$RELEASE_DIR"
@@ -19,4 +19,5 @@ rm -f "$ZIP_PATH"
   COPYFILE_DISABLE=1 zip --symlinks -r -X "$ZIP_PATH" "$APP_NAME.app" >/dev/null
 )
 
+"$ROOT_DIR/script/generate_update_manifest.sh" "$VERSION" "$ZIP_PATH" >/dev/null
 echo "$ZIP_PATH"
