@@ -30,6 +30,7 @@ final class PoliciesViewController: NSViewController, NSTableViewDataSource, NST
 
         let buttons = UI.stack(.horizontal, spacing: 8)
         buttons.addArrangedSubview(UI.button("Use Selected", target: self, action: #selector(useSelected)))
+        buttons.addArrangedSubview(UI.button("Test Delay", target: self, action: #selector(testSelectedDelay)))
         buttons.addArrangedSubview(UI.button("Refresh", target: self, action: #selector(refreshController)))
         stack.addArrangedSubview(buttons)
 
@@ -84,6 +85,13 @@ final class PoliciesViewController: NSViewController, NSTableViewDataSource, NST
         guard row >= 0, row < rows.count else { return }
         let item = rows[row]
         Task { await store.selectProxy(group: item.group.name, proxy: item.node.name) }
+    }
+
+    @objc private func testSelectedDelay() {
+        let row = tableView.selectedRow
+        guard row >= 0, row < rows.count else { return }
+        let item = rows[row]
+        Task { await store.testProxyDelay(group: item.group.name, proxy: item.node.name) }
     }
 
     @objc private func refreshController() {

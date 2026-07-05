@@ -56,6 +56,13 @@ struct MihomoControllerClient {
         try await sendJSON("/proxies/\(group.urlPathEscaped)", method: "PUT", body: ["name": proxy])
     }
 
+    func proxyDelay(proxy: String, url: String = "https://www.gstatic.com/generate_204", timeout: Int = 5000) async throws -> Int {
+        let path = "/proxies/\(proxy.urlPathEscaped)/delay"
+        let query = "?url=\(url.urlQueryEscaped)&timeout=\(timeout)"
+        let json = try await getJSON(path + query)
+        return Int(number(json["delay"]))
+    }
+
     func closeConnections() async throws {
         try await sendJSON("/connections", method: "DELETE", body: nil)
     }
@@ -97,7 +104,7 @@ struct MihomoControllerClient {
     }
 
     private func getJSON(_ path: String) async throws -> [String: Any] {
-        let url = baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+        let url = endpointURL(path)
         let (data, response) = try await URLSession.shared.data(from: url)
         try validate(response: response, data: data)
         let object = try JSONSerialization.jsonObject(with: data)
@@ -105,7 +112,7 @@ struct MihomoControllerClient {
     }
 
     private func sendJSON(_ path: String, method: String, body: [String: Any]?) async throws {
-        let url = baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+        let url = endpointURL(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
         if let body {
@@ -114,6 +121,10 @@ struct MihomoControllerClient {
         }
         let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
+    }
+
+    private func endpointURL(_ path: String) -> URL {
+        URL(string: path.hasPrefix("/") ? path : "/\(path)", relativeTo: baseURL)!.absoluteURL
     }
 
     private func validate(response: URLResponse, data: Data) throws {
@@ -136,5 +147,9 @@ struct MihomoControllerClient {
 private extension String {
     var urlPathEscaped: String {
         addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? self
+    }
+
+    var urlQueryEscaped: String {
+        addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? self
     }
 }

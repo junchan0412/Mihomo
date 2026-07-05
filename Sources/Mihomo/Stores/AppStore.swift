@@ -23,6 +23,9 @@ final class AppStore {
     private let coreManager = CoreManager()
     private let systemProxy = SystemProxyManager()
     private var pollingTask: Task<Void, Never>?
+    private var lastUploadTotal: Int64?
+    private var lastDownloadTotal: Int64?
+    private var lastTrafficSampleAt: Date?
     private var observers: [UUID: () -> Void] = [:]
 
     var activeProfile: ProfileItem? {
@@ -118,8 +121,7 @@ final class AppStore {
             proxyGroups = try await groups
             let (items, up, down) = try await connectionResult
             connections = items
-            uploadRate = up
-            downloadRate = down
+            updateTrafficRates(uploadTotal: up, downloadTotal: down)
             if isCoreRunning {
                 coreStatus = "Running"
             }
@@ -152,6 +154,28 @@ final class AppStore {
             await refreshController()
         } catch {
             appendLog("error", "Proxy selection failed: \(error.localizedDescription)")
+        }
+    }
+
+    func testProxyDelay(group: String, proxy: String) async {
+        do {
+            let client = MihomoControllerClient(host: settings.controllerHost, port: settings.controllerPort)
+            let delay = try await client.proxyDelay(proxy: proxy)
+            updateDelay(group: group, proxy: proxy, delay: delay)
+            appendLog("info", "Delay test \(proxy): \(delay) ms")
+        } catch {
+            appendLog("error", "Delay test failed for \(proxy): \(error.localizedDescription)")
+        }
+    }
+
+    func closeAllConnections() async {
+        do {
+            let client = MihomoControllerClient(host: settings.controllerHost, port: settings.controllerPort)
+            try await client.closeConnections()
+            connections = []
+            appendLog("info", "Closed all controller connections")
+        } catch {
+            appendLog("error", "Close connections failed: \(error.localizedDescription)")
         }
     }
 
@@ -293,6 +317,35 @@ final class AppStore {
 
     private func notify() {
         observers.values.forEach { $0() }
+    }
+
+    private func updateTrafficRates(uploadTotal: Int64, downloadTotal: Int64) {
+        let now = Date()
+        guard let lastAt = lastTrafficSampleAt,
+              let lastUpload = lastUploadTotal,
+              let lastDownload = lastDownloadTotal
+        else {
+            lastTrafficSampleAt = now
+            lastUploadTotal = uploadTotal
+            lastDownloadTotal = downloadTotal
+            uploadRate = 0
+            downloadRate = 0
+            return
+        }
+
+        let interval = max(now.timeIntervalSince(lastAt), 0.1)
+        uploadRate = max(0, Int64(Double(uploadTotal - lastUpload) / interval))
+        downloadRate = max(0, Int64(Double(downloadTotal - lastDownload) / interval))
+        lastTrafficSampleAt = now
+        lastUploadTotal = uploadTotal
+        lastDownloadTotal = downloadTotal
+    }
+
+    private func updateDelay(group: String, proxy: String, delay: Int) {
+        guard let groupIndex = proxyGroups.firstIndex(where: { $0.name == group }),
+              let proxyIndex = proxyGroups[groupIndex].all.firstIndex(where: { $0.name == proxy })
+        else { return }
+        proxyGroups[groupIndex].all[proxyIndex].delay = delay
     }
 
     private func startPolling() {

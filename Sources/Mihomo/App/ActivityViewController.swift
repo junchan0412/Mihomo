@@ -24,6 +24,7 @@ final class ActivityViewController: NSViewController, NSTableViewDataSource, NST
         stack.addArrangedSubview(summary)
         let buttonRow = UI.stack(.horizontal, spacing: 8)
         buttonRow.addArrangedSubview(UI.button("Refresh", target: self, action: #selector(refreshController)))
+        buttonRow.addArrangedSubview(UI.button("Close All Connections", target: self, action: #selector(closeAllConnections)))
         stack.addArrangedSubview(buttonRow)
 
         let scroll = NSScrollView()
@@ -72,4 +73,5 @@ final class ActivityViewController: NSViewController, NSTableViewDataSource, NST
     }
 
     @objc private func refreshController() { Task { await store.refreshController() } }
+    @objc private func closeAllConnections() { Task { await store.closeAllConnections() } }
 }
