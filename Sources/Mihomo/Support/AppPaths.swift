@@ -32,6 +32,22 @@ enum AppPaths {
         runtimeDirectory.appendingPathComponent("config.yaml")
     }
 
+    static var runtimeCandidateConfigFile: URL {
+        runtimeDirectory.appendingPathComponent("config.candidate.yaml")
+    }
+
+    static var runtimeBackupConfigFile: URL {
+        runtimeDirectory.appendingPathComponent("config.previous.yaml")
+    }
+
+    static var systemProxySnapshotFile: URL {
+        supportDirectory.appendingPathComponent("system-proxy-snapshot.json")
+    }
+
+    static var appLogFile: URL {
+        logsDirectory.appendingPathComponent("mihomo-app.log")
+    }
+
     static func ensureBaseDirectories() throws {
         let manager = FileManager.default
         for directory in [supportDirectory, profilesDirectory, runtimeDirectory, logsDirectory] {

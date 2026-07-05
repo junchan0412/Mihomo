@@ -7,16 +7,20 @@ struct DiagnosticsView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 VStack(alignment: .leading) {
-                    Text("Diagnostics")
+                    Text("诊断")
                         .font(.largeTitle.bold())
-                    Text("Check binary, runtime config, network services, and controller reachability.")
+                    Text("检查核心、运行配置、系统代理快照、TUN 状态、Controller 和日志。")
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Run Diagnostics") {
+                Button("运行诊断") {
                     Task { await store.runDiagnostics() }
                 }
                 .buttonStyle(.borderedProminent)
+
+                Button("修复系统代理") {
+                    Task { await store.repairSystemProxy() }
+                }
             }
 
             List(store.diagnostics) { item in
@@ -37,12 +41,12 @@ struct DiagnosticsView: View {
             }
             .overlay {
                 if store.diagnostics.isEmpty {
-                    ContentUnavailableView("No Diagnostics Yet", systemImage: "stethoscope", description: Text("Run diagnostics to verify the MVP setup."))
+                    ContentUnavailableView("尚未运行诊断", systemImage: "stethoscope", description: Text("运行诊断以验证第三个 MVP 的运行状态。"))
                 }
             }
         }
         .padding(24)
-        .navigationTitle("Diagnostics")
+        .navigationTitle("诊断")
     }
 
     private func icon(for state: DiagnosticState) -> String {

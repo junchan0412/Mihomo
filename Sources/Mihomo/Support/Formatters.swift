@@ -29,4 +29,8 @@ enum Formatters {
         if value.count <= limit { return value }
         return String(value.prefix(limit - 1)) + "..."
     }
+
+    static func chineseBool(_ value: Bool) -> String {
+        value ? "开启" : "关闭"
+    }
 }

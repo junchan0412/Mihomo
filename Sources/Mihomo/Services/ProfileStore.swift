@@ -128,7 +128,29 @@ final class ProfileStore {
         AppPaths.profilesDirectory.appendingPathComponent(profile.fileName)
     }
 
+    func loadProfileContent(_ profile: ProfileItem) throws -> String {
+        try String(contentsOf: profileFile(profile), encoding: .utf8)
+    }
+
+    func saveProfileContent(_ profile: ProfileItem, content: String) throws -> ProfileItem {
+        try AppPaths.ensureBaseDirectories()
+        guard content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+            throw NSError(domain: "Mihomo", code: 4, userInfo: [NSLocalizedDescriptionKey: "Profile content cannot be empty"])
+        }
+
+        try content.write(to: profileFile(profile), atomically: true, encoding: .utf8)
+        var updated = profile
+        updated.updatedAt = Date()
+        return updated
+    }
+
     func generateRuntimeConfig(profile: ProfileItem, settings: AppSettings) throws -> URL {
+        let candidate = try generateRuntimeConfigCandidate(profile: profile, settings: settings)
+        try promoteRuntimeConfig(candidate: candidate)
+        return AppPaths.runtimeConfigFile
+    }
+
+    func generateRuntimeConfigCandidate(profile: ProfileItem, settings: AppSettings) throws -> URL {
         try AppPaths.ensureBaseDirectories()
         let profileContent = try String(contentsOf: profileFile(profile), encoding: .utf8)
         let overlay = runtimeOverlay(settings: settings)
@@ -137,8 +159,31 @@ final class ProfileStore {
             profileContent,
             overlay
         ].joined(separator: "\n\n")
-        try content.write(to: AppPaths.runtimeConfigFile, atomically: true, encoding: .utf8)
-        return AppPaths.runtimeConfigFile
+        try content.write(to: AppPaths.runtimeCandidateConfigFile, atomically: true, encoding: .utf8)
+        return AppPaths.runtimeCandidateConfigFile
+    }
+
+    func promoteRuntimeConfig(candidate: URL) throws {
+        let manager = FileManager.default
+        if manager.fileExists(atPath: AppPaths.runtimeConfigFile.path) {
+            if manager.fileExists(atPath: AppPaths.runtimeBackupConfigFile.path) {
+                try manager.removeItem(at: AppPaths.runtimeBackupConfigFile)
+            }
+            try manager.copyItem(at: AppPaths.runtimeConfigFile, to: AppPaths.runtimeBackupConfigFile)
+        }
+        if manager.fileExists(atPath: AppPaths.runtimeConfigFile.path) {
+            try manager.removeItem(at: AppPaths.runtimeConfigFile)
+        }
+        try manager.copyItem(at: candidate, to: AppPaths.runtimeConfigFile)
+    }
+
+    func restoreRuntimeBackup() throws {
+        let manager = FileManager.default
+        guard manager.fileExists(atPath: AppPaths.runtimeBackupConfigFile.path) else { return }
+        if manager.fileExists(atPath: AppPaths.runtimeConfigFile.path) {
+            try manager.removeItem(at: AppPaths.runtimeConfigFile)
+        }
+        try manager.copyItem(at: AppPaths.runtimeBackupConfigFile, to: AppPaths.runtimeConfigFile)
     }
 
     func locateMihomoBinary() -> String? {

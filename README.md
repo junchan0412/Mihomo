@@ -2,18 +2,22 @@
 
 Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repository contains the MVP described in `Mihomo-macOS-development-report.md`: a professional desktop shell inspired by Surge's information architecture, while using mihomo as the runtime engine.
 
-## Second MVP Scope
+## Third MVP Scope
 
 - SwiftUI-first macOS app with a native sidebar, toolbar, Settings scene, and Menu Bar Extra.
 - AppKit-backed `NSTableView` and `NSTextView` bridges for dense connection/policy/profile tables and high-volume log scrolling.
-- Local or remote Profile import.
-- Runtime mihomo config generation.
-- Start, stop, and refresh mihomo from the app.
-- Controller integration for version, mode, policy groups, proxy selection, and connections.
-- System proxy toggle through macOS `networksetup`.
-- Logs, diagnostics, and basic activity view.
+- Simplified Chinese UI across the main window, Settings, diagnostics, logs, profile workflows, and menu bar actions.
+- Runtime config dry-run with `mihomo -t`, candidate config promotion, and previous config rollback.
+- Core start, stop, restart, and crash recovery with configurable retry limits.
+- System proxy snapshots and restoration through macOS `networksetup`, including repair from saved proxy/DNS state.
+- Local, remote, and drag-and-drop Profile import, remote subscription refresh, automatic refresh interval, and a built-in YAML editor.
+- Policy search, sort, proxy selection, and configurable delay testing.
+- Connection list filtering, single-connection close, all-connection close, and a SwiftUI inspector.
+- Realtime traffic sampling with a lightweight native graph.
+- Log filtering plus persistent app log output under `~/Library/Logs/Mihomo/`.
+- Expanded diagnostics for binary, version, runtime dry-run, Controller, TUN status, system proxy snapshots, logs, and subscription refresh.
 
-The second MVP intentionally keeps privileged helper installation, notarized distribution, Sub-Store, WebDAV/Gist sync, and JS override scripting out of scope. Those are listed as later hardening and advanced milestones in the report.
+The third MVP still keeps privileged helper installation, notarized distribution, Sub-Store, WebDAV/Gist sync, full route/DNS rollback for TUN, and JS override scripting out of scope. Those remain later hardening and advanced milestones in the report.
 
 ## Requirements
 
@@ -41,7 +45,7 @@ Useful modes:
 ## Release Build
 
 ```bash
-./script/package_release.sh 0.2.0
+./script/package_release.sh 0.3.0
 ```
 
 This creates a zip artifact under `dist/releases/` without AppleDouble metadata.

@@ -13,7 +13,7 @@ struct RootView: View {
                     }
                 }
 
-                Section("Configuration") {
+                Section("配置") {
                     Label(AppSection.settings.title, systemImage: AppSection.settings.systemImage)
                         .tag(AppSection.settings)
                 }
@@ -25,13 +25,13 @@ struct RootView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Picker("Mode", selection: Binding(
+                Picker("模式", selection: Binding(
                     get: { store.currentMode },
                     set: { mode in Task { await store.setMode(mode) } }
                 )) {
-                    Text("Rule").tag("rule")
-                    Text("Global").tag("global")
-                    Text("Direct").tag("direct")
+                    Text("规则").tag("rule")
+                    Text("全局").tag("global")
+                    Text("直连").tag("direct")
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 220)
@@ -39,13 +39,13 @@ struct RootView: View {
                 Button {
                     Task { await store.toggleSystemProxy() }
                 } label: {
-                    Label(store.systemProxyEnabled ? "Proxy On" : "Proxy Off", systemImage: "network")
+                    Label(store.systemProxyEnabled ? "代理开启" : "代理关闭", systemImage: "network")
                 }
 
                 Button {
                     Task { await store.toggleCore() }
                 } label: {
-                    Label(store.isCoreRunning ? "Stop" : "Start", systemImage: store.isCoreRunning ? "stop.fill" : "play.fill")
+                    Label(store.isCoreRunning ? "停止" : "启动", systemImage: store.isCoreRunning ? "stop.fill" : "play.fill")
                 }
                 .buttonStyle(.borderedProminent)
             }

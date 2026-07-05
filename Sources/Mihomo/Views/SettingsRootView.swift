@@ -6,60 +6,84 @@ struct SettingsRootView: View {
     @State private var draft = AppSettings.default
 
     var body: some View {
-        Form {
-            Section("Core") {
-                HStack {
-                    TextField("mihomo binary", text: $draft.mihomoPath)
-                    Button("Choose...") {
-                        chooseMihomoBinary()
+        TabView {
+            Form {
+                Section("核心") {
+                    HStack {
+                        TextField("mihomo 可执行文件", text: $draft.mihomoPath)
+                        Button("选择...") {
+                            chooseMihomoBinary()
+                        }
                     }
-                }
 
-                Picker("Log Level", selection: $draft.logLevel) {
-                    Text("Debug").tag("debug")
-                    Text("Info").tag("info")
-                    Text("Warning").tag("warning")
-                    Text("Error").tag("error")
-                }
-                .pickerStyle(.segmented)
-
-                Toggle("Start core when Mihomo opens", isOn: $draft.autoStartCore)
-            }
-
-            Section("Controller") {
-                TextField("Host", text: $draft.controllerHost)
-                TextField("Controller Port", value: $draft.controllerPort, format: .number)
-                TextField("Mixed Port", value: $draft.mixedPort, format: .number)
-                TextField("SOCKS Port", value: $draft.socksPort, format: .number)
-            }
-
-            Section("Network") {
-                Toggle("Allow LAN", isOn: $draft.allowLAN)
-                Toggle("Enable TUN in runtime overlay", isOn: $draft.tunEnabled)
-                Toggle("Close connections on policy change", isOn: $draft.closeConnectionsOnPolicyChange)
-            }
-
-            Section {
-                HStack {
-                    Button("Reset") {
-                        draft = store.settings
+                    Picker("日志等级", selection: $draft.logLevel) {
+                        Text("调试").tag("debug")
+                        Text("信息").tag("info")
+                        Text("警告").tag("warning")
+                        Text("错误").tag("error")
                     }
-                    .disabled(draft == store.settings)
+                    .pickerStyle(.segmented)
 
-                    Spacer()
-
-                    Button("Save") {
-                        Task { await store.saveSettings(draft) }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(draft == store.settings)
+                    Toggle("打开 Mihomo 后自动启动核心", isOn: $draft.autoStartCore)
+                    Toggle("核心异常退出后自动恢复", isOn: $draft.restartCoreOnCrash)
+                    TextField("崩溃恢复次数上限", value: $draft.maxCrashRestarts, format: .number)
                 }
             }
+            .tabItem { Label("核心", systemImage: "cpu") }
+
+            Form {
+                Section("Controller") {
+                    TextField("主机", text: $draft.controllerHost)
+                    TextField("Controller 端口", value: $draft.controllerPort, format: .number)
+                    TextField("Mixed 端口", value: $draft.mixedPort, format: .number)
+                    TextField("SOCKS 端口", value: $draft.socksPort, format: .number)
+                    TextField("延迟测试 URL", text: $draft.delayTestURL)
+                }
+            }
+            .tabItem { Label("Controller", systemImage: "point.3.connected.trianglepath.dotted") }
+
+            Form {
+                Section("网络接管") {
+                    Toggle("允许局域网访问", isOn: $draft.allowLAN)
+                    Toggle("在运行配置中启用 TUN", isOn: $draft.tunEnabled)
+                    Toggle("策略切换后关闭连接", isOn: $draft.closeConnectionsOnPolicyChange)
+                    Toggle("退出时恢复系统代理", isOn: $draft.restoreSystemProxyOnQuit)
+                }
+            }
+            .tabItem { Label("网络", systemImage: "network") }
+
+            Form {
+                Section("订阅与常驻") {
+                    Toggle("自动刷新远程订阅", isOn: $draft.autoRefreshProfiles)
+                    TextField("刷新间隔（小时）", value: $draft.profileRefreshIntervalHours, format: .number)
+                    Toggle("轻量模式启动", isOn: $draft.lightweightMode)
+                }
+            }
+            .tabItem { Label("高级", systemImage: "gearshape.2") }
         }
-        .formStyle(.grouped)
+        .safeAreaInset(edge: .bottom) {
+            HStack {
+                Text(store.profileAutoRefreshStatus)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("重置") {
+                    draft = store.settings
+                }
+                .disabled(draft == store.settings)
+
+                Button("保存") {
+                    Task { await store.saveSettings(draft) }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(draft == store.settings)
+            }
+            .padding([.horizontal, .bottom], 24)
+            .padding(.top, 8)
+            .background(.bar)
+        }
         .padding(24)
-        .frame(minWidth: 560, minHeight: 440)
-        .navigationTitle("Settings")
+        .frame(minWidth: 620, minHeight: 500)
+        .navigationTitle("设置")
         .onAppear {
             draft = store.settings
         }
@@ -72,9 +96,9 @@ struct SettingsRootView: View {
 
     private func chooseMihomoBinary() {
         let panel = NSOpenPanel()
-        panel.title = "Choose mihomo Binary"
-        panel.message = "Select the mihomo executable used to run the core."
-        panel.prompt = "Choose"
+        panel.title = "选择 mihomo 可执行文件"
+        panel.message = "选择用于运行核心的 mihomo 可执行文件。"
+        panel.prompt = "选择"
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true

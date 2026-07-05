@@ -21,24 +21,47 @@ struct MihomoApp: App {
                 .task {
                     await store.bootstrap()
                 }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
+                    Task { await store.shutdown() }
+                }
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Mihomo") {
-                Button(store.isCoreRunning ? "Stop Core" : "Start Core") {
+                Button(store.isCoreRunning ? "停止核心" : "启动核心") {
                     Task { await store.toggleCore() }
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
 
-                Button("Refresh Controller") {
+                Button("重启核心") {
+                    Task { await store.restartCore() }
+                }
+                .keyboardShortcut("r", modifiers: [.command, .option])
+
+                Button("刷新 Controller") {
                     Task { await store.refreshController() }
                 }
                 .keyboardShortcut("r", modifiers: [.command])
 
-                Button("Run Diagnostics") {
+                Button(store.systemProxyEnabled ? "关闭系统代理" : "开启系统代理") {
+                    Task { await store.toggleSystemProxy() }
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+
+                Button("刷新所有订阅") {
+                    Task { await store.refreshAllRemoteProfiles() }
+                }
+                .keyboardShortcut("u", modifiers: [.command, .shift])
+
+                Button("运行诊断") {
                     Task { await store.runDiagnostics() }
                 }
                 .keyboardShortcut("d", modifiers: [.command])
+
+                Button("进入轻量模式") {
+                    store.enterLightweightMode()
+                }
+                .keyboardShortcut("l", modifiers: [.command, .option])
             }
         }
 

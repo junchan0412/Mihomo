@@ -67,6 +67,10 @@ struct MihomoControllerClient {
         try await sendJSON("/connections", method: "DELETE", body: nil)
     }
 
+    func closeConnection(id: String) async throws {
+        try await sendJSON("/connections/\(id.urlPathEscaped)", method: "DELETE", body: nil)
+    }
+
     func connections() async throws -> ([ConnectionItem], Int64, Int64) {
         let json = try await getJSON("/connections")
         let uploadTotal = number(json["uploadTotal"])

@@ -9,6 +9,24 @@ final class CoreManager {
         process?.isRunning == true
     }
 
+    func validateConfig(mihomoPath: String, configPath: URL, workDirectory: URL) throws -> String {
+        guard FileManager.default.isExecutableFile(atPath: mihomoPath) else {
+            throw NSError(domain: "Mihomo", code: 10, userInfo: [NSLocalizedDescriptionKey: "mihomo binary is not executable"])
+        }
+
+        let result = try Shell.run(mihomoPath, ["-t", "-d", workDirectory.path, "-f", configPath.path])
+        let output = [result.stdout, result.stderr]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        guard result.status == 0 else {
+            throw NSError(domain: "Mihomo", code: Int(result.status), userInfo: [
+                NSLocalizedDescriptionKey: output.isEmpty ? "mihomo config test failed" : output
+            ])
+        }
+        return output
+    }
+
     func start(
         mihomoPath: String,
         configPath: URL,

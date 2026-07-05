@@ -8,39 +8,47 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 18) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Overview")
+                        Text("概览")
                             .font(.largeTitle.bold())
-                        Text(store.activeProfile?.name ?? "No active profile")
+                        Text(store.activeProfile?.name ?? "没有启用的配置")
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Run Diagnostics") {
+                    Button("运行诊断") {
                         Task { await store.runDiagnostics() }
                     }
                 }
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14)], spacing: 14) {
-                    StatusCard(title: "Core", value: store.coreStatus, systemImage: "cpu", isGood: store.isCoreRunning)
-                    StatusCard(title: "Controller", value: store.coreVersion, systemImage: "point.3.connected.trianglepath.dotted", isGood: store.coreVersion != "unknown")
-                    StatusCard(title: "System Proxy", value: store.systemProxyEnabled ? "Enabled" : "Disabled", systemImage: "network", isGood: store.systemProxyEnabled)
-                    StatusCard(title: "TUN", value: store.settings.tunEnabled ? "Configured" : "Off", systemImage: "lock.shield", isGood: store.settings.tunEnabled)
-                    StatusCard(title: "Download", value: Formatters.rate(store.downloadRate), systemImage: "arrow.down", isGood: true)
-                    StatusCard(title: "Upload", value: Formatters.rate(store.uploadRate), systemImage: "arrow.up", isGood: true)
+                    StatusCard(title: "核心", value: store.coreStatus, systemImage: "cpu", isGood: store.isCoreRunning)
+                    StatusCard(title: "Controller", value: store.coreVersion, systemImage: "point.3.connected.trianglepath.dotted", isGood: store.coreVersion != "未知")
+                    StatusCard(title: "系统代理", value: store.systemProxyEnabled ? "已开启" : "已关闭", systemImage: "network", isGood: store.systemProxyEnabled)
+                    StatusCard(title: "TUN", value: store.settings.tunEnabled ? "已写入配置" : "关闭", systemImage: "lock.shield", isGood: store.settings.tunEnabled)
+                    StatusCard(title: "下载", value: Formatters.rate(store.downloadRate), systemImage: "arrow.down", isGood: true)
+                    StatusCard(title: "上传", value: Formatters.rate(store.uploadRate), systemImage: "arrow.up", isGood: true)
                 }
 
-                GroupBox("Quick Actions") {
+                GroupBox("快速操作") {
                     HStack {
-                        Button(store.isCoreRunning ? "Stop Core" : "Start Core") {
+                        Button(store.isCoreRunning ? "停止核心" : "启动核心") {
                             Task { await store.toggleCore() }
                         }
                         .buttonStyle(.borderedProminent)
 
-                        Button(store.systemProxyEnabled ? "Disable System Proxy" : "Enable System Proxy") {
+                        Button("重启核心") {
+                            Task { await store.restartCore() }
+                        }
+
+                        Button(store.systemProxyEnabled ? "关闭系统代理" : "开启系统代理") {
                             Task { await store.toggleSystemProxy() }
                         }
 
-                        Button("Refresh") {
+                        Button("刷新") {
                             Task { await store.refreshController() }
+                        }
+
+                        Button("轻量模式") {
+                            store.enterLightweightMode()
                         }
 
                         Spacer()
@@ -48,7 +56,12 @@ struct OverviewView: View {
                     .padding(.vertical, 4)
                 }
 
-                GroupBox("Recent Logs") {
+                GroupBox("实时流量") {
+                    TrafficGraphView(samples: store.trafficSamples)
+                        .frame(height: 160)
+                }
+
+                GroupBox("最近日志") {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(store.logs.suffix(8)) { entry in
                             HStack(alignment: .firstTextBaseline) {
@@ -66,7 +79,7 @@ struct OverviewView: View {
                             }
                         }
                         if store.logs.isEmpty {
-                            Text("No logs yet.")
+                            Text("暂无日志。")
                                 .foregroundStyle(.secondary)
                         }
                     }
@@ -74,7 +87,7 @@ struct OverviewView: View {
             }
             .padding(24)
         }
-        .navigationTitle("Overview")
+        .navigationTitle("概览")
     }
 }
 
