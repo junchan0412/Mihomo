@@ -1,23 +1,24 @@
+import Combine
 import Foundation
 
 @MainActor
-final class AppStore {
-    var selectedSection: AppSection = .overview { didSet { notify() } }
-    var settings = AppSettings.default { didSet { notify() } }
-    var profiles: [ProfileItem] = [] { didSet { notify() } }
-    var isCoreRunning = false { didSet { notify() } }
-    var coreStatus = "Stopped" { didSet { notify() } }
-    var coreVersion = "unknown" { didSet { notify() } }
-    var currentMode = "rule" { didSet { notify() } }
-    var systemProxyEnabled = false { didSet { notify() } }
-    var proxyGroups: [ProxyGroup] = [] { didSet { notify() } }
-    var connections: [ConnectionItem] = [] { didSet { notify() } }
-    var logs: [LogEntry] = [] { didSet { notify() } }
-    var diagnostics: [DiagnosticResult] = [] { didSet { notify() } }
-    var uploadRate: Int64 = 0 { didSet { notify() } }
-    var downloadRate: Int64 = 0 { didSet { notify() } }
-    var newRemoteURL = ""
-    var newRemoteName = ""
+final class AppStore: ObservableObject {
+    @Published var selectedSection: AppSection = .overview
+    @Published var settings = AppSettings.default
+    @Published var profiles: [ProfileItem] = []
+    @Published var isCoreRunning = false
+    @Published var coreStatus = "Stopped"
+    @Published var coreVersion = "unknown"
+    @Published var currentMode = "rule"
+    @Published var systemProxyEnabled = false
+    @Published var proxyGroups: [ProxyGroup] = []
+    @Published var connections: [ConnectionItem] = []
+    @Published var logs: [LogEntry] = []
+    @Published var diagnostics: [DiagnosticResult] = []
+    @Published var uploadRate: Int64 = 0
+    @Published var downloadRate: Int64 = 0
+    @Published var newRemoteURL = ""
+    @Published var newRemoteName = ""
 
     private let profileStore = ProfileStore()
     private let coreManager = CoreManager()
@@ -26,7 +27,6 @@ final class AppStore {
     private var lastUploadTotal: Int64?
     private var lastDownloadTotal: Int64?
     private var lastTrafficSampleAt: Date?
-    private var observers: [UUID: () -> Void] = [:]
 
     var activeProfile: ProfileItem? {
         profiles.first { $0.id == settings.activeProfileID } ?? profiles.first
@@ -35,17 +35,6 @@ final class AppStore {
     var menuBarTitle: String {
         let state = isCoreRunning ? "On" : "Off"
         return "Mihomo \(state) ↓\(Formatters.rate(downloadRate))"
-    }
-
-    @discardableResult
-    func observe(_ handler: @escaping () -> Void) -> UUID {
-        let id = UUID()
-        observers[id] = handler
-        return id
-    }
-
-    func removeObserver(_ id: UUID) {
-        observers.removeValue(forKey: id)
     }
 
     func bootstrap() async {
@@ -315,10 +304,6 @@ final class AppStore {
         }
     }
 
-    private func notify() {
-        observers.values.forEach { $0() }
-    }
-
     private func updateTrafficRates(uploadTotal: Int64, downloadTotal: Int64) {
         let now = Date()
         guard let lastAt = lastTrafficSampleAt,
@@ -346,6 +331,7 @@ final class AppStore {
               let proxyIndex = proxyGroups[groupIndex].all.firstIndex(where: { $0.name == proxy })
         else { return }
         proxyGroups[groupIndex].all[proxyIndex].delay = delay
+        proxyGroups = proxyGroups
     }
 
     private func startPolling() {

@@ -1,10 +1,11 @@
 # Mihomo
 
-Mihomo is a macOS-native AppKit controller for the mihomo core. This repository contains the MVP described in `Mihomo-macOS-development-report.md`: a professional desktop shell inspired by Surge's information architecture, while using mihomo as the runtime engine.
+Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repository contains the MVP described in `Mihomo-macOS-development-report.md`: a professional desktop shell inspired by Surge's information architecture, while using mihomo as the runtime engine.
 
-## MVP Scope
+## Second MVP Scope
 
-- Native macOS AppKit app with sidebar, toolbar, settings window, and menu bar status item.
+- SwiftUI-first macOS app with a native sidebar, toolbar, Settings scene, and Menu Bar Extra.
+- AppKit-backed `NSTableView` and `NSTextView` bridges for dense connection/policy/profile tables and high-volume log scrolling.
 - Local or remote Profile import.
 - Runtime mihomo config generation.
 - Start, stop, and refresh mihomo from the app.
@@ -12,7 +13,7 @@ Mihomo is a macOS-native AppKit controller for the mihomo core. This repository 
 - System proxy toggle through macOS `networksetup`.
 - Logs, diagnostics, and basic activity view.
 
-The first MVP intentionally keeps privileged helper installation, notarized distribution, Sub-Store, WebDAV/Gist sync, and JS override scripting out of scope. Those are listed as later hardening and advanced milestones in the report.
+The second MVP intentionally keeps privileged helper installation, notarized distribution, Sub-Store, WebDAV/Gist sync, and JS override scripting out of scope. Those are listed as later hardening and advanced milestones in the report.
 
 ## Requirements
 
@@ -40,7 +41,7 @@ Useful modes:
 ## Release Build
 
 ```bash
-./script/package_release.sh
+./script/package_release.sh 0.2.0
 ```
 
 This creates a zip artifact under `dist/releases/` without AppleDouble metadata.

@@ -99,6 +99,13 @@ struct ProxyGroup: Identifiable, Hashable {
     var all: [ProxyNode]
 }
 
+struct PolicyTableRow: Identifiable, Hashable {
+    var group: ProxyGroup
+    var node: ProxyNode
+
+    var id: String { "\(group.name)\u{1f}\(node.name)" }
+}
+
 struct ConnectionItem: Identifiable, Hashable {
     var id: String
     var host: String
