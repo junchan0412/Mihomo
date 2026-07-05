@@ -44,6 +44,10 @@ enum AppPaths {
         supportDirectory.appendingPathComponent("system-proxy-snapshot.json")
     }
 
+    static var tunRecoverySnapshotFile: URL {
+        supportDirectory.appendingPathComponent("tun-recovery-snapshot.json")
+    }
+
     static var appLogFile: URL {
         logsDirectory.appendingPathComponent("mihomo-app.log")
     }

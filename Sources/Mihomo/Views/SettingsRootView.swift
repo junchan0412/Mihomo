@@ -46,8 +46,11 @@ struct SettingsRootView: View {
                 Section("网络接管") {
                     Toggle("允许局域网访问", isOn: $draft.allowLAN)
                     Toggle("在运行配置中启用 TUN", isOn: $draft.tunEnabled)
+                    Toggle("停止/退出时回滚 TUN DNS 与路由", isOn: $draft.restoreTunOnStop)
                     Toggle("策略切换后关闭连接", isOn: $draft.closeConnectionsOnPolicyChange)
                     Toggle("退出时恢复系统代理", isOn: $draft.restoreSystemProxyOnQuit)
+                    Text(store.tunRecoveryStatus)
+                        .foregroundStyle(.secondary)
                 }
             }
             .tabItem { Label("网络", systemImage: "network") }
@@ -56,7 +59,10 @@ struct SettingsRootView: View {
                 Section("订阅与常驻") {
                     Toggle("自动刷新远程订阅", isOn: $draft.autoRefreshProfiles)
                     TextField("刷新间隔（小时）", value: $draft.profileRefreshIntervalHours, format: .number)
+                    Toggle("登录后自动打开 Mihomo", isOn: $draft.launchAtLogin)
                     Toggle("轻量模式启动", isOn: $draft.lightweightMode)
+                    Text(store.loginItemStatus)
+                        .foregroundStyle(.secondary)
                 }
             }
             .tabItem { Label("高级", systemImage: "gearshape.2") }

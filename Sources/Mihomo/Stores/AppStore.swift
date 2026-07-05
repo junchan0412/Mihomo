@@ -24,10 +24,15 @@ final class AppStore: ObservableObject {
     @Published var profileAutoRefreshStatus = "未启用"
     @Published var lastRuntimeValidation = ""
     @Published var lastSystemProxySnapshot: SystemProxySnapshot?
+    @Published var lastTunRecoverySnapshot: TunRecoverySnapshot?
+    @Published var tunRecoveryStatus = "未捕获 TUN 回滚快照"
+    @Published var loginItemStatus = "未检查"
 
     private let profileStore = ProfileStore()
     private let coreManager = CoreManager()
     private let systemProxy = SystemProxyManager()
+    private let tunRecovery = TunRecoveryManager()
+    private let loginItem = LoginItemManager()
     private var pollingTask: Task<Void, Never>?
     private var profileRefreshTask: Task<Void, Never>?
     private var lastUploadTotal: Int64?
@@ -56,6 +61,9 @@ final class AppStore: ObservableObject {
                 try profileStore.saveSettings(settings)
             }
             lastSystemProxySnapshot = systemProxy.loadSnapshot()
+            lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
+            tunRecoveryStatus = lastTunRecoverySnapshot == nil ? "未捕获 TUN 回滚快照" : "已有 TUN 回滚快照"
+            syncLaunchAtLoginSetting(reportSuccess: false)
             appendLog("info", "已加载 \(profiles.count) 个配置")
             startPolling()
             startProfileAutoRefreshIfNeeded()
@@ -96,6 +104,12 @@ final class AppStore: ObservableObject {
                 workDirectory: AppPaths.runtimeDirectory
             )
             lastRuntimeValidation = validation.isEmpty ? "mihomo 配置校验通过" : validation
+            if settings.tunEnabled {
+                let snapshot = try tunRecovery.capture(systemProxy: systemProxy)
+                lastTunRecoverySnapshot = snapshot
+                tunRecoveryStatus = "已捕获 TUN 回滚快照：\(Formatters.shortDate.string(from: snapshot.createdAt))"
+                appendLog("info", "TUN 启动前已保存 DNS/代理/路由回滚快照")
+            }
             try profileStore.promoteRuntimeConfig(candidate: candidate)
 
             try coreManager.start(
@@ -128,6 +142,9 @@ final class AppStore: ObservableObject {
         isCoreRunning = false
         coreStatus = "已停止"
         appendLog("info", "已停止 mihomo")
+        if settings.tunEnabled && settings.restoreTunOnStop {
+            await restoreTunRecovery()
+        }
         try? await Task.sleep(nanoseconds: 500_000_000)
         isExpectedCoreExit = false
     }
@@ -250,6 +267,31 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func restoreTunRecovery() async {
+        do {
+            let result = try tunRecovery.restore(systemProxy: systemProxy)
+            lastTunRecoverySnapshot = nil
+            tunRecoveryStatus = result.detail
+            systemProxyEnabled = false
+            lastSystemProxySnapshot = nil
+            appendLog("info", result.detail)
+        } catch {
+            tunRecoveryStatus = "TUN 回滚失败：\(error.localizedDescription)"
+            appendLog("error", tunRecoveryStatus)
+        }
+    }
+
+    func verifyTunPrivileges() async {
+        do {
+            try tunRecovery.verifyAdministratorAccess()
+            appendLog("info", "管理员授权验证通过，可执行 TUN 路由回滚。")
+            tunRecoveryStatus = "管理员授权验证通过"
+        } catch {
+            tunRecoveryStatus = "管理员授权验证失败：\(error.localizedDescription)"
+            appendLog("error", tunRecoveryStatus)
+        }
+    }
+
     func addRemoteProfile() async {
         let url = newRemoteURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !url.isEmpty else { return }
@@ -354,6 +396,7 @@ final class AppStore: ObservableObject {
         do {
             self.settings = settings
             try profileStore.saveSettings(settings)
+            syncLaunchAtLoginSetting(reportSuccess: true)
             startProfileAutoRefreshIfNeeded()
             if settings.lightweightMode {
                 enterLightweightMode()
@@ -411,11 +454,30 @@ final class AppStore: ObservableObject {
             results.append(.init(title: "系统代理快照", detail: "当前没有待恢复的系统代理快照。", state: .ok))
         }
 
+        results.append(.init(
+            title: "登录项",
+            detail: "\(loginItem.statusDescription)。\(settings.launchAtLogin ? "设置要求登录后自动打开 Mihomo。" : "设置未要求登录后自动打开。")",
+            state: settings.launchAtLogin && loginItem.isEnabled == false ? .warning : .ok
+        ))
+
         if settings.tunEnabled {
+            if let snapshot = tunRecovery.loadSnapshot() {
+                results.append(.init(
+                    title: "TUN 回滚快照",
+                    detail: "已保存 \(snapshot.ipv4Routes.count) 条 IPv4 路由、\(snapshot.ipv6Routes.count) 条 IPv6 路由和 \(snapshot.proxySnapshot.services.count) 个网络服务状态。",
+                    state: .ok
+                ))
+            } else {
+                results.append(.init(
+                    title: "TUN 回滚快照",
+                    detail: "尚未捕获快照。启动 TUN 核心前会自动捕获 DNS、代理和路由状态。",
+                    state: .warning
+                ))
+            }
             results.append(.init(
                 title: "TUN 模式",
-                detail: "已写入 mihomo runtime overlay。第三 MVP 会诊断权限与保留系统代理/DNS 回滚点；完整路由回滚仍需要后续 Helper。",
-                state: .warning
+                detail: "已写入 mihomo runtime overlay。可通过诊断页验证管理员授权，并在停止/退出或手动操作时回滚 DNS/路由。",
+                state: .ok
             ))
         } else {
             results.append(.init(title: "TUN 模式", detail: "未启用。", state: .ok))
@@ -466,10 +528,26 @@ final class AppStore: ObservableObject {
     func shutdown() async {
         shutdownRequested = true
         profileRefreshTask?.cancel()
+        coreManager.stop()
         if settings.restoreSystemProxyOnQuit, systemProxyEnabled {
             try? systemProxy.disable()
         }
-        coreManager.stop()
+        if settings.tunEnabled && settings.restoreTunOnStop {
+            _ = try? tunRecovery.restore(systemProxy: systemProxy)
+        }
+    }
+
+    private func syncLaunchAtLoginSetting(reportSuccess: Bool) {
+        do {
+            try loginItem.setEnabled(settings.launchAtLogin)
+            loginItemStatus = loginItem.statusDescription
+            if reportSuccess {
+                appendLog("info", "登录项状态：\(loginItemStatus)")
+            }
+        } catch {
+            loginItemStatus = "登录项设置失败：\(error.localizedDescription)"
+            appendLog("error", loginItemStatus)
+        }
     }
 
     private func handleCoreExit(_ status: Int32) {

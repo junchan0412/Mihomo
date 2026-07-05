@@ -98,7 +98,7 @@ final class SystemProxyManager {
         return SystemProxySnapshot(createdAt: Date(), services: services)
     }
 
-    private func restore(_ snapshot: SystemProxySnapshot) throws {
+    func restore(_ snapshot: SystemProxySnapshot) throws {
         for serviceState in snapshot.services {
             try restoreEndpoint(service: serviceState.service, kind: "web", state: serviceState.web)
             try restoreEndpoint(service: serviceState.service, kind: "secureWeb", state: serviceState.secureWeb)

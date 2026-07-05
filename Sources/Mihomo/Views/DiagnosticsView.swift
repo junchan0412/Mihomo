@@ -21,6 +21,14 @@ struct DiagnosticsView: View {
                 Button("修复系统代理") {
                     Task { await store.repairSystemProxy() }
                 }
+
+                Button("验证 TUN 权限") {
+                    Task { await store.verifyTunPrivileges() }
+                }
+
+                Button("回滚 TUN") {
+                    Task { await store.restoreTunRecovery() }
+                }
             }
 
             List(store.diagnostics) { item in

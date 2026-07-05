@@ -10,6 +10,8 @@ Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repo
 - Runtime config dry-run with `mihomo -t`, candidate config promotion, and previous config rollback.
 - Core start, stop, restart, and crash recovery with configurable retry limits.
 - System proxy snapshots and restoration through macOS `networksetup`, including repair from saved proxy/DNS state.
+- Launch-at-login registration through `SMAppService.mainApp`, designed to pair with "start core when Mihomo opens" for boot-time core startup.
+- TUN recovery snapshots for DNS, proxy, route table, and default route state, plus administrator-authorized route rollback when privileged repair is needed.
 - Local, remote, and drag-and-drop Profile import, remote subscription refresh, automatic refresh interval, and a built-in YAML editor.
 - Policy search, sort, proxy selection, and configurable delay testing.
 - Connection list filtering, single-connection close, all-connection close, and a SwiftUI inspector.
@@ -17,7 +19,7 @@ Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repo
 - Log filtering plus persistent app log output under `~/Library/Logs/Mihomo/`.
 - Expanded diagnostics for binary, version, runtime dry-run, Controller, TUN status, system proxy snapshots, logs, and subscription refresh.
 
-The third MVP still keeps privileged helper installation, notarized distribution, Sub-Store, WebDAV/Gist sync, full route/DNS rollback for TUN, and JS override scripting out of scope. Those remain later hardening and advanced milestones in the report.
+The third MVP still keeps a dedicated privileged helper, notarized distribution, Sub-Store, WebDAV/Gist sync, and JS override scripting out of scope. A future helper can make TUN repair quieter, but this MVP already provides a real administrator-authorized recovery path.
 
 ## Requirements
 
@@ -45,7 +47,7 @@ Useful modes:
 ## Release Build
 
 ```bash
-./script/package_release.sh 0.3.0
+./script/package_release.sh 0.3.1
 ```
 
 This creates a zip artifact under `dist/releases/` without AppleDouble metadata.

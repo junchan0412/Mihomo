@@ -75,6 +75,8 @@ struct AppSettings: Codable, Hashable {
     var lightweightMode: Bool
     var restoreSystemProxyOnQuit: Bool
     var delayTestURL: String
+    var launchAtLogin: Bool
+    var restoreTunOnStop: Bool
 
     static let `default` = AppSettings()
 
@@ -96,7 +98,9 @@ struct AppSettings: Codable, Hashable {
         profileRefreshIntervalHours: Int = 24,
         lightweightMode: Bool = false,
         restoreSystemProxyOnQuit: Bool = true,
-        delayTestURL: String = "https://www.gstatic.com/generate_204"
+        delayTestURL: String = "https://www.gstatic.com/generate_204",
+        launchAtLogin: Bool = false,
+        restoreTunOnStop: Bool = true
     ) {
         self.mihomoPath = mihomoPath
         self.activeProfileID = activeProfileID
@@ -116,6 +120,8 @@ struct AppSettings: Codable, Hashable {
         self.lightweightMode = lightweightMode
         self.restoreSystemProxyOnQuit = restoreSystemProxyOnQuit
         self.delayTestURL = delayTestURL
+        self.launchAtLogin = launchAtLogin
+        self.restoreTunOnStop = restoreTunOnStop
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -137,6 +143,8 @@ struct AppSettings: Codable, Hashable {
         case lightweightMode
         case restoreSystemProxyOnQuit
         case delayTestURL
+        case launchAtLogin
+        case restoreTunOnStop
     }
 
     init(from decoder: Decoder) throws {
@@ -160,6 +168,8 @@ struct AppSettings: Codable, Hashable {
         lightweightMode = try container.decodeIfPresent(Bool.self, forKey: .lightweightMode) ?? fallback.lightweightMode
         restoreSystemProxyOnQuit = try container.decodeIfPresent(Bool.self, forKey: .restoreSystemProxyOnQuit) ?? fallback.restoreSystemProxyOnQuit
         delayTestURL = try container.decodeIfPresent(String.self, forKey: .delayTestURL) ?? fallback.delayTestURL
+        launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? fallback.launchAtLogin
+        restoreTunOnStop = try container.decodeIfPresent(Bool.self, forKey: .restoreTunOnStop) ?? fallback.restoreTunOnStop
     }
 }
 
