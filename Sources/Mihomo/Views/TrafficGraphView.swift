@@ -4,56 +4,77 @@ struct TrafficGraphView: View {
     var samples: [TrafficSample]
 
     var body: some View {
-        Canvas { context, size in
-            let values = samples.map { max($0.uploadRate, $0.downloadRate) }
-            let maxValue = max(values.max() ?? 1, 1)
-            let inset: CGFloat = 8
-            let drawingSize = CGSize(width: max(size.width - inset * 2, 1), height: max(size.height - inset * 2, 1))
+        let maxValue = max(samples.map { max($0.uploadRate, $0.downloadRate) }.max() ?? 1, 1)
 
-            drawGrid(context: context, size: size, inset: inset)
+        Canvas { context, size in
+            let topInset: CGFloat = 30
+            let bottomInset: CGFloat = 12
+            let leftInset: CGFloat = 8
+            let rightInset: CGFloat = 58
+            let graphRect = CGRect(
+                x: leftInset,
+                y: topInset,
+                width: max(size.width - leftInset - rightInset, 1),
+                height: max(size.height - topInset - bottomInset, 1)
+            )
+
+            drawGrid(context: context, graphRect: graphRect, maxValue: maxValue)
             drawLine(
                 context: context,
-                size: drawingSize,
-                inset: inset,
+                graphRect: graphRect,
                 maxValue: maxValue,
                 values: samples.map(\.downloadRate),
                 color: .blue
             )
             drawLine(
                 context: context,
-                size: drawingSize,
-                inset: inset,
+                graphRect: graphRect,
                 maxValue: maxValue,
                 values: samples.map(\.uploadRate),
                 color: .green
             )
         }
         .overlay(alignment: .topLeading) {
-            HStack(spacing: 12) {
-                Label("下载", systemImage: "arrow.down")
-                    .foregroundStyle(.blue)
-                Label("上传", systemImage: "arrow.up")
-                    .foregroundStyle(.green)
+            HStack(spacing: 14) {
+                MetricLegend(title: "下载", value: Formatters.rate(currentDownload), systemImage: "arrow.down", color: .blue)
+                MetricLegend(title: "上传", value: Formatters.rate(currentUpload), systemImage: "arrow.up", color: .green)
+                Spacer()
+                Text("峰值 \(Formatters.rate(maxValue))")
+                    .foregroundStyle(.secondary)
             }
             .font(.caption)
-            .padding(8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
         }
     }
 
-    private func drawGrid(context: GraphicsContext, size: CGSize, inset: CGFloat) {
+    private var currentDownload: Int64 {
+        samples.last?.downloadRate ?? 0
+    }
+
+    private var currentUpload: Int64 {
+        samples.last?.uploadRate ?? 0
+    }
+
+    private func drawGrid(context: GraphicsContext, graphRect: CGRect, maxValue: Int64) {
         var path = Path()
         for index in 0...3 {
-            let y = inset + (size.height - inset * 2) * CGFloat(index) / 3
-            path.move(to: CGPoint(x: inset, y: y))
-            path.addLine(to: CGPoint(x: size.width - inset, y: y))
+            let y = graphRect.minY + graphRect.height * CGFloat(index) / 3
+            path.move(to: CGPoint(x: graphRect.minX, y: y))
+            path.addLine(to: CGPoint(x: graphRect.maxX, y: y))
+
+            let value = Int64(Double(maxValue) * Double(3 - index) / 3.0)
+            let text = Text(Formatters.rate(value))
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+            context.draw(text, at: CGPoint(x: graphRect.maxX + 8, y: y), anchor: .leading)
         }
         context.stroke(path, with: .color(.secondary.opacity(0.18)), lineWidth: 1)
     }
 
     private func drawLine(
         context: GraphicsContext,
-        size: CGSize,
-        inset: CGFloat,
+        graphRect: CGRect,
         maxValue: Int64,
         values: [Int64],
         color: Color
@@ -61,9 +82,9 @@ struct TrafficGraphView: View {
         guard values.count > 1 else { return }
         var path = Path()
         for (index, value) in values.enumerated() {
-            let x = inset + size.width * CGFloat(index) / CGFloat(values.count - 1)
+            let x = graphRect.minX + graphRect.width * CGFloat(index) / CGFloat(values.count - 1)
             let ratio = CGFloat(value) / CGFloat(maxValue)
-            let y = inset + size.height - min(max(ratio, 0), 1) * size.height
+            let y = graphRect.maxY - min(max(ratio, 0), 1) * graphRect.height
             let point = CGPoint(x: x, y: y)
             if index == 0 {
                 path.move(to: point)
@@ -72,5 +93,22 @@ struct TrafficGraphView: View {
             }
         }
         context.stroke(path, with: .color(color), lineWidth: 2)
+    }
+}
+
+private struct MetricLegend: View {
+    var title: String
+    var value: String
+    var systemImage: String
+    var color: Color
+
+    var body: some View {
+        Label {
+            Text("\(title) \(value)")
+        } icon: {
+            Image(systemName: systemImage)
+        }
+        .foregroundStyle(color)
+        .lineLimit(1)
     }
 }

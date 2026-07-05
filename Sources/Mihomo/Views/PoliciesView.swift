@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct PoliciesView: View {
@@ -5,6 +6,7 @@ struct PoliciesView: View {
     @State private var selectedGroupID: String?
     @State private var selectedNodeID: String?
     @State private var searchText = ""
+    @State private var pendingAutomaticOverride: PolicyNodeRow?
 
     private var visibleGroups: [ProxyGroup] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -70,6 +72,21 @@ struct PoliciesView: View {
             }
             ensureNodeSelection(in: selectedGroup)
         }
+        .alert(
+            "覆盖自动测速选择？",
+            isPresented: automaticOverrideBinding,
+            presenting: pendingAutomaticOverride
+        ) { row in
+            Button("取消", role: .cancel) {
+                pendingAutomaticOverride = nil
+            }
+            Button("覆盖", role: .destructive) {
+                selectNode(row)
+                pendingAutomaticOverride = nil
+            }
+        } message: { row in
+            Text("\(row.group.name) 是自动测速策略组。手动选择会覆盖当前自动测速结果，关闭代理或重启核心后恢复自动选择。")
+        }
     }
 
     private var header: some View {
@@ -99,15 +116,6 @@ struct PoliciesView: View {
                 .frame(maxWidth: 340)
 
             Spacer()
-
-            Button {
-                if let selectedGroup, let selectedNodeRow {
-                    Task { await store.selectProxy(group: selectedGroup.name, proxy: selectedNodeRow.node.name) }
-                }
-            } label: {
-                Label("设为当前", systemImage: "checkmark.circle")
-            }
-            .disabled(selectedGroup == nil || selectedNodeRow == nil)
 
             Button {
                 if let selectedGroup, let selectedNodeRow {
@@ -168,11 +176,11 @@ struct PoliciesView: View {
                     rows: nodeRows,
                     selection: $selectedNodeID,
                     columns: [
-                        .init(title: "状态", width: 72) { $0.isCurrent ? "当前" : "" },
-                        .init(title: "节点", width: 320) { $0.node.name },
-                        .init(title: "类型", width: 120) { $0.node.type },
-                        .init(title: "延迟", width: 100) { $0.delayText }
-                    ]
+                        .init(title: "节点", width: 380, textColor: currentNodeColor) { $0.displayName },
+                        .init(title: "类型", width: 130, textColor: currentNodeColor) { $0.node.type },
+                        .init(title: "延迟", width: 110, textColor: currentNodeColor) { $0.delayText }
+                    ],
+                    onDoubleClick: handleNodeDoubleClick
                 )
                 .overlay {
                     if nodeRows.isEmpty {
@@ -224,7 +232,35 @@ struct PoliciesView: View {
         if let selectedNodeID, rows.contains(where: { $0.id == selectedNodeID }) {
             return
         }
-        selectedNodeID = rows.first(where: { $0.node.name == group.now })?.id ?? rows.first?.id
+        selectedNodeID = nil
+    }
+
+    private var automaticOverrideBinding: Binding<Bool> {
+        Binding(
+            get: { pendingAutomaticOverride != nil },
+            set: { visible in
+                if visible == false {
+                    pendingAutomaticOverride = nil
+                }
+            }
+        )
+    }
+
+    private func currentNodeColor(_ row: PolicyNodeRow) -> NSColor? {
+        row.isCurrent ? .systemGreen : nil
+    }
+
+    private func handleNodeDoubleClick(_ row: PolicyNodeRow) {
+        if row.isCurrent { return }
+        if row.group.isAutomaticURLTestGroup {
+            pendingAutomaticOverride = row
+        } else {
+            selectNode(row)
+        }
+    }
+
+    private func selectNode(_ row: PolicyNodeRow) {
+        Task { await store.selectProxy(group: row.group.name, proxy: row.node.name) }
     }
 }
 
@@ -234,6 +270,7 @@ private struct PolicyNodeRow: Identifiable, Hashable {
 
     var id: String { "\(group.name)\u{1f}\(node.name)" }
     var isCurrent: Bool { group.now == node.name }
+    var displayName: String { isCurrent ? "✓ \(node.name)" : node.name }
 
     var delayText: String {
         guard let delay = node.delay, delay > 0 else { return "-" }
@@ -266,9 +303,8 @@ private struct PolicyGroupRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: iconName)
-                .foregroundStyle(.secondary)
-                .frame(width: 18)
+            PolicyGroupIcon(group: group)
+                .frame(width: 20, height: 20)
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
@@ -282,11 +318,45 @@ private struct PolicyGroupRow: View {
                 }
                 Text(group.now.isEmpty ? "-" : group.now)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(group.now.isEmpty ? Color.secondary : Color.green)
                     .lineLimit(1)
             }
         }
         .padding(.vertical, 3)
+    }
+}
+
+private struct PolicyGroupIcon: View {
+    var group: ProxyGroup
+
+    var body: some View {
+        if let icon = group.icon?.trimmingCharacters(in: .whitespacesAndNewlines),
+           icon.isEmpty == false {
+            if let url = URL(string: icon), url.scheme?.hasPrefix("http") == true {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image {
+                        image
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        fallbackIcon
+                    }
+                }
+            } else if let image = NSImage(contentsOfFile: (icon as NSString).expandingTildeInPath) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+            } else {
+                fallbackIcon
+            }
+        } else {
+            fallbackIcon
+        }
+    }
+
+    private var fallbackIcon: some View {
+        Image(systemName: iconName)
+            .foregroundStyle(.secondary)
     }
 
     private var iconName: String {
@@ -294,6 +364,12 @@ private struct PolicyGroupRow: View {
         if type.contains("url") { return "speedometer" }
         if type.contains("fallback") { return "arrow.triangle.2.circlepath" }
         return "switch.2"
+    }
+}
+
+private extension ProxyGroup {
+    var isAutomaticURLTestGroup: Bool {
+        type.lowercased().replacingOccurrences(of: "-", with: "").contains("urltest")
     }
 }
 

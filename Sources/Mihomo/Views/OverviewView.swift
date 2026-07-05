@@ -9,7 +9,7 @@ struct OverviewView: View {
                 header
                 networkTakeoverSection
                 runtimeSection
-                trafficAndLogs
+                recentLogsSection
             }
             .padding(24)
             .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -29,19 +29,7 @@ struct OverviewView: View {
 
             Spacer()
 
-            HStack(spacing: 8) {
-                Button {
-                    Task { await store.refreshController() }
-                } label: {
-                    Label("刷新", systemImage: "arrow.clockwise")
-                }
-
-                Button {
-                    Task { await store.runDiagnostics() }
-                } label: {
-                    Label("运行诊断", systemImage: "stethoscope")
-                }
-            }
+            quickActions
         }
     }
 
@@ -84,27 +72,33 @@ struct OverviewView: View {
 
     private var runtimeSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("运行状态")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                quickActions
-            }
+            Text("运行状态")
+                .font(.headline)
+                .foregroundStyle(.secondary)
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 12)], spacing: 12) {
                 OverviewMetricTile(title: "核心", value: store.coreStatus, systemImage: "cpu", state: store.isCoreRunning ? .ok : .idle)
                 OverviewMetricTile(title: "Controller", value: store.coreVersion, systemImage: "point.3.connected.trianglepath.dotted", state: store.coreVersion == "未知" ? .warning : .ok)
                 OverviewMetricTile(title: "出站模式", value: modeTitle(store.currentMode), systemImage: "arrow.triangle.branch", state: .ok)
                 OverviewMetricTile(title: "活动连接", value: "\(store.connections.count)", systemImage: "link", state: store.connections.isEmpty ? .idle : .ok)
-                OverviewMetricTile(title: "下载", value: Formatters.rate(store.downloadRate), systemImage: "arrow.down", state: .ok)
-                OverviewMetricTile(title: "上传", value: Formatters.rate(store.uploadRate), systemImage: "arrow.up", state: .ok)
             }
         }
     }
 
     private var quickActions: some View {
         HStack(spacing: 8) {
+            Button {
+                Task { await store.refreshController() }
+            } label: {
+                Label("刷新", systemImage: "arrow.clockwise")
+            }
+
+            Button {
+                Task { await store.runDiagnostics() }
+            } label: {
+                Label("运行诊断", systemImage: "stethoscope")
+            }
+
             Button {
                 Task { await store.toggleCore() }
             } label: {
@@ -119,12 +113,6 @@ struct OverviewView: View {
             }
 
             Button {
-                Task { await store.setTunEnabled(!store.settings.tunEnabled) }
-            } label: {
-                Label(store.settings.tunEnabled ? "关闭 TUN" : "开启 TUN", systemImage: "lock.shield")
-            }
-
-            Button {
                 store.enterLightweightMode()
             } label: {
                 Label("轻量模式", systemImage: "menubar.rectangle")
@@ -132,27 +120,12 @@ struct OverviewView: View {
         }
     }
 
-    private var trafficAndLogs: some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("实时流量")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                TrafficGraphView(samples: store.trafficSamples)
-                    .frame(height: 220)
-                    .padding(12)
-                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
-            }
-            .frame(minWidth: 460, maxWidth: .infinity, alignment: .topLeading)
-
-            VStack(alignment: .leading, spacing: 10) {
-                Text("最近日志")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-                RecentLogList(logs: Array(store.logs.suffix(9)))
-                    .frame(minWidth: 320)
-            }
-            .frame(width: 360, alignment: .topLeading)
+    private var recentLogsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("最近日志")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            RecentLogList(logs: Array(store.logs.suffix(10)))
         }
     }
 

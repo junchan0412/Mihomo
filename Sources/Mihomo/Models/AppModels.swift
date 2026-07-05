@@ -568,6 +568,7 @@ struct ProxyGroup: Identifiable, Hashable {
     var type: String
     var now: String
     var all: [ProxyNode]
+    var icon: String?
 }
 
 struct PolicyTableRow: Identifiable, Hashable {

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct RulesView: View {
@@ -23,13 +24,6 @@ struct RulesView: View {
         "PROCESS-NAME",
         "MATCH"
     ]
-
-    private let checkboxWidth: CGFloat = 32
-    private let idWidth: CGFloat = 56
-    private let typeWidth: CGFloat = 136
-    private let policyWidth: CGFloat = 150
-    private let usageWidth: CGFloat = 88
-    private let noteWidth: CGFloat = 180
 
     private var entries: [RuleTableEntry] {
         store.rules.map(RuleTableEntry.init)
@@ -128,71 +122,26 @@ struct RulesView: View {
 
     private var ruleTable: some View {
         VStack(spacing: 0) {
-            tableHeader
-            Divider()
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(filteredEntries) { entry in
-                        ruleRow(entry)
-                        Divider()
-                    }
-                }
-            }
+            AppKitTable(
+                rows: filteredEntries,
+                selection: ruleSelectionBinding,
+                columns: [
+                    .init(title: "状态", width: 72, textColor: ruleTextColor) { $0.rule.disabled ? "禁用" : "启用" },
+                    .init(title: "ID", width: 64, textColor: ruleTextColor) { "\($0.rule.index)" },
+                    .init(title: "类型", width: 136, textColor: ruleTextColor) { $0.type },
+                    .init(title: "值", width: 380, textColor: ruleTextColor) { $0.value.isEmpty ? "-" : $0.value },
+                    .init(title: "策略", width: 150, textColor: ruleTextColor) { $0.policy },
+                    .init(title: "计数", width: 80, textColor: ruleTextColor) { "\($0.rule.hitCount)" },
+                    .init(title: "注释", width: 180, textColor: ruleTextColor) { $0.note.isEmpty ? "-" : $0.note }
+                ],
+                onDoubleClick: beginEdit
+            )
         }
         .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             if filteredEntries.isEmpty {
                 ContentUnavailableView("没有规则", systemImage: "list.bullet.rectangle")
             }
-        }
-    }
-
-    private var tableHeader: some View {
-        HStack(spacing: 0) {
-            Text("")
-                .frame(width: checkboxWidth)
-            headerCell("ID", width: idWidth, alignment: .trailing)
-            headerCell("类型", width: typeWidth)
-            headerCell("值", max: true)
-            headerCell("策略", width: policyWidth)
-            headerCell("使用计数", width: usageWidth, alignment: .trailing)
-            headerCell("注释", width: noteWidth)
-        }
-        .font(.caption.weight(.semibold))
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 8)
-        .frame(height: 30)
-    }
-
-    private func ruleRow(_ entry: RuleTableEntry) -> some View {
-        HStack(spacing: 0) {
-            Toggle("", isOn: Binding(
-                get: { entry.rule.disabled == false },
-                set: { _ in store.toggleRuleDisabled(entry.rule) }
-            ))
-            .labelsHidden()
-            .toggleStyle(.checkbox)
-            .frame(width: checkboxWidth)
-
-            ruleCell("\(entry.rule.index)", width: idWidth, alignment: .trailing, monospaced: true)
-            ruleCell(entry.type, width: typeWidth, monospaced: true)
-            ruleCell(entry.value.isEmpty ? "-" : entry.value, max: true, monospaced: true)
-            ruleCell(entry.policy, width: policyWidth)
-            ruleCell("\(entry.rule.hitCount)", width: usageWidth, alignment: .trailing, monospaced: true)
-            ruleCell(entry.note.isEmpty ? "-" : entry.note, width: noteWidth, monospaced: true)
-        }
-        .font(.callout)
-        .foregroundStyle(entry.rule.disabled ? .secondary : .primary)
-        .strikethrough(entry.rule.disabled)
-        .padding(.horizontal, 8)
-        .frame(height: 32)
-        .background(selectedRuleIndex == entry.rule.index ? Color.accentColor.opacity(0.16) : Color.clear)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            selectedRuleIndex = entry.rule.index
-        }
-        .onTapGesture(count: 2) {
-            beginEdit(entry)
         }
     }
 
@@ -226,6 +175,13 @@ struct RulesView: View {
             .help("编辑选中规则")
             .disabled(selectedRuleIndex == nil)
 
+            Button {
+                toggleSelectedRule()
+            } label: {
+                Label(selectedEntry?.rule.disabled == true ? "启用" : "禁用", systemImage: selectedEntry?.rule.disabled == true ? "checkmark.circle" : "slash.circle")
+            }
+            .disabled(selectedRuleIndex == nil)
+
             Divider()
                 .frame(height: 20)
                 .padding(.horizontal, 4)
@@ -245,51 +201,23 @@ struct RulesView: View {
         .buttonStyle(.bordered)
     }
 
-    @ViewBuilder
-    private func headerCell(
-        _ text: String,
-        width: CGFloat? = nil,
-        max: Bool = false,
-        alignment: Alignment = .leading
-    ) -> some View {
-        if max {
-            Text(text)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: alignment)
-                .padding(.horizontal, 6)
-        } else {
-            Text(text)
-                .lineLimit(1)
-                .frame(width: width, alignment: alignment)
-                .padding(.horizontal, 6)
-        }
+    private var ruleSelectionBinding: Binding<RuleTableEntry.ID?> {
+        Binding(
+            get: { selectedEntry?.id },
+            set: { id in
+                guard let id,
+                      let entry = filteredEntries.first(where: { $0.id == id })
+                else {
+                    selectedRuleIndex = nil
+                    return
+                }
+                selectedRuleIndex = entry.rule.index
+            }
+        )
     }
 
-    @ViewBuilder
-    private func ruleCell(
-        _ text: String,
-        width: CGFloat? = nil,
-        max: Bool = false,
-        alignment: Alignment = .leading,
-        monospaced: Bool = false
-    ) -> some View {
-        if max {
-            Text(text)
-                .font(monospaced ? .system(.callout, design: .monospaced) : .callout)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: alignment)
-                .padding(.horizontal, 6)
-        } else {
-            Text(text)
-                .font(monospaced ? .system(.callout, design: .monospaced) : .callout)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-                .frame(width: width, alignment: alignment)
-                .padding(.horizontal, 6)
-        }
+    private func ruleTextColor(_ entry: RuleTableEntry) -> NSColor? {
+        entry.rule.disabled ? .secondaryLabelColor : nil
     }
 
     private func beginAddRule() {
@@ -333,6 +261,11 @@ struct RulesView: View {
             await store.deleteActiveProfileRule(index: selectedRuleIndex)
             self.selectedRuleIndex = nil
         }
+    }
+
+    private func toggleSelectedRule() {
+        guard let selectedEntry else { return }
+        store.toggleRuleDisabled(selectedEntry.rule)
     }
 
     private func parseOptions(_ text: String) -> [String] {

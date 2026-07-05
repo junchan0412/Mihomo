@@ -74,9 +74,14 @@ struct ActivityView: View {
                 StatusCard(title: "上传", value: Formatters.rate(store.uploadRate), systemImage: "arrow.up", isGood: true)
             }
 
-            GroupBox("实时流量") {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("实时流量")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
                 TrafficGraphView(samples: store.trafficSamples)
-                    .frame(height: 140)
+                    .frame(height: 170)
+                    .padding(10)
+                    .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
             }
 
             HStack {
@@ -103,12 +108,12 @@ struct ActivityView: View {
                 rows: tableRows,
                 selection: $selectedRowID,
                 columns: [
-                    .init(title: "主机/分组", width: 250) { $0.hostText },
-                    .init(title: "进程", width: 170) { $0.processText },
+                    .init(title: "主机/分组", width: 230) { $0.hostText },
+                    .init(title: "进程", width: 140) { $0.processText },
                     .init(title: "规则", width: 170) { $0.ruleText },
-                    .init(title: "链路", width: 280) { $0.chainText },
-                    .init(title: "流量", width: 190) { $0.trafficText }
-                ]
+                    .init(title: "链路", width: 300) { $0.chainText }
+                ],
+                hasHorizontalScroller: false
             )
             .overlay {
                 if tableRows.isEmpty {
@@ -124,6 +129,7 @@ struct ActivityView: View {
             ConnectionInspectorView(connection: selectedConnection) { connection in
                 Task { await store.closeConnection(connection.id) }
             }
+            .inspectorColumnWidth(min: 300, ideal: 330, max: 380)
         }
     }
 }
@@ -219,13 +225,15 @@ struct ConnectionInspectorView: View {
             if let connection {
                 Text("连接详情")
                     .font(.headline)
+                HStack(spacing: 10) {
+                    TrafficValueTile(title: "下载", value: Formatters.bytes(connection.download), systemImage: "arrow.down", color: .blue)
+                    TrafficValueTile(title: "上传", value: Formatters.bytes(connection.upload), systemImage: "arrow.up", color: .green)
+                }
                 DetailRow(title: "主机", value: connection.host)
                 DetailRow(title: "进程", value: connection.process)
                 DetailRow(title: "网络", value: connection.network)
                 DetailRow(title: "规则", value: connection.rule)
                 DetailRow(title: "链路", value: connection.chain.isEmpty ? "-" : connection.chain)
-                DetailRow(title: "下载", value: Formatters.bytes(connection.download))
-                DetailRow(title: "上传", value: Formatters.bytes(connection.upload))
                 if let start = connection.start {
                     DetailRow(title: "开始时间", value: Formatters.shortDate.string(from: start))
                 }
@@ -242,6 +250,28 @@ struct ConnectionInspectorView: View {
         }
         .padding()
         .frame(minWidth: 260, alignment: .leading)
+    }
+}
+
+private struct TrafficValueTile: View {
+    var title: String
+    var value: String
+    var systemImage: String
+    var color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Label(title, systemImage: systemImage)
+                .font(.caption)
+                .foregroundStyle(color)
+            Text(value)
+                .font(.title3.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

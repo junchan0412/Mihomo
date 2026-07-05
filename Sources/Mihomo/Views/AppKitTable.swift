@@ -5,10 +5,17 @@ struct AppKitTableColumn<Row> {
     let title: String
     let width: CGFloat
     let value: (Row) -> String
+    let textColor: ((Row) -> NSColor?)?
 
-    init(title: String, width: CGFloat, value: @escaping (Row) -> String) {
+    init(
+        title: String,
+        width: CGFloat,
+        textColor: ((Row) -> NSColor?)? = nil,
+        value: @escaping (Row) -> String
+    ) {
         self.title = title
         self.width = width
+        self.textColor = textColor
         self.value = value
     }
 }
@@ -17,6 +24,22 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
     var rows: [Row]
     @Binding var selection: Row.ID?
     var columns: [AppKitTableColumn<Row>]
+    var onDoubleClick: ((Row) -> Void)?
+    var hasHorizontalScroller: Bool
+
+    init(
+        rows: [Row],
+        selection: Binding<Row.ID?>,
+        columns: [AppKitTableColumn<Row>],
+        onDoubleClick: ((Row) -> Void)? = nil,
+        hasHorizontalScroller: Bool = true
+    ) {
+        self.rows = rows
+        self._selection = selection
+        self.columns = columns
+        self.onDoubleClick = onDoubleClick
+        self.hasHorizontalScroller = hasHorizontalScroller
+    }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -26,6 +49,8 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
         let tableView = NSTableView()
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
+        tableView.target = context.coordinator
+        tableView.doubleAction = #selector(Coordinator.doubleClicked(_:))
         tableView.headerView = NSTableHeaderView()
         tableView.allowsMultipleSelection = false
         tableView.usesAlternatingRowBackgroundColors = true
@@ -35,7 +60,7 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
 
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = true
+        scrollView.hasHorizontalScroller = hasHorizontalScroller
         scrollView.autohidesScrollers = true
         scrollView.borderType = .bezelBorder
         scrollView.documentView = tableView
@@ -47,6 +72,7 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let tableView = scrollView.documentView as? NSTableView else { return }
         context.coordinator.parent = self
+        scrollView.hasHorizontalScroller = hasHorizontalScroller
         context.coordinator.configureColumns(on: tableView)
         tableView.reloadData()
         context.coordinator.applySelection(on: tableView)
@@ -74,8 +100,18 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
 
             let identifier = NSUserInterfaceItemIdentifier("MihomoTableCell")
             let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? makeCell(identifier: identifier)
-            cell.textField?.stringValue = parent.columns[columnIndex].value(parent.rows[row])
+            let currentRow = parent.rows[row]
+            let column = parent.columns[columnIndex]
+            cell.textField?.stringValue = column.value(currentRow)
+            cell.textField?.textColor = column.textColor?(currentRow) ?? .labelColor
             return cell
+        }
+
+        @objc func doubleClicked(_ sender: NSTableView) {
+            let row = sender.clickedRow >= 0 ? sender.clickedRow : sender.selectedRow
+            guard row >= 0, row < parent.rows.count else { return }
+            parent.selection = parent.rows[row].id
+            parent.onDoubleClick?(parent.rows[row])
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {

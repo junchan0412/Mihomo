@@ -43,7 +43,8 @@ struct MihomoControllerClient {
                 name: name,
                 type: detail["type"] as? String ?? "select",
                 now: detail["now"] as? String ?? "",
-                all: nodes
+                all: nodes,
+                icon: detail["icon"] as? String
             )
         }
         .sorted { lhs, rhs in
