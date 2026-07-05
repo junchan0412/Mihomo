@@ -259,6 +259,7 @@ struct AdvancedView: View {
                         Text("redir-host").tag("redir-host")
                     }
                     .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
                 GridRow {
                     Text("Nameserver")

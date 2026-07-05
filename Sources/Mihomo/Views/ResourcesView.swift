@@ -33,12 +33,24 @@ struct ResourcesView: View {
                 }
 
                 Button {
+                    Task { await store.updateAllExternalResources() }
+                } label: {
+                    Label("一键更新资源", systemImage: "arrow.down.circle")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
                     Task { await store.refreshProvidersFromController() }
                 } label: {
                     Label("读取 Controller", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .buttonStyle(.borderedProminent)
             }
+
+            Text(store.resourceUpdateStatus)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
 
             List(visibleProviders) { provider in
                 HStack(spacing: 14) {
@@ -67,12 +79,21 @@ struct ResourcesView: View {
 
                     Spacer()
 
-                    Button {
-                        Task { await store.updateProvider(provider) }
-                    } label: {
-                        Label("更新", systemImage: "arrow.clockwise")
+                    VStack(alignment: .trailing, spacing: 6) {
+                        Button {
+                            Task { await store.updateProviderResource(provider) }
+                        } label: {
+                            Label("下载", systemImage: "arrow.down.circle")
+                        }
+                        .disabled(provider.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false)
+
+                        Button {
+                            Task { await store.updateProvider(provider) }
+                        } label: {
+                            Label("Controller", systemImage: "arrow.clockwise")
+                        }
+                        .disabled(store.isCoreRunning == false)
                     }
-                    .disabled(store.isCoreRunning == false)
                 }
                 .padding(.vertical, 6)
             }

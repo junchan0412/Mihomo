@@ -94,6 +94,20 @@ struct MihomoApp: App {
                 .environmentObject(store)
         }
 
+        WindowGroup("配置编辑器", id: "profile-editor") {
+            ProfileEditorWindowView()
+                .environmentObject(store)
+                .frame(minWidth: 860, minHeight: 620)
+        }
+        .defaultSize(width: 980, height: 720)
+
+        WindowGroup("覆写管理", id: "fragments-editor") {
+            ConfigFragmentsWindowView()
+                .environmentObject(store)
+                .frame(minWidth: 760, minHeight: 560)
+        }
+        .defaultSize(width: 860, height: 640)
+
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(store)

@@ -500,9 +500,24 @@ struct ProviderItem: Identifiable, Hashable {
     var kind: String
     var name: String
     var detail: String
+    var providerType: String = ""
+    var remoteURL: String?
+    var path: String?
+    var interval: Int?
     var ruleCount: Int = 0
     var hitCount: Int = 0
     var memberNames: [String] = []
+}
+
+struct ProfileStats: Hashable {
+    var lineCount: Int = 0
+    var fileSize: Int = 0
+    var policyGroupCount: Int = 0
+    var proxyCount: Int = 0
+    var ruleCount: Int = 0
+    var proxyProviderCount: Int = 0
+    var ruleProviderCount: Int = 0
+    var errorMessage: String?
 }
 
 struct EditablePolicyGroup: Identifiable, Hashable {

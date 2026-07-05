@@ -42,6 +42,7 @@ final class AppStore: ObservableObject {
     @Published var advancedStatus = "高级功能待命"
     @Published var managedCoreStatus = "未托管"
     @Published var externalUIStatus = "未安装"
+    @Published var resourceUpdateStatus = "资源未更新"
     @Published var geoUpdateStatus = "未更新"
     @Published var backupStatus = "未备份"
     @Published var ageStatus = "Profile 加密未启用"
@@ -49,6 +50,7 @@ final class AppStore: ObservableObject {
     @Published var helperStatus = "Helper 未检查"
     @Published var softwareUpdateStatus = "未检查"
     @Published var availableUpdate: AppUpdateManifest?
+    @Published var profileEditorProfileID: UUID?
 
     private let profileStore = ProfileStore()
     private let systemProxy = SystemProxyManager()
@@ -182,15 +184,18 @@ final class AppStore: ObservableObject {
                 disabledRules: disabledRules
             )
             try profileStore.promoteRuntimeConfig(candidate: candidate)
-            let result = try await helperClient.prepareAndStartCore(
-                mihomoPath: mihomoPath,
-                configPath: AppPaths.runtimeConfigFile,
-                workDirectory: AppPaths.runtimeDirectory,
-                logPath: AppPaths.coreLogFile,
-                autoSetDNS: settings.autoSetSystemDNS,
-                dnsServers: settings.systemDNSServers,
-                captureTun: settings.tunEnabled
-            )
+            try syncGeoDataToRuntimeDirectory()
+            let result = try await runWithGeoDataRetry {
+                try await helperClient.prepareAndStartCore(
+                    mihomoPath: mihomoPath,
+                    configPath: AppPaths.runtimeConfigFile,
+                    workDirectory: AppPaths.runtimeDirectory,
+                    logPath: AppPaths.coreLogFile,
+                    autoSetDNS: settings.autoSetSystemDNS,
+                    dnsServers: settings.systemDNSServers,
+                    captureTun: settings.tunEnabled
+                )
+            }
             if let validation = result.payload["validation"], validation.isEmpty == false {
                 lastRuntimeValidation = validation
             } else {
@@ -570,6 +575,49 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func deleteProfile(_ profile: ProfileItem) async {
+        guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
+        do {
+            let file = profileStore.profileFile(profile)
+            profiles.remove(at: index)
+            if FileManager.default.fileExists(atPath: file.path) {
+                try FileManager.default.removeItem(at: file)
+            }
+            if settings.activeProfileID == profile.id {
+                settings.activeProfileID = profiles.first?.id
+                try profileStore.saveSettings(settings)
+            }
+            try profileStore.saveProfiles(profiles)
+            if profileEditorProfileID == profile.id {
+                profileEditorProfileID = settings.activeProfileID
+            }
+            refreshConfigArtifacts()
+            appendLog("info", "已删除配置 \(profile.name)")
+        } catch {
+            appendLog("error", "删除配置失败：\(error.localizedDescription)")
+        }
+    }
+
+    func profileStats(for profile: ProfileItem) -> ProfileStats {
+        do {
+            let content = try profileStore.loadProfileContent(profile, settings: settings)
+            let snapshot = try ProfileYAMLStructureEditor().snapshot(content: content)
+            let providers = configFragmentStore.parseProviders(profileContent: content)
+            return ProfileStats(
+                lineCount: content.split(separator: "\n", omittingEmptySubsequences: false).count,
+                fileSize: content.data(using: .utf8)?.count ?? 0,
+                policyGroupCount: snapshot.groups.count,
+                proxyCount: snapshot.proxyNames.count,
+                ruleCount: snapshot.rules.count,
+                proxyProviderCount: providers.filter { $0.kind == "Proxy" }.count,
+                ruleProviderCount: providers.filter { $0.kind == "Rule" }.count,
+                errorMessage: nil
+            )
+        } catch {
+            return ProfileStats(errorMessage: error.localizedDescription)
+        }
+    }
+
     func saveSettings(_ settings: AppSettings) async {
         do {
             var normalized = settings
@@ -618,6 +666,7 @@ final class AppStore: ObservableObject {
                     fragments: configFragments,
                     disabledRules: disabledRules
                 )
+                try syncGeoDataToRuntimeDirectory()
                 let result = try await helperClient.validateConfig(mihomoPath: mihomoPath, configPath: candidate, workDirectory: AppPaths.runtimeDirectory)
                 results.append(.init(title: "运行配置 dry-run", detail: "\(result.message)：\(candidate.path)", state: .ok))
             } catch {
@@ -793,6 +842,48 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func updateProviderResource(_ provider: ProviderItem) async {
+        do {
+            let target = try await downloadProviderResource(provider)
+            resourceUpdateStatus = "\(provider.name) 已更新：\(target.path)"
+            appendLog("info", resourceUpdateStatus)
+            refreshConfigArtifacts()
+        } catch {
+            resourceUpdateStatus = "\(provider.name) 更新失败：\(error.localizedDescription)"
+            appendLog("error", resourceUpdateStatus)
+        }
+    }
+
+    func updateAllExternalResources() async {
+        refreshConfigArtifacts()
+        let providerItems = providers.filter {
+            $0.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        }
+        var succeeded = 0
+        var failed = 0
+
+        resourceUpdateStatus = "正在更新 \(providerItems.count) 个 Provider 与 Geo 数据..."
+        for provider in providerItems {
+            do {
+                _ = try await downloadProviderResource(provider)
+                succeeded += 1
+            } catch {
+                failed += 1
+                appendLog("error", "\(provider.name) 更新失败：\(error.localizedDescription)")
+            }
+        }
+
+        do {
+            let geoStatus = try await updateGeoDataInternal()
+            resourceUpdateStatus = "Provider 成功 \(succeeded)，失败 \(failed)；\(geoStatus)"
+        } catch {
+            resourceUpdateStatus = "Provider 成功 \(succeeded)，失败 \(failed)；Geo 更新失败：\(error.localizedDescription)"
+            appendLog("error", resourceUpdateStatus)
+        }
+        refreshConfigArtifacts()
+        appendLog(failed == 0 ? "info" : "warning", resourceUpdateStatus)
+    }
+
     func toggleRuleDisabled(_ rule: RuleItem) {
         if disabledRules.contains(rule.content) {
             disabledRules.remove(rule.content)
@@ -924,7 +1015,7 @@ final class AppStore: ObservableObject {
     func updateGeoData() async {
         do {
             geoUpdateStatus = "正在更新 Geo 数据..."
-            geoUpdateStatus = try await geoUpdateManager.update(geoIPURL: settings.geoIPURL, geoSiteURL: settings.geoSiteURL)
+            geoUpdateStatus = try await updateGeoDataInternal()
             appendLog("info", geoUpdateStatus)
         } catch {
             geoUpdateStatus = "Geo 更新失败：\(error.localizedDescription)"
@@ -1062,13 +1153,16 @@ final class AppStore: ObservableObject {
                 fragments: configFragments,
                 disabledRules: disabledRules
             )
+            try syncGeoDataToRuntimeDirectory()
             try profileStore.promoteRuntimeConfig(candidate: candidate)
-            let result = try await helperClient.installCoreLaunchDaemon(
-                corePath: effectiveMihomoPath,
-                configPath: AppPaths.runtimeConfigFile,
-                workDirectory: AppPaths.runtimeDirectory,
-                logPath: AppPaths.coreLogFile
-            )
+            let result = try await runWithGeoDataRetry {
+                try await helperClient.installCoreLaunchDaemon(
+                    corePath: effectiveMihomoPath,
+                    configPath: AppPaths.runtimeConfigFile,
+                    workDirectory: AppPaths.runtimeDirectory,
+                    logPath: AppPaths.coreLogFile
+                )
+            }
             launchDaemonStatus = result.payload["path"].map { "已安装：\($0)" } ?? result.message
             var updated = settings
             updated.launchDaemonEnabled = true
@@ -1348,6 +1442,115 @@ final class AppStore: ObservableObject {
         } catch {
             appendLog("error", "覆写片段保存失败：\(error.localizedDescription)")
         }
+    }
+
+    private func updateGeoDataInternal() async throws -> String {
+        let status = try await geoUpdateManager.update(geoIPURL: settings.geoIPURL, geoSiteURL: settings.geoSiteURL)
+        try syncGeoDataToRuntimeDirectory()
+        geoUpdateStatus = status
+        return status
+    }
+
+    private func downloadProviderResource(_ provider: ProviderItem) async throws -> URL {
+        guard let remote = provider.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+              remote.isEmpty == false,
+              let url = URL(string: remote)
+        else {
+            throw NSError(domain: "ProviderResource", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Provider 没有可下载的 URL。"
+            ])
+        }
+
+        let target = try providerResourceTarget(for: provider)
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var request = URLRequest(url: url)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("Mihomo", forHTTPHeaderField: "User-Agent")
+        let (downloaded, response) = try await URLSession.shared.download(for: request)
+        if let http = response as? HTTPURLResponse,
+           (200..<300).contains(http.statusCode) == false {
+            throw NSError(domain: "ProviderResource", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            ])
+        }
+        if FileManager.default.fileExists(atPath: target.path) {
+            try FileManager.default.removeItem(at: target)
+        }
+        try FileManager.default.copyItem(at: downloaded, to: target)
+        return target
+    }
+
+    private func providerResourceTarget(for provider: ProviderItem) throws -> URL {
+        let rawPath = provider.path?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallbackDirectory = provider.kind == "Proxy" ? "proxy_providers" : "rule_providers"
+        let fallbackName = safeResourceFileName(provider.name, pathExtension: "yaml")
+        let value = rawPath?.isEmpty == false ? rawPath! : "\(fallbackDirectory)/\(fallbackName)"
+        if value.hasPrefix("/") {
+            return URL(fileURLWithPath: value)
+        }
+
+        let components = value
+            .replacingOccurrences(of: "\\", with: "/")
+            .split(separator: "/")
+            .map(String.init)
+            .filter { $0.isEmpty == false && $0 != "." }
+        guard components.contains("..") == false else {
+            throw NSError(domain: "ProviderResource", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Provider path 不能包含 ..：\(value)"
+            ])
+        }
+
+        return components.reduce(AppPaths.runtimeDirectory) { partial, component in
+            partial.appendingPathComponent(component)
+        }
+    }
+
+    private func safeResourceFileName(_ value: String, pathExtension: String) -> String {
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
+        let base = value.unicodeScalars.map { scalar in
+            allowed.contains(scalar) ? Character(scalar).description : "_"
+        }.joined()
+        let normalized = base.trimmingCharacters(in: CharacterSet(charactersIn: "._-")).isEmpty ? "provider" : base
+        return normalized.hasSuffix(".\(pathExtension)") ? normalized : "\(normalized).\(pathExtension)"
+    }
+
+    private func syncGeoDataToRuntimeDirectory() throws {
+        try AppPaths.ensureBaseDirectories()
+        let pairs: [(source: String, targets: [String])] = [
+            ("geoip.dat", ["geoip.dat", "GeoIP.dat"]),
+            ("geosite.dat", ["geosite.dat", "GeoSite.dat"])
+        ]
+        for pair in pairs {
+            let source = AppPaths.geoDirectory.appendingPathComponent(pair.source)
+            guard FileManager.default.fileExists(atPath: source.path) else { continue }
+            for targetName in pair.targets {
+                let target = AppPaths.runtimeDirectory.appendingPathComponent(targetName)
+                if FileManager.default.fileExists(atPath: target.path) {
+                    try FileManager.default.removeItem(at: target)
+                }
+                try FileManager.default.copyItem(at: source, to: target)
+            }
+        }
+    }
+
+    private func runWithGeoDataRetry<T>(_ operation: () async throws -> T) async throws -> T {
+        do {
+            return try await operation()
+        } catch {
+            guard isGeoDataFailure(error) else { throw error }
+            appendLog("warning", "Geo 数据不可用，正在更新后重试：\(error.localizedDescription)")
+            _ = try await updateGeoDataInternal()
+            return try await operation()
+        }
+    }
+
+    private func isGeoDataFailure(_ error: Error) -> Bool {
+        let message = error.localizedDescription.lowercased()
+        return message.contains("geosite.dat")
+            || message.contains("geoip.dat")
+            || message.contains("can't initial geosite")
+            || message.contains("can't download geosite")
+            || message.contains("geodata")
     }
 
     private func reloadPersistentState() throws {

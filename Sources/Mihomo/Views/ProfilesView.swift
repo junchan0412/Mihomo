@@ -3,10 +3,9 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ProfilesView: View {
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var store: AppStore
     @State private var selectedProfileID: UUID?
-    @State private var editorName = ""
-    @State private var editorContent = ""
     @State private var isDropTargeted = false
 
     var body: some View {
@@ -14,35 +13,34 @@ struct ProfilesView: View {
             header
             Divider()
 
-            VStack(spacing: 12) {
-                remoteSubscriptionBar
-                ProfileRefreshQueueStrip()
-                    .environmentObject(store)
+            ScrollView {
+                VStack(spacing: 14) {
+                    remoteSubscriptionBar
+                    ProfileRefreshQueueStrip()
+                        .environmentObject(store)
 
-                VSplitView {
                     ProfileListPane(
                         selectedProfileID: $selectedProfileID,
-                        selectedProfile: selectedProfile
+                        selectedProfile: selectedProfile,
+                        editProfile: openProfileEditor,
+                        deleteProfile: deleteSelectedProfile
                     )
                     .environmentObject(store)
-                    .frame(minHeight: 140, idealHeight: 220)
 
-                    ProfileEditorPane(
+                    ProfileSummaryPane(
                         profile: selectedProfile,
-                        editorName: $editorName,
-                        editorContent: $editorContent,
-                        reload: loadEditor,
-                        save: saveEditor
+                        stats: selectedProfile.map { store.profileStats(for: $0) },
+                        editProfile: openProfileEditor
                     )
-                    .frame(minHeight: 220, idealHeight: 420)
 
-                    ConfigFragmentsEditorView()
-                        .environmentObject(store)
-                        .frame(minHeight: 160, idealHeight: 240)
+                    ConfigFragmentsSummaryView {
+                        openWindow(id: "fragments-editor")
+                    }
+                    .environmentObject(store)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
-            .padding(16)
         }
         .navigationTitle("配置")
         .overlay {
@@ -51,16 +49,11 @@ struct ProfilesView: View {
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
         .onAppear {
             selectedProfileID = store.settings.activeProfileID ?? store.profiles.first?.id
-            loadEditor()
-        }
-        .onChange(of: selectedProfileID) {
-            loadEditor()
         }
         .onChange(of: store.profiles) {
-            if selectedProfileID == nil {
+            if selectedProfileID == nil || store.profiles.contains(where: { $0.id == selectedProfileID }) == false {
                 selectedProfileID = store.settings.activeProfileID ?? store.profiles.first?.id
             }
-            loadEditor()
         }
     }
 
@@ -128,25 +121,15 @@ struct ProfilesView: View {
         return store.profiles.first { $0.id == selectedProfileID }
     }
 
-    private func loadEditor() {
-        guard let selectedProfile else {
-            editorName = ""
-            editorContent = ""
-            return
-        }
-        editorName = selectedProfile.name
-        editorContent = store.profileContent(for: selectedProfile)
+    private func openProfileEditor() {
+        guard let selectedProfileID else { return }
+        store.profileEditorProfileID = selectedProfileID
+        openWindow(id: "profile-editor")
     }
 
-    private func saveEditor() {
-        guard let selectedProfileID else { return }
-        Task {
-            await store.saveProfileEditor(
-                profileID: selectedProfileID,
-                name: editorName,
-                content: editorContent
-            )
-        }
+    private func deleteSelectedProfile() {
+        guard let selectedProfile else { return }
+        Task { await store.deleteProfile(selectedProfile) }
     }
 
     private func importLocal() {
@@ -212,48 +195,71 @@ private struct ProfileListPane: View {
     @EnvironmentObject private var store: AppStore
     @Binding var selectedProfileID: UUID?
     var selectedProfile: ProfileItem?
+    var editProfile: () -> Void
+    var deleteProfile: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Button {
-                    if let selectedProfile {
-                        Task { await store.setActiveProfile(selectedProfile) }
+        GroupBox("配置列表") {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Button {
+                        if let selectedProfile {
+                            Task { await store.setActiveProfile(selectedProfile) }
+                        }
+                    } label: {
+                        Label("启用", systemImage: "checkmark.circle")
                     }
-                } label: {
-                    Label("启用", systemImage: "checkmark.circle")
-                }
-                .disabled(selectedProfile == nil)
+                    .disabled(selectedProfile == nil)
 
-                Button {
-                    if let selectedProfile {
-                        Task { await store.refreshProfile(selectedProfile) }
+                    Button {
+                        if let selectedProfile {
+                            Task { await store.refreshProfile(selectedProfile) }
+                        }
+                    } label: {
+                        Label("刷新选中", systemImage: "arrow.clockwise")
                     }
-                } label: {
-                    Label("刷新选中", systemImage: "arrow.clockwise")
-                }
-                .disabled(selectedProfile?.isRemote != true)
+                    .disabled(selectedProfile?.isRemote != true)
 
-                Spacer()
-            }
+                    Button {
+                        editProfile()
+                    } label: {
+                        Label("编辑", systemImage: "pencil")
+                    }
+                    .disabled(selectedProfile == nil)
 
-            AppKitTable(
-                rows: store.profiles,
-                selection: $selectedProfileID,
-                columns: profileColumns
-            )
-            .overlay {
-                if store.profiles.isEmpty {
-                    ContentUnavailableView("没有配置", systemImage: "doc.text")
+                    Button(role: .destructive) {
+                        deleteProfile()
+                    } label: {
+                        Label("删除", systemImage: "trash")
+                    }
+                    .disabled(selectedProfile == nil || store.profiles.count <= 1)
+
+                    Spacer()
                 }
+
+                AppKitTable(
+                    rows: store.profiles,
+                    selection: $selectedProfileID,
+                    columns: profileColumns
+                )
+                .overlay {
+                    if store.profiles.isEmpty {
+                        ContentUnavailableView("没有配置", systemImage: "doc.text")
+                    }
+                }
+                .frame(height: 260)
             }
+            .padding(.vertical, 4)
         }
     }
 
     private var profileColumns: [AppKitTableColumn<ProfileItem>] {
         [
+            .init(title: "状态", width: 72) { profile in
+                profile.id == store.settings.activeProfileID ? "启用" : "-"
+            },
             .init(title: "名称", width: 230) { profile in
-                (profile.id == store.settings.activeProfileID ? "* " : "") + profile.name
+                profile.name
             },
             .init(title: "类型", width: 72) { $0.source == .remote ? "远程" : "本地" },
             .init(title: "更新", width: 130) { Formatters.shortDate.string(from: $0.updatedAt) },
@@ -268,61 +274,124 @@ private struct ProfileListPane: View {
     }
 }
 
-private struct ProfileEditorPane: View {
+private struct ProfileSummaryPane: View {
     var profile: ProfileItem?
-    @Binding var editorName: String
-    @Binding var editorContent: String
-    var reload: () -> Void
-    var save: () -> Void
-    @State private var editorMode = "yaml"
+    var stats: ProfileStats?
+    var editProfile: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        GroupBox("配置摘要") {
             if profile == nil {
-                ContentUnavailableView("未选择配置", systemImage: "square.and.pencil")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ContentUnavailableView("未选择配置", systemImage: "doc.text.magnifyingglass")
+                    .frame(maxWidth: .infinity, minHeight: 140)
             } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label(profile?.name ?? "", systemImage: "doc.text")
+                            .font(.headline)
+                        Spacer()
+                        Button {
+                            editProfile()
+                        } label: {
+                            Label("打开编辑器", systemImage: "square.and.pencil")
+                        }
+                        .buttonStyle(.borderedProminent)
+                    }
+
+                    if let error = stats?.errorMessage {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .textSelection(.enabled)
+                    } else {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
+                            ProfileMetric(title: "规则", value: "\(stats?.ruleCount ?? 0)")
+                            ProfileMetric(title: "策略组", value: "\(stats?.policyGroupCount ?? 0)")
+                            ProfileMetric(title: "节点", value: "\(stats?.proxyCount ?? 0)")
+                            ProfileMetric(title: "Provider", value: "\(statsProviderCount)")
+                            ProfileMetric(title: "行数", value: "\(stats?.lineCount ?? 0)")
+                            ProfileMetric(title: "大小", value: Formatters.bytes(Int64(stats?.fileSize ?? 0)))
+                            ProfileMetric(title: "来源", value: profile?.source == .remote ? "远程" : "本地")
+                            ProfileMetric(title: "更新", value: profile.map { Formatters.shortDate.string(from: $0.updatedAt) } ?? "-")
+                        }
+                    }
+
+                    Text("默认仅显示统计信息；需要查看或修改 YAML / 结构化规则时打开独立编辑窗口。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    private var statsProviderCount: Int {
+        (stats?.proxyProviderCount ?? 0) + (stats?.ruleProviderCount ?? 0)
+    }
+}
+
+private struct ProfileMetric: View {
+    var title: String
+    var value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.title3.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct ConfigFragmentsSummaryView: View {
+    @EnvironmentObject private var store: AppStore
+    var openEditor: () -> Void
+
+    var body: some View {
+        GroupBox("覆写摘要") {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("配置编辑器")
-                        .font(.headline)
+                    Toggle("YAML 覆写", isOn: overrideBinding(\.yamlOverrideEnabled))
+                    Toggle("JS Transform", isOn: overrideBinding(\.jsOverrideEnabled))
                     Spacer()
-                    Picker("编辑模式", selection: $editorMode) {
-                        Text("YAML").tag("yaml")
-                        Text("结构").tag("structure")
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 150)
                     Button {
-                        reload()
+                        openEditor()
                     } label: {
-                        Label("重新载入", systemImage: "arrow.counterclockwise")
-                    }
-                    Button {
-                        save()
-                    } label: {
-                        Label("保存", systemImage: "checkmark")
+                        Label("管理覆写", systemImage: "slider.horizontal.3")
                     }
                     .buttonStyle(.borderedProminent)
                 }
 
-                TextField("配置名称", text: $editorName)
-                    .textFieldStyle(.roundedBorder)
-
-                if editorMode == "yaml" {
-                    TextEditor(text: $editorContent)
-                        .font(.system(.body, design: .monospaced))
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .border(Color.secondary.opacity(0.25))
-                } else {
-                    ProfileStructureEditorView(content: $editorContent)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
+                    ProfileMetric(title: "片段", value: "\(store.configFragments.count)")
+                    ProfileMetric(title: "已启用", value: "\(store.configFragments.filter(\.enabled).count)")
+                    ProfileMetric(title: "YAML", value: "\(store.configFragments.filter { $0.kind == .yaml }.count)")
+                    ProfileMetric(title: "JavaScript", value: "\(store.configFragments.filter { $0.kind == .javascript }.count)")
                 }
 
-                Text("保存前会更新源配置文件；结构化编辑会重写 YAML 排版，启动核心时仍会先 dry-run。")
+                Text("覆写内容不在配置页直接展开；点击管理后在独立窗口中编辑、启用或删除片段。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            .padding(.vertical, 4)
         }
+    }
+
+    private func overrideBinding(_ keyPath: WritableKeyPath<AppSettings, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { store.settings[keyPath: keyPath] },
+            set: { enabled in
+                var updated = store.settings
+                updated[keyPath: keyPath] = enabled
+                Task { await store.saveSettings(updated) }
+            }
+        )
     }
 }
 

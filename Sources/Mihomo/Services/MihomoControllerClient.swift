@@ -140,6 +140,7 @@ struct MihomoControllerClient {
                 kind: kind,
                 name: name,
                 detail: pieces.isEmpty ? "-" : pieces.joined(separator: " · "),
+                providerType: detail["type"].map { "\($0)" } ?? "",
                 ruleCount: count,
                 memberNames: members
             )

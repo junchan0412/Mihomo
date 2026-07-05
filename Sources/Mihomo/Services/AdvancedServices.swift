@@ -236,6 +236,14 @@ final class ConfigFragmentStore {
         guard let providers = root[key] as? [String: Any] else { return [] }
         return providers.map { name, value in
             let map = value as? [String: Any] ?? [:]
+            let providerType = map["type"].map { "\($0)" } ?? ""
+            let remoteURL = map["url"].map { "\($0)" }
+            let path = map["path"].map { "\($0)" }
+            let interval = map["interval"].flatMap { value -> Int? in
+                if let intValue = value as? Int { return intValue }
+                if let stringValue = value as? String { return Int(stringValue) }
+                return nil
+            }
             var pieces = ["type", "url", "path", "behavior", "interval", "vehicleType", "updatedAt"]
                 .compactMap { field in
                     map[field].map { "\(field): \($0)" }
@@ -248,6 +256,10 @@ final class ConfigFragmentStore {
                 kind: kind,
                 name: name,
                 detail: pieces.isEmpty ? "-" : pieces.prefix(6).joined(separator: " · "),
+                providerType: providerType,
+                remoteURL: remoteURL,
+                path: path,
+                interval: interval,
                 ruleCount: count
             )
         }

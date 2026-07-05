@@ -2,7 +2,7 @@
 
 Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repository contains the MVP described in `Mihomo-macOS-development-report.md`: a professional desktop shell inspired by Surge's information architecture, while using mihomo as the runtime engine.
 
-## Ninth MVP Scope
+## 1.0 MVP Scope
 
 - SwiftUI-first macOS app with a native sidebar, toolbar, Settings scene, and Menu Bar Extra.
 - AppKit-backed `NSTableView` and `NSTextView` bridges for dense connection/policy/profile tables and high-volume log scrolling.
@@ -17,15 +17,15 @@ Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repo
 - Optional automatic system DNS assignment on core start, with snapshot-based restoration on stop or app quit, is executed by the Helper.
 - Launch-at-login registration through `SMAppService.mainApp`, designed to pair with "start core when Mihomo opens" for boot-time core startup.
 - TUN recovery snapshots for DNS, proxy, route table, and default route state, plus administrator-authorized route rollback when privileged repair is needed.
-- Local, remote, drag-and-drop, and `mihomo://` deep-link Profile import, queued remote subscription refresh, automatic refresh interval, failure notifications, certificate fingerprint pinning, a built-in YAML editor, vertical profile-list/editor layout, profile-scoped override fragment management, and structured UI editing for policy groups and rules.
+- Local, remote, drag-and-drop, and `mihomo://` deep-link Profile import, queued remote subscription refresh, automatic refresh interval, failure notifications, certificate fingerprint pinning, scrollable Profile management, Profile statistics by default, profile delete/active-state controls, dedicated Profile editor windows, dedicated override-fragment windows, and structured UI editing for policy groups and rules.
 - Policy group add/edit/delete from the Profile UI. When deleting a group used by rules, the app asks whether to replace those rules with another policy or delete the referencing rules.
 - Policy search, sort, proxy selection, configurable single-node/group/all-node concurrent delay testing, and menu bar policy quick switching.
 - Connection list filtering, process/rule/chain/network grouping, single-connection close, all-connection close, and a SwiftUI inspector.
 - Surge-style rule table with ID/type/value/policy/usage/note columns, persisted disabled-rule filtering for generated runtime config, profile rule add/edit/delete actions, and live hit counts from Controller connections.
-- Rule Provider and Proxy Provider views with local YAML AST parsing, Controller reads, update actions, item/reference counts, and hit counts when Controller data exposes enough detail.
+- Rule Provider and Proxy Provider views with local YAML AST parsing, Controller reads, direct download updates that work without the mihomo core running, one-click external resource updates, item/reference counts, and hit counts when Controller data exposes enough detail.
 - Advanced DNS and Sniffer settings written into generated mihomo runtime config.
 - External UI management for zashboard/metacubexd-style zip packages, with generated `external-ui` config.
-- GeoIP/GeoSite download/update workflow.
+- GeoIP/GeoSite download/update workflow, including runtime-directory synchronization before dry-run/start/LaunchDaemon install and retry after Geo data failures.
 - Local zip backup/restore, WebDAV upload/download restore, and Gist JSON sync for settings, profiles, fragments, and disabled rules. Controller/WebDAV/Gist secrets are stored outside `settings.json` in an AES-GCM local secret vault, not Keychain, to avoid update-time Keychain re-authorization with ad-hoc signatures.
 - Fixed ad-hoc signing identifiers for the app, Helper, and bundled mihomo core, release manifest generation, and a verified in-app updater that checks GitHub Releases for the latest signed manifest before applying Ed25519 manifest signature, SHA-256, bundle id, and signing identifier checks.
 - Optional Age Profile encryption: the Advanced page can install managed `age`/`age-keygen`, generate an Age identity, and transparently encrypt/decrypt full Profile YAML on disk while runtime generation uses decrypted content.
@@ -62,7 +62,7 @@ Useful modes:
 ## Release Build
 
 ```bash
-./script/package_release.sh 0.9.0
+./script/package_release.sh 1.0.0
 ```
 
 This downloads a release mihomo core into `vendor/mihomo` when needed, stages it inside `Mihomo.app/Contents/Resources/Core/`, stages `MihomoHelper` under `Contents/Library/LaunchServices/`, includes the Helper daemon plist under `Contents/Library/LaunchDaemons/`, signs nested code with fixed ad-hoc identifiers, creates a zip artifact under `dist/releases/`, and writes Ed25519-signed `Mihomo-<version>-update.json` plus `mihomo-update.json`.

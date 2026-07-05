@@ -220,6 +220,21 @@ flowchart LR
 | 软件更新入口 | 已简化 | 应用不再要求用户填写 manifest URL；检查更新固定读取 GitHub Latest Release 中的 `mihomo-update.json`。 |
 | 菜单栏更新 | 已实现 | App 菜单和菜单栏都新增检查更新入口；发现新版后可直接触发安装。 |
 
+## 5.6 v1.0.0 配置管理、资源离线更新与 LaunchDaemon 稳定性
+
+1.0 MVP 版收口到“可日常使用”的操作体验：配置页不再默认展开大段 YAML，资源更新不再强依赖当前 mihomo 进程，LaunchDaemon 安装前也会主动处理 Geo 数据可用性。
+
+| 1.0 要求 | v1.0.0 状态 | 主要落点 |
+| --- | --- | --- |
+| 配置页滚动工作台 | 已实现 | 配置页改为类似高级页的可滚动布局，列表、配置摘要和覆写摘要按区域排列。 |
+| 默认显示统计信息 | 已实现 | 选中配置后显示规则、策略组、节点、Provider、行数和大小等统计；不再默认展示完整 YAML。 |
+| 独立编辑窗口 | 已实现 | 点击“编辑”打开独立配置编辑窗口，可切换 YAML/结构化模式；覆写片段也通过独立窗口管理。 |
+| 配置删除与启用标志 | 已实现 | 配置列表新增状态列显示当前启用配置，并提供删除按钮；至少保留一个配置。 |
+| 一键更新资源 | 已实现 | 资源页新增一键更新 Provider 与 Geo 数据；Provider 可按本地配置中的 URL 直接下载到 runtime provider path，不要求 Controller 可用。 |
+| Controller 更新保留 | 已实现 | mihomo 运行时仍可通过 Controller 更新 Provider，但这不再是唯一更新路径。 |
+| 重复字段清理 | 已修复 | 高级页 DNS Enhanced Mode 隐藏 Picker 内部 label，避免字段重复显示。 |
+| LaunchDaemon GeoSite 失败 | 已缓解 | dry-run、核心启动和 LaunchDaemon 安装前同步 GeoIP/GeoSite 到 runtime 目录；遇到 Geo 数据下载/损坏错误时会先更新 Geo 数据再重试一次。 |
+
 ## 6. 建议 MVP 范围
 
 第一版建议控制在“稳定运行 + 高质量原生体验”：
@@ -235,7 +250,7 @@ flowchart LR
 | 诊断 | 一键检查核心、controller、系统代理、TUN、DNS、订阅可达性。 |
 | 菜单栏 | 速率、开关、当前 Profile、出站模式、打开主窗口。 |
 
-早期建议将 Sub-Store 深度集成、复杂主题和自定义图标后置。v0.5.0 已把 JS 覆写、WebDAV/Gist 同步和远程 HTTP API 做成高级页能力；v0.6.0 已加入 XPC Helper 边界；v0.7.0 已完成无 Apple Developer 账号路径下的固定签名更新、Helper 审计、非 Keychain secret vault、Yams 合并和命中统计；v0.8.0 已补上 Ed25519 更新签名、策略组/规则结构化编辑和 Age Profile 加密；v0.9.0 已完成 Profile/Rules 工作台重排、核心来源统一和 GitHub Release 更新入口。
+早期建议将 Sub-Store 深度集成、复杂主题和自定义图标后置。v0.5.0 已把 JS 覆写、WebDAV/Gist 同步和远程 HTTP API 做成高级页能力；v0.6.0 已加入 XPC Helper 边界；v0.7.0 已完成无 Apple Developer 账号路径下的固定签名更新、Helper 审计、非 Keychain secret vault、Yams 合并和命中统计；v0.8.0 已补上 Ed25519 更新签名、策略组/规则结构化编辑和 Age Profile 加密；v0.9.0 已完成 Profile/Rules 工作台重排、核心来源统一和 GitHub Release 更新入口；v1.0.0 已收口配置管理、资源离线更新和 LaunchDaemon Geo 数据稳定性。
 
 ## 7. 数据与配置设计
 
