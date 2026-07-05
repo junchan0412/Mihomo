@@ -3,6 +3,7 @@ import Foundation
 struct MihomoControllerClient {
     var host: String
     var port: Int
+    var secret: String = ""
 
     private var baseURL: URL {
         URL(string: "http://\(host):\(port)")!
@@ -107,9 +108,38 @@ struct MihomoControllerClient {
         return (items, uploadTotal, downloadTotal)
     }
 
+    func providers() async throws -> [ProviderItem] {
+        async let proxyProviders = providerItems(path: "/providers/proxies", kind: "Proxy")
+        async let ruleProviders = providerItems(path: "/providers/rules", kind: "Rule")
+        let proxyItems = try await proxyProviders
+        let ruleItems = try await ruleProviders
+        return proxyItems + ruleItems
+    }
+
+    func updateProvider(_ provider: ProviderItem) async throws {
+        let segment = provider.kind == "Proxy" ? "proxies" : "rules"
+        try await sendJSON("/providers/\(segment)/\(provider.name.urlPathEscaped)", method: "PUT", body: nil)
+    }
+
+    private func providerItems(path: String, kind: String) async throws -> [ProviderItem] {
+        let json = try await getJSON(path)
+        guard let providers = json["providers"] as? [String: [String: Any]] else { return [] }
+        return providers.map { name, detail in
+            let pieces = [
+                detail["type"].map { "type: \($0)" },
+                detail["vehicleType"].map { "vehicle: \($0)" },
+                detail["updatedAt"].map { "updated: \($0)" }
+            ].compactMap { $0 }
+            return ProviderItem(kind: kind, name: name, detail: pieces.isEmpty ? "-" : pieces.joined(separator: " · "))
+        }
+        .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
     private func getJSON(_ path: String) async throws -> [String: Any] {
         let url = endpointURL(path)
-        let (data, response) = try await URLSession.shared.data(from: url)
+        var request = URLRequest(url: url)
+        applyAuthorization(to: &request)
+        let (data, response) = try await URLSession.shared.data(for: request)
         try validate(response: response, data: data)
         let object = try JSONSerialization.jsonObject(with: data)
         return object as? [String: Any] ?? [:]
@@ -119,6 +149,7 @@ struct MihomoControllerClient {
         let url = endpointURL(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
+        applyAuthorization(to: &request)
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -129,6 +160,12 @@ struct MihomoControllerClient {
 
     private func endpointURL(_ path: String) -> URL {
         URL(string: path.hasPrefix("/") ? path : "/\(path)", relativeTo: baseURL)!.absoluteURL
+    }
+
+    private func applyAuthorization(to request: inout URLRequest) {
+        let token = secret.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard token.isEmpty == false else { return }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
 
     private func validate(response: URLResponse, data: Data) throws {

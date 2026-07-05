@@ -7,12 +7,13 @@ struct ShellResult {
 }
 
 enum Shell {
-    static func run(_ executable: String, _ arguments: [String]) throws -> ShellResult {
+    static func run(_ executable: String, _ arguments: [String], workDirectory: URL? = nil) throws -> ShellResult {
         let process = Process()
         let stdout = Pipe()
         let stderr = Pipe()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        process.currentDirectoryURL = workDirectory
         process.standardOutput = stdout
         process.standardError = stderr
         try process.run()

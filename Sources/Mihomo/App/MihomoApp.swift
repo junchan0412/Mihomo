@@ -24,6 +24,9 @@ struct MihomoApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                     Task { await store.shutdown() }
                 }
+                .onOpenURL { url in
+                    Task { await store.handleDeepLink(url) }
+                }
         }
         .commands {
             CommandGroup(replacing: .newItem) {}

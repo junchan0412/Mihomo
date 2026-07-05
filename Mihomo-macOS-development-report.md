@@ -131,6 +131,33 @@ flowchart LR
 | 待选 | 远程 HTTP API | Surge 设置参考 | 可选开启本地 API，默认关闭 | P3 | 中 | 安全风险高。 |
 | 待选 | 网络诊断 | Surge Activity/Diagnostics | 检测 controller、系统代理、TUN、DNS、外网延迟、权限 | P0 | 高 | 建议做成首版亮点。 |
 
+## 5.1 v0.5.0 实现状态
+
+当前仓库已经从“开发报告”推进到可运行的第五版 MVP。新增功能没有复制 Sparkle 的 Electron/Go 代码，而是在 SwiftUI/AppKit 和 Swift service 层重新实现。
+
+| 功能 | v0.5.0 状态 | 主要落点 |
+| --- | --- | --- |
+| 内置 mihomo core | 已实现 release bundle 路径 | `script/prepare_core_bundle.sh` 下载 `vendor/mihomo`，`script/build_and_run.sh` 打入 `Contents/Resources/Core/mihomo`，App 启动时可作为有效 core。 |
+| mihomo Core 更新 | 已实现托管更新 | 高级页下载 core 到 `~/Library/Application Support/Mihomo/Core/mihomo`，并可启用托管 core。 |
+| Helper/LaunchDaemon 托管核心 | 已实现 LaunchDaemon 路径 | 通过管理员授权安装/卸载 `/Library/LaunchDaemons/dev.codex.Mihomo.core.plist`，使用当前 runtime config 托管核心。 |
+| 自动设置系统 DNS | 已实现 | 启动 core 前使用 `networksetup` 设置 DNS，停止/退出时通过快照恢复。 |
+| 外部控制器/UI | 已实现 UI 管理 | 支持下载 zashboard/metacubexd 类 zip，写入 `external-ui`、`external-ui-name`、`external-ui-url`。 |
+| 远程 HTTP API | 已实现默认关闭与显式启用 | 默认绑定 `127.0.0.1`，开启后使用指定 bind address；Controller 客户端支持 Bearer secret。 |
+| 证书指纹校验 | 已实现 | 远程 Profile 首次导入记录 HTTPS 证书 SHA-256，刷新时校验 pin。 |
+| YAML 覆写片段 | 已实现 | 高级页管理片段，runtime config 生成时追加启用的 YAML 片段。 |
+| JS 脚本覆写 | 已实现高级开关 | 使用 JavaScriptCore 执行启用片段中的 `transform(config)`，默认关闭。 |
+| 配置预览/Diff | 已实现 | 高级页显示合并后的 runtime config 与原始配置的行级 diff。 |
+| 规则查看 | 已实现 | 规则页解析当前 Profile 的 `rules`。 |
+| 禁用规则 | 已实现 | 禁用列表持久化，runtime config 生成时过滤对应规则。 |
+| Rule Provider 管理 | 已实现 | 资源页本地解析 `rule-providers`，Controller 可用时读取/更新。 |
+| Proxy Provider 管理 | 已实现 | 资源页本地解析 `proxy-providers`，Controller 可用时读取/更新。 |
+| DNS 设置页 | 已实现 | 高级页管理系统 DNS、mihomo DNS enhanced-mode、nameserver、fallback。 |
+| Sniffer 设置 | 已实现 | 高级页管理开关、端口、force-domain、skip-domain，并写入 runtime config。 |
+| Geo 数据更新 | 已实现 | 高级页下载 GeoIP/GeoSite 到 App Support 的 Geo 目录。 |
+| WebDAV 备份恢复 | 已实现 | 支持本地 zip 备份、WebDAV PUT 上传、WebDAV 下载并恢复。 |
+| Gist 同步 | 已实现 | 使用 `mihomo-backup.json` 同步设置、Profile、片段和禁用规则。 |
+| 深链导入 | 已实现 | 注册 `mihomo://`，支持导入 Profile 和覆写片段。 |
+
 ## 6. 建议 MVP 范围
 
 第一版建议控制在“稳定运行 + 高质量原生体验”：
@@ -146,7 +173,7 @@ flowchart LR
 | 诊断 | 一键检查核心、controller、系统代理、TUN、DNS、订阅可达性。 |
 | 菜单栏 | 速率、开关、当前 Profile、出站模式、打开主窗口。 |
 
-MVP 暂缓：Sub-Store 深度集成、JS 脚本覆写、WebDAV/Gist 同步、复杂主题、自定义图标、远程控制 API。
+早期建议将 Sub-Store 深度集成、复杂主题、自定义图标和完整 XPC Helper 后置。v0.5.0 已把 JS 覆写、WebDAV/Gist 同步和远程 HTTP API 做成高级页能力，并保持默认关闭或显式启用。
 
 ## 7. 数据与配置设计
 
@@ -194,10 +221,11 @@ MVP 暂缓：Sub-Store 深度集成、JS 脚本覆写、WebDAV/Gist 同步、复
 
 ## 10. 下一步决策
 
-建议先从功能表中选择 P0 和少量 P1，冻结 MVP 范围。最推荐的首轮组合是：
+后续建议围绕稳定性和分发硬化继续收敛，而不是继续横向扩功能。最推荐的下一轮组合是：
 
-- P0 全选。
-- P1 选择：订阅自动更新、配置预览/Diff、连接详情 Inspector、Rule/Proxy Provider 管理、Geo 更新、登录项/轻量模式。
-- 暂缓 P2/P3，直到核心运行、TUN、系统代理、菜单栏和诊断体验足够稳定。
+- 完整 XPC Helper 与签名/公证流程。
+- Keychain 存储 Gist/WebDAV/Controller secret。
+- 更严格的 YAML AST 合并与 provider/rule 命中统计。
+- Sub-Store 作为独立高级集成，而不是主体验依赖。
 
-这样可以先做出一个“像 Surge 一样专业，但底层是 mihomo”的 macOS 原生产品骨架，再逐步添加高级配置能力。
+这样可以把当前“像 Surge 一样专业，但底层是 mihomo”的 macOS 原生产品骨架，继续推进到可长期分发和日常托管的 Beta 质量。

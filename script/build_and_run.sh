@@ -16,6 +16,8 @@ DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
+APP_RESOURCES="$APP_CONTENTS/Resources"
+APP_CORE="$APP_RESOURCES/Core"
 APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 
@@ -31,9 +33,17 @@ else
 fi
 
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS"
+mkdir -p "$APP_MACOS" "$APP_CORE"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+
+if [[ -x "$ROOT_DIR/vendor/mihomo" ]]; then
+  cp "$ROOT_DIR/vendor/mihomo" "$APP_CORE/mihomo"
+  chmod +x "$APP_CORE/mihomo"
+elif [[ -f "$ROOT_DIR/vendor/mihomo.gz" ]]; then
+  /usr/bin/gzip -dc "$ROOT_DIR/vendor/mihomo.gz" >"$APP_CORE/mihomo"
+  chmod +x "$APP_CORE/mihomo"
+fi
 
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -54,6 +64,17 @@ cat >"$INFO_PLIST" <<PLIST
   <string>NSApplication</string>
   <key>NSHighResolutionCapable</key>
   <true/>
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>$BUNDLE_ID.deeplink</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>mihomo</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>
 PLIST

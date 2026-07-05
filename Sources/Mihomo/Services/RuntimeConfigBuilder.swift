@@ -8,19 +8,36 @@ struct RuntimeConfigBuilder {
         "mode",
         "log-level",
         "external-controller",
+        "external-ui",
+        "external-ui-name",
+        "external-ui-url",
+        "secret",
+        "dns",
+        "sniffer",
         "tun"
     ]
 
-    func build(profileContent: String, settings: AppSettings) -> String {
+    func build(
+        profileContent: String,
+        settings: AppSettings,
+        fragments: [ConfigFragment] = [],
+        disabledRules: Set<String> = []
+    ) -> String {
         let blocks = topLevelBlocks(from: profileContent)
             .filter { block in
                 guard let key = block.key else { return true }
                 return managedKeys.contains(key) == false
             }
-            .map(\.text)
+            .map { block in
+                block.key == "rules" ? filterDisabledRules(in: block.text, disabledRules: disabledRules) : block.text
+            }
             .filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
 
-        let merged = ([generatedOverlay(settings: settings)] + blocks)
+        let yamlFragments = settings.yamlOverrideEnabled
+            ? fragments.filter { $0.enabled && $0.kind == .yaml }.map(\.content)
+            : []
+
+        let merged = ([generatedOverlay(settings: settings)] + blocks + yamlFragments)
             .joined(separator: "\n\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return merged + "\n"
@@ -33,11 +50,34 @@ struct RuntimeConfigBuilder {
             "allow-lan: \(settings.allowLAN ? "true" : "false")",
             "mode: rule",
             "log-level: \(settings.logLevel)",
-            "external-controller: \(settings.controllerHost):\(settings.controllerPort)"
+            "external-controller: \(controllerBindHost(settings)):\(settings.controllerPort)"
         ]
 
         if settings.socksPort > 0 {
             lines.insert("socks-port: \(settings.socksPort)", at: 2)
+        }
+
+        if settings.controllerSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            lines.append("secret: \(yamlScalar(settings.controllerSecret))")
+        }
+
+        if settings.externalUIEnabled {
+            let uiPath = AppPaths.externalUIDirectory
+                .appendingPathComponent(settings.externalUIName, isDirectory: true)
+                .path
+            lines.append("external-ui: \(yamlScalar(uiPath))")
+            lines.append("external-ui-name: \(yamlScalar(settings.externalUIName))")
+            if settings.externalUIDownloadURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                lines.append("external-ui-url: \(yamlScalar(settings.externalUIDownloadURL))")
+            }
+        }
+
+        if settings.dnsNameservers.isEmpty == false || settings.dnsFallbacks.isEmpty == false {
+            lines.append(dnsBlock(settings))
+        }
+
+        if settings.snifferEnabled {
+            lines.append(snifferBlock(settings))
         }
 
         if settings.tunEnabled {
@@ -55,6 +95,94 @@ struct RuntimeConfigBuilder {
         }
 
         return lines.joined(separator: "\n")
+    }
+
+    private func controllerBindHost(_ settings: AppSettings) -> String {
+        settings.remoteAPIEnabled ? settings.remoteAPIBindAddress : "127.0.0.1"
+    }
+
+    private func snifferBlock(_ settings: AppSettings) -> String {
+        let ports = settings.snifferPorts
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        let forceDomains = lineList(settings.snifferForceDomains)
+        let skipDomains = lineList(settings.snifferSkipDomains)
+
+        var block = """
+        sniffer:
+          enable: true
+          sniff:
+            HTTP:
+              ports:
+        \(yamlInlineList(ports, indent: 8))
+            TLS:
+              ports:
+        \(yamlInlineList(ports, indent: 8))
+        """
+
+        if forceDomains.isEmpty == false {
+            block += "\n  force-domain:\n\(yamlList(forceDomains, indent: 4))"
+        }
+        if skipDomains.isEmpty == false {
+            block += "\n  skip-domain:\n\(yamlList(skipDomains, indent: 4))"
+        }
+        return block
+    }
+
+    private func dnsBlock(_ settings: AppSettings) -> String {
+        let nameservers = settings.dnsNameservers.isEmpty ? ["system"] : settings.dnsNameservers
+        var block = """
+        dns:
+          enable: true
+          enhanced-mode: \(settings.dnsEnhancedMode)
+          nameserver:
+        \(yamlList(nameservers, indent: 4))
+        """
+        if settings.dnsFallbacks.isEmpty == false {
+            block += "\n  fallback:\n\(yamlList(settings.dnsFallbacks, indent: 4))"
+        }
+        return block
+    }
+
+    private func filterDisabledRules(in text: String, disabledRules: Set<String>) -> String {
+        guard disabledRules.isEmpty == false else { return text }
+        return text.components(separatedBy: .newlines)
+            .filter { line in
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard trimmed.hasPrefix("- ") else { return true }
+                let rule = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespacesAndNewlines)
+                return disabledRules.contains(rule) == false
+            }
+            .joined(separator: "\n")
+    }
+
+    private func lineList(_ text: String) -> [String] {
+        text.components(separatedBy: CharacterSet(charactersIn: ",\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private func yamlList(_ values: [String], indent: Int) -> String {
+        let prefix = String(repeating: " ", count: indent)
+        return values
+            .filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+            .map { "\(prefix)- \(yamlScalar($0))" }
+            .joined(separator: "\n")
+    }
+
+    private func yamlInlineList(_ values: [String], indent: Int) -> String {
+        let prefix = String(repeating: " ", count: indent)
+        let cleaned = values.filter { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+        if cleaned.isEmpty {
+            return "\(prefix)- 80\n\(prefix)- 443"
+        }
+        return cleaned.map { "\(prefix)- \($0)" }.joined(separator: "\n")
+    }
+
+    private func yamlScalar(_ value: String) -> String {
+        let escaped = value.replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
     }
 
     private func topLevelBlocks(from content: String) -> [YAMLTopLevelBlock] {

@@ -56,6 +56,21 @@ final class SystemProxyManager {
         }
     }
 
+    func setDNSServers(_ servers: [String]) throws {
+        let cleaned = servers
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard cleaned.isEmpty == false else { return }
+
+        if loadSnapshot() == nil {
+            try saveSnapshot(captureSnapshot())
+        }
+
+        for service in networkServices() {
+            try run(["-setdnsservers", service] + cleaned)
+        }
+    }
+
     func disable() throws {
         if let snapshot = loadSnapshot() {
             try restore(snapshot)

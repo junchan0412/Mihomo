@@ -66,6 +66,12 @@ struct DetailSwitchView: View {
             PoliciesView()
         case .profiles:
             ProfilesView()
+        case .rules:
+            RulesView()
+        case .resources:
+            ResourcesView()
+        case .advanced:
+            AdvancedView()
         case .logs:
             LogsView()
         case .diagnostics:

@@ -32,6 +32,18 @@ final class AppStore: ObservableObject {
     @Published var delayTestStatus = "未运行"
     @Published var logsPaused = false
     @Published var bufferedLogCount = 0
+    @Published var configFragments: [ConfigFragment] = []
+    @Published var disabledRules: Set<String> = []
+    @Published var rules: [RuleItem] = []
+    @Published var providers: [ProviderItem] = []
+    @Published var configPreview = ""
+    @Published var configDiff = ""
+    @Published var advancedStatus = "高级功能待命"
+    @Published var managedCoreStatus = "未托管"
+    @Published var externalUIStatus = "未安装"
+    @Published var geoUpdateStatus = "未更新"
+    @Published var backupStatus = "未备份"
+    @Published var launchDaemonStatus = "未安装"
 
     private let profileStore = ProfileStore()
     private let coreManager = CoreManager()
@@ -39,6 +51,12 @@ final class AppStore: ObservableObject {
     private let tunRecovery = TunRecoveryManager()
     private let loginItem = LoginItemManager()
     private let notificationManager = NotificationManager()
+    private let configFragmentStore = ConfigFragmentStore()
+    private let managedCoreManager = ManagedCoreManager()
+    private let externalUIManager = ExternalUIManager()
+    private let geoUpdateManager = GeoUpdateManager()
+    private let backupManager = BackupManager()
+    private let launchDaemonManager = LaunchDaemonManager()
     private var pollingTask: Task<Void, Never>?
     private var profileRefreshTask: Task<Void, Never>?
     private var profileRefreshQueueRunning = false
@@ -55,6 +73,21 @@ final class AppStore: ObservableObject {
         profiles.first { $0.id == settings.activeProfileID } ?? profiles.first
     }
 
+    var effectiveMihomoPath: String {
+        if settings.managedCoreEnabled,
+           FileManager.default.isExecutableFile(atPath: AppPaths.managedCoreFile.path) {
+            return AppPaths.managedCoreFile.path
+        }
+        if settings.mihomoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            return settings.mihomoPath
+        }
+        if let bundled = ManagedCoreManager.bundledCorePath,
+           FileManager.default.isExecutableFile(atPath: bundled) {
+            return bundled
+        }
+        return settings.mihomoPath
+    }
+
     var menuBarTitle: String {
         let state = isCoreRunning ? "开" : "关"
         return "Mihomo \(state) ↓\(Formatters.rate(downloadRate))"
@@ -65,6 +98,8 @@ final class AppStore: ObservableObject {
             try AppPaths.ensureBaseDirectories()
             settings = try profileStore.loadSettings()
             profiles = try profileStore.loadProfiles()
+            configFragments = try configFragmentStore.loadFragments()
+            disabledRules = try configFragmentStore.loadDisabledRules()
             if settings.activeProfileID == nil {
                 settings.activeProfileID = profiles.first?.id
                 try profileStore.saveSettings(settings)
@@ -72,6 +107,10 @@ final class AppStore: ObservableObject {
             lastSystemProxySnapshot = systemProxy.loadSnapshot()
             lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
             tunRecoveryStatus = lastTunRecoverySnapshot == nil ? "未捕获 TUN 回滚快照" : "已有 TUN 回滚快照"
+            managedCoreStatus = FileManager.default.isExecutableFile(atPath: AppPaths.managedCoreFile.path) ? AppPaths.managedCoreFile.path : (ManagedCoreManager.bundledCorePath ?? "未托管")
+            externalUIStatus = externalUIManager.status(name: settings.externalUIName)
+            launchDaemonStatus = launchDaemonManager.plistPath
+            refreshConfigArtifacts()
             syncLaunchAtLoginSetting(reportSuccess: false)
             notificationManager.prepare()
             appendLog("info", "已加载 \(profiles.count) 个配置")
@@ -107,13 +146,24 @@ final class AppStore: ObservableObject {
                 isExpectedCoreExit = false
             }
 
-            let candidate = try profileStore.generateRuntimeConfigCandidate(profile: activeProfile, settings: settings)
+            let mihomoPath = effectiveMihomoPath
+            let candidate = try profileStore.generateRuntimeConfigCandidate(
+                profile: activeProfile,
+                settings: settings,
+                fragments: configFragments,
+                disabledRules: disabledRules
+            )
             let validation = try coreManager.validateConfig(
-                mihomoPath: settings.mihomoPath,
+                mihomoPath: mihomoPath,
                 configPath: candidate,
                 workDirectory: AppPaths.runtimeDirectory
             )
             lastRuntimeValidation = validation.isEmpty ? "mihomo 配置校验通过" : validation
+            if settings.autoSetSystemDNS {
+                try systemProxy.setDNSServers(settings.systemDNSServers)
+                lastSystemProxySnapshot = systemProxy.loadSnapshot()
+                appendLog("info", "已临时设置系统 DNS：\(settings.systemDNSServers.joined(separator: "、"))")
+            }
             if settings.tunEnabled {
                 let snapshot = try tunRecovery.capture(systemProxy: systemProxy)
                 lastTunRecoverySnapshot = snapshot
@@ -123,7 +173,7 @@ final class AppStore: ObservableObject {
             try profileStore.promoteRuntimeConfig(candidate: candidate)
 
             try coreManager.start(
-                mihomoPath: settings.mihomoPath,
+                mihomoPath: mihomoPath,
                 configPath: AppPaths.runtimeConfigFile,
                 workDirectory: AppPaths.runtimeDirectory,
                 onLog: { [weak self] text in
@@ -155,6 +205,15 @@ final class AppStore: ObservableObject {
         if settings.tunEnabled && settings.restoreTunOnStop {
             await restoreTunRecovery()
         }
+        if settings.autoSetSystemDNS {
+            do {
+                try systemProxy.repairFromSnapshot()
+                lastSystemProxySnapshot = nil
+                appendLog("info", "已恢复启动前系统 DNS")
+            } catch {
+                appendLog("error", "系统 DNS 恢复失败：\(error.localizedDescription)")
+            }
+        }
         try? await Task.sleep(nanoseconds: 500_000_000)
         isExpectedCoreExit = false
     }
@@ -167,7 +226,7 @@ final class AppStore: ObservableObject {
     }
 
     func refreshController() async {
-        let client = MihomoControllerClient(host: settings.controllerHost, port: settings.controllerPort)
+        let client = controllerClient()
         do {
             async let version = client.version()
             async let mode = client.configMode()
@@ -192,7 +251,7 @@ final class AppStore: ObservableObject {
 
     func setMode(_ mode: String) async {
         do {
-            let client = MihomoControllerClient(host: settings.controllerHost, port: settings.controllerPort)
+            let client = controllerClient()
             try await client.setMode(mode)
             currentMode = mode
             appendLog("info", "出站模式已切换为 \(mode)")
@@ -203,7 +262,7 @@ final class AppStore: ObservableObject {
 
     func selectProxy(group: String, proxy: String) async {
         do {
-            let client = MihomoControllerClient(host: settings.controllerHost, port: settings.controllerPort)
+            let client = controllerClient()
             try await client.selectProxy(group: group, proxy: proxy)
             if settings.closeConnectionsOnPolicyChange {
                 try? await client.closeConnections()
@@ -217,7 +276,7 @@ final class AppStore: ObservableObject {
 
     func testProxyDelay(group: String, proxy: String) async {
         do {
-            let client = MihomoControllerClient(host: settings.controllerHost, port: settings.controllerPort)
+            let client = controllerClient()
             let delay = try await client.proxyDelay(proxy: proxy, url: settings.delayTestURL)
             updateDelay(group: group, proxy: proxy, delay: delay)
             delayTestStatus = "\(proxy)：\(delay) ms"
@@ -242,7 +301,7 @@ final class AppStore: ObservableObject {
 
     func closeAllConnections() async {
         do {
-            let client = MihomoControllerClient(host: settings.controllerHost, port: settings.controllerPort)
+            let client = controllerClient()
             try await client.closeConnections()
             connections = []
             appendLog("info", "已关闭所有连接")
@@ -253,7 +312,7 @@ final class AppStore: ObservableObject {
 
     func closeConnection(_ id: String) async {
         do {
-            let client = MihomoControllerClient(host: settings.controllerHost, port: settings.controllerPort)
+            let client = controllerClient()
             try await client.closeConnection(id: id)
             connections.removeAll { $0.id == id }
             appendLog("info", "已关闭连接 \(id)")
@@ -330,6 +389,7 @@ final class AppStore: ObservableObject {
             try profileStore.saveSettings(settings)
             newRemoteURL = ""
             newRemoteName = ""
+            refreshConfigArtifacts()
             appendLog("info", "已导入远程订阅 \(item.name)")
         } catch {
             appendLog("error", "远程订阅导入失败：\(error.localizedDescription)")
@@ -343,6 +403,7 @@ final class AppStore: ObservableObject {
             settings.activeProfileID = item.id
             try profileStore.saveProfiles(profiles)
             try profileStore.saveSettings(settings)
+            refreshConfigArtifacts()
             appendLog("info", "已导入本地配置 \(item.name)")
         } catch {
             appendLog("error", "本地配置导入失败：\(error.localizedDescription)")
@@ -356,6 +417,7 @@ final class AppStore: ObservableObject {
                 profiles[index] = updated
                 try profileStore.saveProfiles(profiles)
             }
+            refreshConfigArtifacts()
             appendLog("info", "已刷新配置 \(profile.name)")
         } catch {
             appendLog("error", "配置刷新失败：\(error.localizedDescription)")
@@ -421,6 +483,7 @@ final class AppStore: ObservableObject {
                     profiles[index] = updated
                     try? profileStore.saveProfiles(profiles)
                 }
+                refreshConfigArtifacts()
                 succeeded += 1
                 markRefreshJob(profileID: result.profileID, state: .succeeded, message: "刷新成功", finishedAt: Date())
             } else {
@@ -442,6 +505,7 @@ final class AppStore: ObservableObject {
         settings.activeProfileID = profile.id
         do {
             try profileStore.saveSettings(settings)
+            refreshConfigArtifacts()
             appendLog("info", "已启用配置 \(profile.name)")
             if isCoreRunning {
                 await restartCore()
@@ -468,6 +532,7 @@ final class AppStore: ObservableObject {
             let updated = try profileStore.saveProfileContent(profile, content: content)
             profiles[index] = updated
             try profileStore.saveProfiles(profiles)
+            refreshConfigArtifacts()
             appendLog("info", "已保存配置 \(updated.name)")
         } catch {
             appendLog("error", "保存配置失败：\(error.localizedDescription)")
@@ -483,6 +548,7 @@ final class AppStore: ObservableObject {
             if settings.lightweightMode {
                 enterLightweightMode()
             }
+            refreshConfigArtifacts()
             appendLog("info", "设置已保存")
         } catch {
             appendLog("error", "设置保存失败：\(error.localizedDescription)")
@@ -491,10 +557,11 @@ final class AppStore: ObservableObject {
 
     func runDiagnostics() async {
         var results: [DiagnosticResult] = []
+        let mihomoPath = effectiveMihomoPath
 
-        if FileManager.default.isExecutableFile(atPath: settings.mihomoPath) {
-            results.append(.init(title: "mihomo 可执行文件", detail: settings.mihomoPath, state: .ok))
-            if let version = try? Shell.run(settings.mihomoPath, ["-v"]) {
+        if FileManager.default.isExecutableFile(atPath: mihomoPath) {
+            results.append(.init(title: "mihomo 可执行文件", detail: mihomoPath, state: .ok))
+            if let version = try? Shell.run(mihomoPath, ["-v"]) {
                 let detail = [version.stdout, version.stderr]
                     .joined(separator: "\n")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -509,8 +576,13 @@ final class AppStore: ObservableObject {
             let exists = FileManager.default.fileExists(atPath: file.path)
             results.append(.init(title: "当前配置", detail: exists ? activeProfile.name : "配置文件丢失", state: exists ? .ok : .failed))
             do {
-                let candidate = try profileStore.generateRuntimeConfigCandidate(profile: activeProfile, settings: settings)
-                _ = try coreManager.validateConfig(mihomoPath: settings.mihomoPath, configPath: candidate, workDirectory: AppPaths.runtimeDirectory)
+                let candidate = try profileStore.generateRuntimeConfigCandidate(
+                    profile: activeProfile,
+                    settings: settings,
+                    fragments: configFragments,
+                    disabledRules: disabledRules
+                )
+                _ = try coreManager.validateConfig(mihomoPath: mihomoPath, configPath: candidate, workDirectory: AppPaths.runtimeDirectory)
                 results.append(.init(title: "运行配置 dry-run", detail: "mihomo -t 校验通过：\(candidate.path)", state: .ok))
             } catch {
                 results.append(.init(title: "运行配置 dry-run", detail: error.localizedDescription, state: .failed))
@@ -566,7 +638,7 @@ final class AppStore: ObservableObject {
         }
 
         do {
-            let client = MihomoControllerClient(host: settings.controllerHost, port: settings.controllerPort)
+            let client = controllerClient()
             let version = try await client.version()
             let mode = try await client.configMode()
             results.append(.init(title: "Controller", detail: "已连接，版本 \(version)，模式 \(mode)", state: .ok))
@@ -586,8 +658,350 @@ final class AppStore: ObservableObject {
             state: profileRefreshFailureCount > 0 ? .warning : (settings.autoRefreshProfiles ? .ok : .warning)
         ))
 
+        results.append(.init(
+            title: "托管/内置核心",
+            detail: "当前有效路径：\(mihomoPath)\n托管路径：\(AppPaths.managedCoreFile.path)\n内置路径：\(ManagedCoreManager.bundledCorePath ?? "未随包提供")",
+            state: FileManager.default.isExecutableFile(atPath: mihomoPath) ? .ok : .failed
+        ))
+
+        results.append(.init(
+            title: "远程 HTTP API",
+            detail: settings.remoteAPIEnabled ? "已显式启用，绑定 \(settings.remoteAPIBindAddress):\(settings.controllerPort)，密钥\(settings.controllerSecret.isEmpty ? "未设置" : "已设置")。" : "默认关闭远程访问，仅绑定 127.0.0.1。",
+            state: settings.remoteAPIEnabled && settings.controllerSecret.isEmpty ? .warning : .ok
+        ))
+
+        results.append(.init(
+            title: "外部 UI",
+            detail: externalUIStatus,
+            state: settings.externalUIEnabled && externalUIStatus == "未安装" ? .warning : .ok
+        ))
+
+        let geoFiles = ["geoip.dat", "geosite.dat"].filter {
+            FileManager.default.fileExists(atPath: AppPaths.geoDirectory.appendingPathComponent($0).path)
+        }
+        results.append(.init(
+            title: "Geo 数据",
+            detail: geoFiles.isEmpty ? "尚未下载 Geo 数据。" : "已存在：\(geoFiles.joined(separator: "、"))",
+            state: geoFiles.isEmpty ? .warning : .ok
+        ))
+
+        results.append(.init(
+            title: "覆写片段与禁用规则",
+            detail: "\(configFragments.count) 个片段，\(disabledRules.count) 条禁用规则。JS 覆写\(settings.jsOverrideEnabled ? "已启用" : "未启用")，YAML 覆写\(settings.yamlOverrideEnabled ? "已启用" : "未启用")。",
+            state: .ok
+        ))
+
         diagnostics = results
         selectedSection = .diagnostics
+    }
+
+    func refreshConfigArtifacts() {
+        guard let activeProfile else {
+            rules = []
+            providers = []
+            configPreview = ""
+            configDiff = ""
+            return
+        }
+
+        do {
+            let original = try profileStore.loadProfileContent(activeProfile)
+            rules = configFragmentStore.parseRules(profileContent: original, disabledRules: disabledRules)
+            providers = configFragmentStore.parseProviders(profileContent: original)
+            let candidate = try profileStore.generateRuntimeConfigCandidate(
+                profile: activeProfile,
+                settings: settings,
+                fragments: configFragments,
+                disabledRules: disabledRules
+            )
+            configPreview = try String(contentsOf: candidate, encoding: .utf8)
+            configDiff = configFragmentStore.makeDiff(original: original, generated: configPreview)
+            advancedStatus = "配置预览已更新：\(Formatters.shortDate.string(from: Date()))"
+        } catch {
+            advancedStatus = "配置预览失败：\(error.localizedDescription)"
+            appendLog("error", advancedStatus)
+        }
+    }
+
+    func refreshProvidersFromController() async {
+        do {
+            providers = try await controllerClient().providers()
+            advancedStatus = "已从 Controller 读取 \(providers.count) 个 Provider"
+        } catch {
+            appendLog("warning", "Controller Provider 读取失败，保留本地解析结果：\(error.localizedDescription)")
+            refreshConfigArtifacts()
+        }
+    }
+
+    func updateProvider(_ provider: ProviderItem) async {
+        do {
+            try await controllerClient().updateProvider(provider)
+            appendLog("info", "已请求更新 \(provider.kind) Provider：\(provider.name)")
+            await refreshProvidersFromController()
+        } catch {
+            appendLog("error", "Provider 更新失败：\(error.localizedDescription)")
+        }
+    }
+
+    func toggleRuleDisabled(_ rule: RuleItem) {
+        if disabledRules.contains(rule.content) {
+            disabledRules.remove(rule.content)
+        } else {
+            disabledRules.insert(rule.content)
+        }
+        do {
+            try configFragmentStore.saveDisabledRules(disabledRules)
+            refreshConfigArtifacts()
+            appendLog("info", disabledRules.contains(rule.content) ? "已禁用规则 \(rule.index)" : "已启用规则 \(rule.index)")
+        } catch {
+            appendLog("error", "保存禁用规则失败：\(error.localizedDescription)")
+        }
+    }
+
+    func addConfigFragment(name: String, kind: ConfigFragmentKind, content: String) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedContent.isEmpty == false else { return }
+        var fragment = ConfigFragment(
+            name: trimmedName.isEmpty ? (kind == .yaml ? "YAML 片段" : "JS 片段") : trimmedName,
+            kind: kind,
+            enabled: true,
+            content: content
+        )
+        fragment.updatedAt = Date()
+        configFragments.append(fragment)
+        saveConfigFragments()
+    }
+
+    func updateConfigFragment(_ fragment: ConfigFragment) {
+        guard let index = configFragments.firstIndex(where: { $0.id == fragment.id }) else { return }
+        var updated = fragment
+        updated.updatedAt = Date()
+        configFragments[index] = updated
+        saveConfigFragments()
+    }
+
+    func deleteConfigFragment(_ fragment: ConfigFragment) {
+        configFragments.removeAll { $0.id == fragment.id }
+        saveConfigFragments()
+    }
+
+    func installManagedCore() async {
+        do {
+            managedCoreStatus = "正在下载 mihomo core..."
+            let version = try await managedCoreManager.installOrUpdate(from: settings.managedCoreDownloadURL)
+            managedCoreStatus = version.isEmpty ? AppPaths.managedCoreFile.path : version
+            var updated = settings
+            updated.managedCoreEnabled = true
+            if updated.mihomoPath.isEmpty {
+                updated.mihomoPath = AppPaths.managedCoreFile.path
+            }
+            await saveSettings(updated)
+            appendLog("info", "托管 mihomo core 已更新")
+        } catch {
+            managedCoreStatus = "核心更新失败：\(error.localizedDescription)"
+            appendLog("error", managedCoreStatus)
+        }
+    }
+
+    func installExternalUI() async {
+        do {
+            externalUIStatus = "正在下载外部 UI..."
+            let path = try await externalUIManager.install(name: settings.externalUIName, from: settings.externalUIDownloadURL)
+            externalUIStatus = path
+            appendLog("info", "外部 UI 已安装：\(path)")
+            refreshConfigArtifacts()
+        } catch {
+            externalUIStatus = "外部 UI 安装失败：\(error.localizedDescription)"
+            appendLog("error", externalUIStatus)
+        }
+    }
+
+    func updateGeoData() async {
+        do {
+            geoUpdateStatus = "正在更新 Geo 数据..."
+            geoUpdateStatus = try await geoUpdateManager.update(geoIPURL: settings.geoIPURL, geoSiteURL: settings.geoSiteURL)
+            appendLog("info", geoUpdateStatus)
+        } catch {
+            geoUpdateStatus = "Geo 更新失败：\(error.localizedDescription)"
+            appendLog("error", geoUpdateStatus)
+        }
+    }
+
+    func installLaunchDaemon() async {
+        guard let activeProfile else {
+            launchDaemonStatus = "没有可用配置"
+            return
+        }
+        do {
+            let candidate = try profileStore.generateRuntimeConfigCandidate(
+                profile: activeProfile,
+                settings: settings,
+                fragments: configFragments,
+                disabledRules: disabledRules
+            )
+            try profileStore.promoteRuntimeConfig(candidate: candidate)
+            let path = try launchDaemonManager.install(
+                corePath: effectiveMihomoPath,
+                configPath: AppPaths.runtimeConfigFile,
+                workDirectory: AppPaths.runtimeDirectory
+            )
+            launchDaemonStatus = "已安装：\(path)"
+            var updated = settings
+            updated.launchDaemonEnabled = true
+            await saveSettings(updated)
+            appendLog("info", "LaunchDaemon 已安装并加载")
+        } catch {
+            launchDaemonStatus = "LaunchDaemon 安装失败：\(error.localizedDescription)"
+            appendLog("error", launchDaemonStatus)
+        }
+    }
+
+    func uninstallLaunchDaemon() async {
+        do {
+            try launchDaemonManager.uninstall()
+            launchDaemonStatus = "已卸载"
+            var updated = settings
+            updated.launchDaemonEnabled = false
+            await saveSettings(updated)
+            appendLog("info", "LaunchDaemon 已卸载")
+        } catch {
+            launchDaemonStatus = "LaunchDaemon 卸载失败：\(error.localizedDescription)"
+            appendLog("error", launchDaemonStatus)
+        }
+    }
+
+    func createLocalBackup() {
+        do {
+            let archive = try backupManager.createLocalArchive()
+            backupStatus = "本地备份：\(archive.path)"
+            appendLog("info", backupStatus)
+        } catch {
+            backupStatus = "本地备份失败：\(error.localizedDescription)"
+            appendLog("error", backupStatus)
+        }
+    }
+
+    func restoreLocalBackup(url: URL) async {
+        do {
+            try backupManager.restoreLocalArchive(url)
+            try reloadPersistentState()
+            backupStatus = "已从本地备份恢复：\(url.lastPathComponent)"
+            appendLog("info", backupStatus)
+        } catch {
+            backupStatus = "本地恢复失败：\(error.localizedDescription)"
+            appendLog("error", backupStatus)
+        }
+    }
+
+    func uploadWebDAVBackup() async {
+        do {
+            let archive = try backupManager.createLocalArchive()
+            let target = try await backupManager.uploadWebDAV(
+                archive: archive,
+                urlString: settings.backupWebDAVURL,
+                username: settings.backupWebDAVUsername,
+                password: settings.backupWebDAVPassword
+            )
+            backupStatus = "WebDAV 已上传：\(target)"
+            appendLog("info", backupStatus)
+        } catch {
+            backupStatus = "WebDAV 上传失败：\(error.localizedDescription)"
+            appendLog("error", backupStatus)
+        }
+    }
+
+    func restoreWebDAVBackup() async {
+        do {
+            let archive = try await backupManager.downloadWebDAV(
+                urlString: settings.backupWebDAVURL,
+                username: settings.backupWebDAVUsername,
+                password: settings.backupWebDAVPassword
+            )
+            try backupManager.restoreLocalArchive(archive)
+            try reloadPersistentState()
+            backupStatus = "WebDAV 已恢复：\(archive.lastPathComponent)"
+            appendLog("info", backupStatus)
+        } catch {
+            backupStatus = "WebDAV 恢复失败：\(error.localizedDescription)"
+            appendLog("error", backupStatus)
+        }
+    }
+
+    func uploadGistBackup() async {
+        do {
+            let payload = try backupManager.encodePayload(makeBackupPayload())
+            let gistID = try await backupManager.uploadGist(payload: payload, token: settings.gistToken, gistID: settings.gistID)
+            if gistID != settings.gistID {
+                var updated = settings
+                updated.gistID = gistID
+                await saveSettings(updated)
+            }
+            backupStatus = "Gist 已同步：\(gistID)"
+            appendLog("info", backupStatus)
+        } catch {
+            backupStatus = "Gist 同步失败：\(error.localizedDescription)"
+            appendLog("error", backupStatus)
+        }
+    }
+
+    func restoreGistBackup() async {
+        do {
+            let content = try await backupManager.downloadGist(token: settings.gistToken, gistID: settings.gistID)
+            let payload = try backupManager.decodePayload(content)
+            try applyBackupPayload(payload)
+            backupStatus = "Gist 已恢复：\(payload.createdAt)"
+            appendLog("info", backupStatus)
+        } catch {
+            backupStatus = "Gist 恢复失败：\(error.localizedDescription)"
+            appendLog("error", backupStatus)
+        }
+    }
+
+    func handleDeepLink(_ url: URL) async {
+        guard url.scheme == "mihomo" else { return }
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let command = (url.host ?? url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))).lowercased()
+        let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        do {
+            switch command {
+            case "install-profile", "profile":
+                guard let value = query["url"], let importURL = URL(string: value) else { return }
+                if importURL.isFileURL {
+                    let item = try profileStore.importLocalProfile(fileURL: importURL, name: query["name"])
+                    profiles.append(item)
+                    settings.activeProfileID = item.id
+                } else {
+                    let item = try await profileStore.importRemoteProfile(urlString: value, name: query["name"])
+                    profiles.append(item)
+                    settings.activeProfileID = item.id
+                }
+                try profileStore.saveProfiles(profiles)
+                try profileStore.saveSettings(settings)
+                refreshConfigArtifacts()
+                appendLog("info", "深链已导入配置")
+            case "install-fragment", "fragment":
+                let kind = ConfigFragmentKind(rawValue: query["kind"] ?? "yaml") ?? .yaml
+                let content: String
+                if let value = query["content"] {
+                    content = value
+                } else if let value = query["url"], let remote = URL(string: value) {
+                    let (data, _) = try await URLSession.shared.data(from: remote)
+                    content = String(data: data, encoding: .utf8) ?? ""
+                } else {
+                    content = ""
+                }
+                addConfigFragment(name: query["name"] ?? "", kind: kind, content: content)
+                appendLog("info", "深链已导入覆写片段")
+            default:
+                appendLog("warning", "未知深链命令：\(command)")
+            }
+        } catch {
+            appendLog("error", "深链处理失败：\(error.localizedDescription)")
+        }
     }
 
     func appendLog(_ level: String, _ message: String) {
@@ -636,9 +1050,70 @@ final class AppStore: ObservableObject {
         if settings.restoreSystemProxyOnQuit, systemProxyEnabled {
             try? systemProxy.disable()
         }
+        if settings.autoSetSystemDNS {
+            try? systemProxy.repairFromSnapshot()
+        }
         if settings.tunEnabled && settings.restoreTunOnStop {
             _ = try? tunRecovery.restore(systemProxy: systemProxy)
         }
+    }
+
+    private func saveConfigFragments() {
+        do {
+            try configFragmentStore.saveFragments(configFragments)
+            refreshConfigArtifacts()
+            appendLog("info", "覆写片段已保存")
+        } catch {
+            appendLog("error", "覆写片段保存失败：\(error.localizedDescription)")
+        }
+    }
+
+    private func reloadPersistentState() throws {
+        settings = try profileStore.loadSettings()
+        profiles = try profileStore.loadProfiles()
+        configFragments = try configFragmentStore.loadFragments()
+        disabledRules = try configFragmentStore.loadDisabledRules()
+        refreshConfigArtifacts()
+    }
+
+    private func makeBackupPayload() throws -> BackupPayload {
+        let contents = Dictionary(uniqueKeysWithValues: try profiles.map { profile in
+            (profile.fileName, try profileStore.loadProfileContent(profile))
+        })
+        return BackupPayload(
+            createdAt: Date(),
+            settings: settings,
+            profiles: profiles,
+            fragments: configFragments,
+            disabledRules: disabledRules.sorted(),
+            profileContents: contents
+        )
+    }
+
+    private func applyBackupPayload(_ payload: BackupPayload) throws {
+        try AppPaths.ensureBaseDirectories()
+        settings = payload.settings
+        profiles = payload.profiles
+        configFragments = payload.fragments
+        disabledRules = Set(payload.disabledRules)
+        try profileStore.saveSettings(settings)
+        try profileStore.saveProfiles(profiles)
+        try configFragmentStore.saveFragments(configFragments)
+        try configFragmentStore.saveDisabledRules(disabledRules)
+        for profile in profiles {
+            if let content = payload.profileContents[profile.fileName] {
+                try content.write(to: profileStore.profileFile(profile), atomically: true, encoding: .utf8)
+            }
+        }
+        refreshConfigArtifacts()
+    }
+
+    private func controllerClient() -> MihomoControllerClient {
+        MihomoControllerClient(
+            host: settings.controllerHost,
+            port: settings.controllerPort,
+            secret: settings.controllerSecret
+        )
     }
 
     private func syncLaunchAtLoginSetting(reportSuccess: Bool) {
@@ -811,9 +1286,10 @@ final class AppStore: ObservableObject {
                 let row = pendingRows.removeFirst()
                 let host = settings.controllerHost
                 let port = settings.controllerPort
+                let secret = settings.controllerSecret
                 let url = settings.delayTestURL
                 runningTasks.append(Task {
-                    let client = MihomoControllerClient(host: host, port: port)
+                    let client = MihomoControllerClient(host: host, port: port, secret: secret)
                     do {
                         let delay = try await client.proxyDelay(proxy: row.node.name, url: url)
                         return ProxyDelayResult(group: row.group.name, proxy: row.node.name, delay: delay, errorMessage: nil)

@@ -5,6 +5,9 @@ enum AppSection: String, CaseIterable, Identifiable {
     case activity
     case policies
     case profiles
+    case rules
+    case resources
+    case advanced
     case logs
     case diagnostics
     case settings
@@ -17,6 +20,9 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .activity: return "活动"
         case .policies: return "策略"
         case .profiles: return "配置"
+        case .rules: return "规则"
+        case .resources: return "资源"
+        case .advanced: return "高级"
         case .logs: return "日志"
         case .diagnostics: return "诊断"
         case .settings: return "设置"
@@ -29,6 +35,9 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .activity: return "waveform.path.ecg"
         case .policies: return "switch.2"
         case .profiles: return "doc.text"
+        case .rules: return "list.bullet.rectangle"
+        case .resources: return "shippingbox"
+        case .advanced: return "wrench.and.screwdriver"
         case .logs: return "terminal"
         case .diagnostics: return "stethoscope"
         case .settings: return "gearshape"
@@ -52,8 +61,64 @@ struct ProfileItem: Identifiable, Codable, Hashable {
     var downloadUsed: Int64?
     var total: Int64?
     var expireAt: Date?
+    var certificateFingerprint: String?
 
     var isRemote: Bool { source == .remote }
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case source
+        case location
+        case fileName
+        case updatedAt
+        case uploadUsed
+        case downloadUsed
+        case total
+        case expireAt
+        case certificateFingerprint
+    }
+
+    init(
+        id: UUID,
+        name: String,
+        source: ProfileSource,
+        location: String,
+        fileName: String,
+        updatedAt: Date,
+        uploadUsed: Int64? = nil,
+        downloadUsed: Int64? = nil,
+        total: Int64? = nil,
+        expireAt: Date? = nil,
+        certificateFingerprint: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.source = source
+        self.location = location
+        self.fileName = fileName
+        self.updatedAt = updatedAt
+        self.uploadUsed = uploadUsed
+        self.downloadUsed = downloadUsed
+        self.total = total
+        self.expireAt = expireAt
+        self.certificateFingerprint = certificateFingerprint
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        source = try container.decode(ProfileSource.self, forKey: .source)
+        location = try container.decode(String.self, forKey: .location)
+        fileName = try container.decode(String.self, forKey: .fileName)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+        uploadUsed = try container.decodeIfPresent(Int64.self, forKey: .uploadUsed)
+        downloadUsed = try container.decodeIfPresent(Int64.self, forKey: .downloadUsed)
+        total = try container.decodeIfPresent(Int64.self, forKey: .total)
+        expireAt = try container.decodeIfPresent(Date.self, forKey: .expireAt)
+        certificateFingerprint = try container.decodeIfPresent(String.self, forKey: .certificateFingerprint)
+    }
 }
 
 struct AppSettings: Codable, Hashable {
@@ -81,6 +146,33 @@ struct AppSettings: Codable, Hashable {
     var delayTestConcurrency: Int
     var logRetentionDays: Int
     var logMaxFileSizeMB: Int
+    var managedCoreEnabled: Bool
+    var managedCoreDownloadURL: String
+    var launchDaemonEnabled: Bool
+    var autoSetSystemDNS: Bool
+    var systemDNSServers: [String]
+    var externalUIEnabled: Bool
+    var externalUIName: String
+    var externalUIDownloadURL: String
+    var remoteAPIEnabled: Bool
+    var remoteAPIBindAddress: String
+    var controllerSecret: String
+    var yamlOverrideEnabled: Bool
+    var jsOverrideEnabled: Bool
+    var snifferEnabled: Bool
+    var snifferPorts: String
+    var snifferForceDomains: String
+    var snifferSkipDomains: String
+    var dnsEnhancedMode: String
+    var dnsNameservers: [String]
+    var dnsFallbacks: [String]
+    var geoIPURL: String
+    var geoSiteURL: String
+    var backupWebDAVURL: String
+    var backupWebDAVUsername: String
+    var backupWebDAVPassword: String
+    var gistToken: String
+    var gistID: String
 
     static let `default` = AppSettings()
 
@@ -108,7 +200,34 @@ struct AppSettings: Codable, Hashable {
         profileRefreshMaxConcurrent: Int = 2,
         delayTestConcurrency: Int = 6,
         logRetentionDays: Int = 7,
-        logMaxFileSizeMB: Int = 8
+        logMaxFileSizeMB: Int = 8,
+        managedCoreEnabled: Bool = false,
+        managedCoreDownloadURL: String = "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.27/mihomo-darwin-arm64-v1.19.27.gz",
+        launchDaemonEnabled: Bool = false,
+        autoSetSystemDNS: Bool = false,
+        systemDNSServers: [String] = ["1.1.1.1", "8.8.8.8"],
+        externalUIEnabled: Bool = false,
+        externalUIName: String = "zashboard",
+        externalUIDownloadURL: String = "https://github.com/Zephyruso/zashboard/archive/refs/heads/gh-pages.zip",
+        remoteAPIEnabled: Bool = false,
+        remoteAPIBindAddress: String = "127.0.0.1",
+        controllerSecret: String = "",
+        yamlOverrideEnabled: Bool = true,
+        jsOverrideEnabled: Bool = false,
+        snifferEnabled: Bool = false,
+        snifferPorts: String = "80,443",
+        snifferForceDomains: String = "",
+        snifferSkipDomains: String = "",
+        dnsEnhancedMode: String = "fake-ip",
+        dnsNameservers: [String] = ["https://1.1.1.1/dns-query", "https://dns.google/dns-query"],
+        dnsFallbacks: [String] = [],
+        geoIPURL: String = "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geoip.dat",
+        geoSiteURL: String = "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geosite.dat",
+        backupWebDAVURL: String = "",
+        backupWebDAVUsername: String = "",
+        backupWebDAVPassword: String = "",
+        gistToken: String = "",
+        gistID: String = ""
     ) {
         self.mihomoPath = mihomoPath
         self.activeProfileID = activeProfileID
@@ -134,6 +253,33 @@ struct AppSettings: Codable, Hashable {
         self.delayTestConcurrency = delayTestConcurrency
         self.logRetentionDays = logRetentionDays
         self.logMaxFileSizeMB = logMaxFileSizeMB
+        self.managedCoreEnabled = managedCoreEnabled
+        self.managedCoreDownloadURL = managedCoreDownloadURL
+        self.launchDaemonEnabled = launchDaemonEnabled
+        self.autoSetSystemDNS = autoSetSystemDNS
+        self.systemDNSServers = systemDNSServers
+        self.externalUIEnabled = externalUIEnabled
+        self.externalUIName = externalUIName
+        self.externalUIDownloadURL = externalUIDownloadURL
+        self.remoteAPIEnabled = remoteAPIEnabled
+        self.remoteAPIBindAddress = remoteAPIBindAddress
+        self.controllerSecret = controllerSecret
+        self.yamlOverrideEnabled = yamlOverrideEnabled
+        self.jsOverrideEnabled = jsOverrideEnabled
+        self.snifferEnabled = snifferEnabled
+        self.snifferPorts = snifferPorts
+        self.snifferForceDomains = snifferForceDomains
+        self.snifferSkipDomains = snifferSkipDomains
+        self.dnsEnhancedMode = dnsEnhancedMode
+        self.dnsNameservers = dnsNameservers
+        self.dnsFallbacks = dnsFallbacks
+        self.geoIPURL = geoIPURL
+        self.geoSiteURL = geoSiteURL
+        self.backupWebDAVURL = backupWebDAVURL
+        self.backupWebDAVUsername = backupWebDAVUsername
+        self.backupWebDAVPassword = backupWebDAVPassword
+        self.gistToken = gistToken
+        self.gistID = gistID
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -161,6 +307,33 @@ struct AppSettings: Codable, Hashable {
         case delayTestConcurrency
         case logRetentionDays
         case logMaxFileSizeMB
+        case managedCoreEnabled
+        case managedCoreDownloadURL
+        case launchDaemonEnabled
+        case autoSetSystemDNS
+        case systemDNSServers
+        case externalUIEnabled
+        case externalUIName
+        case externalUIDownloadURL
+        case remoteAPIEnabled
+        case remoteAPIBindAddress
+        case controllerSecret
+        case yamlOverrideEnabled
+        case jsOverrideEnabled
+        case snifferEnabled
+        case snifferPorts
+        case snifferForceDomains
+        case snifferSkipDomains
+        case dnsEnhancedMode
+        case dnsNameservers
+        case dnsFallbacks
+        case geoIPURL
+        case geoSiteURL
+        case backupWebDAVURL
+        case backupWebDAVUsername
+        case backupWebDAVPassword
+        case gistToken
+        case gistID
     }
 
     init(from decoder: Decoder) throws {
@@ -190,7 +363,69 @@ struct AppSettings: Codable, Hashable {
         delayTestConcurrency = try container.decodeIfPresent(Int.self, forKey: .delayTestConcurrency) ?? fallback.delayTestConcurrency
         logRetentionDays = try container.decodeIfPresent(Int.self, forKey: .logRetentionDays) ?? fallback.logRetentionDays
         logMaxFileSizeMB = try container.decodeIfPresent(Int.self, forKey: .logMaxFileSizeMB) ?? fallback.logMaxFileSizeMB
+        managedCoreEnabled = try container.decodeIfPresent(Bool.self, forKey: .managedCoreEnabled) ?? fallback.managedCoreEnabled
+        managedCoreDownloadURL = try container.decodeIfPresent(String.self, forKey: .managedCoreDownloadURL) ?? fallback.managedCoreDownloadURL
+        launchDaemonEnabled = try container.decodeIfPresent(Bool.self, forKey: .launchDaemonEnabled) ?? fallback.launchDaemonEnabled
+        autoSetSystemDNS = try container.decodeIfPresent(Bool.self, forKey: .autoSetSystemDNS) ?? fallback.autoSetSystemDNS
+        systemDNSServers = try container.decodeIfPresent([String].self, forKey: .systemDNSServers) ?? fallback.systemDNSServers
+        externalUIEnabled = try container.decodeIfPresent(Bool.self, forKey: .externalUIEnabled) ?? fallback.externalUIEnabled
+        externalUIName = try container.decodeIfPresent(String.self, forKey: .externalUIName) ?? fallback.externalUIName
+        externalUIDownloadURL = try container.decodeIfPresent(String.self, forKey: .externalUIDownloadURL) ?? fallback.externalUIDownloadURL
+        remoteAPIEnabled = try container.decodeIfPresent(Bool.self, forKey: .remoteAPIEnabled) ?? fallback.remoteAPIEnabled
+        remoteAPIBindAddress = try container.decodeIfPresent(String.self, forKey: .remoteAPIBindAddress) ?? fallback.remoteAPIBindAddress
+        controllerSecret = try container.decodeIfPresent(String.self, forKey: .controllerSecret) ?? fallback.controllerSecret
+        yamlOverrideEnabled = try container.decodeIfPresent(Bool.self, forKey: .yamlOverrideEnabled) ?? fallback.yamlOverrideEnabled
+        jsOverrideEnabled = try container.decodeIfPresent(Bool.self, forKey: .jsOverrideEnabled) ?? fallback.jsOverrideEnabled
+        snifferEnabled = try container.decodeIfPresent(Bool.self, forKey: .snifferEnabled) ?? fallback.snifferEnabled
+        snifferPorts = try container.decodeIfPresent(String.self, forKey: .snifferPorts) ?? fallback.snifferPorts
+        snifferForceDomains = try container.decodeIfPresent(String.self, forKey: .snifferForceDomains) ?? fallback.snifferForceDomains
+        snifferSkipDomains = try container.decodeIfPresent(String.self, forKey: .snifferSkipDomains) ?? fallback.snifferSkipDomains
+        dnsEnhancedMode = try container.decodeIfPresent(String.self, forKey: .dnsEnhancedMode) ?? fallback.dnsEnhancedMode
+        dnsNameservers = try container.decodeIfPresent([String].self, forKey: .dnsNameservers) ?? fallback.dnsNameservers
+        dnsFallbacks = try container.decodeIfPresent([String].self, forKey: .dnsFallbacks) ?? fallback.dnsFallbacks
+        geoIPURL = try container.decodeIfPresent(String.self, forKey: .geoIPURL) ?? fallback.geoIPURL
+        geoSiteURL = try container.decodeIfPresent(String.self, forKey: .geoSiteURL) ?? fallback.geoSiteURL
+        backupWebDAVURL = try container.decodeIfPresent(String.self, forKey: .backupWebDAVURL) ?? fallback.backupWebDAVURL
+        backupWebDAVUsername = try container.decodeIfPresent(String.self, forKey: .backupWebDAVUsername) ?? fallback.backupWebDAVUsername
+        backupWebDAVPassword = try container.decodeIfPresent(String.self, forKey: .backupWebDAVPassword) ?? fallback.backupWebDAVPassword
+        gistToken = try container.decodeIfPresent(String.self, forKey: .gistToken) ?? fallback.gistToken
+        gistID = try container.decodeIfPresent(String.self, forKey: .gistID) ?? fallback.gistID
     }
+}
+
+enum ConfigFragmentKind: String, Codable, CaseIterable, Hashable {
+    case yaml
+    case javascript
+
+    var title: String {
+        switch self {
+        case .yaml: return "YAML"
+        case .javascript: return "JavaScript"
+        }
+    }
+}
+
+struct ConfigFragment: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var name: String
+    var kind: ConfigFragmentKind
+    var enabled: Bool
+    var content: String
+    var updatedAt = Date()
+}
+
+struct RuleItem: Identifiable, Hashable {
+    var id: String { "\(index)-\(content)" }
+    var index: Int
+    var content: String
+    var disabled: Bool
+}
+
+struct ProviderItem: Identifiable, Hashable {
+    var id: String { "\(kind)-\(name)" }
+    var kind: String
+    var name: String
+    var detail: String
 }
 
 struct ProxyNode: Identifiable, Hashable {

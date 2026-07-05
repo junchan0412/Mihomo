@@ -4,6 +4,7 @@ final class ProfileStore {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let runtimeConfigBuilder = RuntimeConfigBuilder()
+    private let jsOverrideRunner = JSOverrideRunner()
 
     init() {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -88,7 +89,8 @@ final class ProfileStore {
         guard let url = URL(string: urlString) else {
             throw NSError(domain: "Mihomo", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid subscription URL"])
         }
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let pinningSession = CertificatePinningSession(expectedFingerprint: nil)
+        let (data, response, fingerprint) = try await pinningSession.fetch(url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "Mihomo", code: 2, userInfo: [NSLocalizedDescriptionKey: "Subscription request failed"])
         }
@@ -104,7 +106,8 @@ final class ProfileStore {
             source: .remote,
             location: urlString,
             fileName: fileName,
-            updatedAt: Date()
+            updatedAt: Date(),
+            certificateFingerprint: fingerprint
         )
         applySubscriptionInfo(response: http, to: &item)
         return item
@@ -114,13 +117,15 @@ final class ProfileStore {
         guard profile.source == .remote, let url = URL(string: profile.location) else {
             return profile
         }
-        let (data, response) = try await URLSession.shared.data(from: url)
+        let pinningSession = CertificatePinningSession(expectedFingerprint: profile.certificateFingerprint)
+        let (data, response, fingerprint) = try await pinningSession.fetch(url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "Mihomo", code: 3, userInfo: [NSLocalizedDescriptionKey: "Subscription refresh failed"])
         }
         try data.write(to: profileFile(profile), options: .atomic)
         var updated = profile
         updated.updatedAt = Date()
+        updated.certificateFingerprint = fingerprint ?? profile.certificateFingerprint
         applySubscriptionInfo(response: http, to: &updated)
         return updated
     }
@@ -152,9 +157,26 @@ final class ProfileStore {
     }
 
     func generateRuntimeConfigCandidate(profile: ProfileItem, settings: AppSettings) throws -> URL {
+        try generateRuntimeConfigCandidate(profile: profile, settings: settings, fragments: [], disabledRules: [])
+    }
+
+    func generateRuntimeConfigCandidate(
+        profile: ProfileItem,
+        settings: AppSettings,
+        fragments: [ConfigFragment],
+        disabledRules: Set<String>
+    ) throws -> URL {
         try AppPaths.ensureBaseDirectories()
-        let profileContent = try String(contentsOf: profileFile(profile), encoding: .utf8)
-        let content = runtimeConfigBuilder.build(profileContent: profileContent, settings: settings)
+        var profileContent = try String(contentsOf: profileFile(profile), encoding: .utf8)
+        if settings.jsOverrideEnabled {
+            profileContent = try jsOverrideRunner.apply(fragments: fragments, to: profileContent)
+        }
+        let content = runtimeConfigBuilder.build(
+            profileContent: profileContent,
+            settings: settings,
+            fragments: fragments,
+            disabledRules: disabledRules
+        )
         try content.write(to: AppPaths.runtimeCandidateConfigFile, atomically: true, encoding: .utf8)
         return AppPaths.runtimeCandidateConfigFile
     }
@@ -183,7 +205,12 @@ final class ProfileStore {
     }
 
     func locateMihomoBinary() -> String? {
+        if let bundled = ManagedCoreManager.bundledCorePath,
+           FileManager.default.isExecutableFile(atPath: bundled) {
+            return bundled
+        }
         let candidates = [
+            AppPaths.managedCoreFile.path,
             "/opt/homebrew/bin/mihomo",
             "/usr/local/bin/mihomo",
             "/usr/bin/mihomo",

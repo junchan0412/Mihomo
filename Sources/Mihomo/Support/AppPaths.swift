@@ -14,6 +14,22 @@ enum AppPaths {
         supportDirectory.appendingPathComponent("Runtime", isDirectory: true)
     }
 
+    static var coreDirectory: URL {
+        supportDirectory.appendingPathComponent("Core", isDirectory: true)
+    }
+
+    static var externalUIDirectory: URL {
+        supportDirectory.appendingPathComponent("ExternalUI", isDirectory: true)
+    }
+
+    static var geoDirectory: URL {
+        supportDirectory.appendingPathComponent("Geo", isDirectory: true)
+    }
+
+    static var backupsDirectory: URL {
+        supportDirectory.appendingPathComponent("Backups", isDirectory: true)
+    }
+
     static var logsDirectory: URL {
         FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Logs", isDirectory: true)
@@ -26,6 +42,14 @@ enum AppPaths {
 
     static var profilesFile: URL {
         supportDirectory.appendingPathComponent("profiles.json")
+    }
+
+    static var configFragmentsFile: URL {
+        supportDirectory.appendingPathComponent("config-fragments.json")
+    }
+
+    static var disabledRulesFile: URL {
+        supportDirectory.appendingPathComponent("disabled-rules.json")
     }
 
     static var runtimeConfigFile: URL {
@@ -56,6 +80,10 @@ enum AppPaths {
         logsDirectory.appendingPathComponent("mihomo-core.log")
     }
 
+    static var managedCoreFile: URL {
+        coreDirectory.appendingPathComponent("mihomo")
+    }
+
     static func rotatedLogFile(prefix: String, date: Date = Date()) -> URL {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
@@ -64,7 +92,7 @@ enum AppPaths {
 
     static func ensureBaseDirectories() throws {
         let manager = FileManager.default
-        for directory in [supportDirectory, profilesDirectory, runtimeDirectory, logsDirectory] {
+        for directory in [supportDirectory, profilesDirectory, runtimeDirectory, coreDirectory, externalUIDirectory, geoDirectory, backupsDirectory, logsDirectory] {
             try manager.createDirectory(at: directory, withIntermediateDirectories: true)
         }
     }
