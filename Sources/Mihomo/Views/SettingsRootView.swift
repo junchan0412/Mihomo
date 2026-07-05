@@ -38,6 +38,7 @@ struct SettingsRootView: View {
                     TextField("Mixed 端口", value: $draft.mixedPort, format: .number)
                     TextField("SOCKS 端口", value: $draft.socksPort, format: .number)
                     TextField("延迟测试 URL", text: $draft.delayTestURL)
+                    TextField("延迟测试并发数", value: $draft.delayTestConcurrency, format: .number)
                 }
             }
             .tabItem { Label("Controller", systemImage: "point.3.connected.trianglepath.dotted") }
@@ -59,10 +60,16 @@ struct SettingsRootView: View {
                 Section("订阅与常驻") {
                     Toggle("自动刷新远程订阅", isOn: $draft.autoRefreshProfiles)
                     TextField("刷新间隔（小时）", value: $draft.profileRefreshIntervalHours, format: .number)
+                    TextField("订阅刷新并发数", value: $draft.profileRefreshMaxConcurrent, format: .number)
                     Toggle("登录后自动打开 Mihomo", isOn: $draft.launchAtLogin)
                     Toggle("轻量模式启动", isOn: $draft.lightweightMode)
                     Text(store.loginItemStatus)
                         .foregroundStyle(.secondary)
+                }
+
+                Section("日志") {
+                    TextField("日志保留天数", value: $draft.logRetentionDays, format: .number)
+                    TextField("单文件滚动大小（MB）", value: $draft.logMaxFileSizeMB, format: .number)
                 }
             }
             .tabItem { Label("高级", systemImage: "gearshape.2") }

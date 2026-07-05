@@ -77,6 +77,10 @@ struct AppSettings: Codable, Hashable {
     var delayTestURL: String
     var launchAtLogin: Bool
     var restoreTunOnStop: Bool
+    var profileRefreshMaxConcurrent: Int
+    var delayTestConcurrency: Int
+    var logRetentionDays: Int
+    var logMaxFileSizeMB: Int
 
     static let `default` = AppSettings()
 
@@ -100,7 +104,11 @@ struct AppSettings: Codable, Hashable {
         restoreSystemProxyOnQuit: Bool = true,
         delayTestURL: String = "https://www.gstatic.com/generate_204",
         launchAtLogin: Bool = false,
-        restoreTunOnStop: Bool = true
+        restoreTunOnStop: Bool = true,
+        profileRefreshMaxConcurrent: Int = 2,
+        delayTestConcurrency: Int = 6,
+        logRetentionDays: Int = 7,
+        logMaxFileSizeMB: Int = 8
     ) {
         self.mihomoPath = mihomoPath
         self.activeProfileID = activeProfileID
@@ -122,6 +130,10 @@ struct AppSettings: Codable, Hashable {
         self.delayTestURL = delayTestURL
         self.launchAtLogin = launchAtLogin
         self.restoreTunOnStop = restoreTunOnStop
+        self.profileRefreshMaxConcurrent = profileRefreshMaxConcurrent
+        self.delayTestConcurrency = delayTestConcurrency
+        self.logRetentionDays = logRetentionDays
+        self.logMaxFileSizeMB = logMaxFileSizeMB
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -145,6 +157,10 @@ struct AppSettings: Codable, Hashable {
         case delayTestURL
         case launchAtLogin
         case restoreTunOnStop
+        case profileRefreshMaxConcurrent
+        case delayTestConcurrency
+        case logRetentionDays
+        case logMaxFileSizeMB
     }
 
     init(from decoder: Decoder) throws {
@@ -170,6 +186,10 @@ struct AppSettings: Codable, Hashable {
         delayTestURL = try container.decodeIfPresent(String.self, forKey: .delayTestURL) ?? fallback.delayTestURL
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? fallback.launchAtLogin
         restoreTunOnStop = try container.decodeIfPresent(Bool.self, forKey: .restoreTunOnStop) ?? fallback.restoreTunOnStop
+        profileRefreshMaxConcurrent = try container.decodeIfPresent(Int.self, forKey: .profileRefreshMaxConcurrent) ?? fallback.profileRefreshMaxConcurrent
+        delayTestConcurrency = try container.decodeIfPresent(Int.self, forKey: .delayTestConcurrency) ?? fallback.delayTestConcurrency
+        logRetentionDays = try container.decodeIfPresent(Int.self, forKey: .logRetentionDays) ?? fallback.logRetentionDays
+        logMaxFileSizeMB = try container.decodeIfPresent(Int.self, forKey: .logMaxFileSizeMB) ?? fallback.logMaxFileSizeMB
     }
 }
 
@@ -219,6 +239,32 @@ struct LogEntry: Identifiable, Hashable {
     var date = Date()
     var level: String
     var message: String
+}
+
+enum ProfileRefreshJobState: String, Hashable {
+    case pending
+    case running
+    case succeeded
+    case failed
+
+    var title: String {
+        switch self {
+        case .pending: return "等待"
+        case .running: return "运行中"
+        case .succeeded: return "成功"
+        case .failed: return "失败"
+        }
+    }
+}
+
+struct ProfileRefreshJob: Identifiable, Hashable {
+    var id = UUID()
+    var profileID: UUID
+    var profileName: String
+    var state: ProfileRefreshJobState
+    var message: String
+    var startedAt: Date?
+    var finishedAt: Date?
 }
 
 enum DiagnosticState: String, Hashable {

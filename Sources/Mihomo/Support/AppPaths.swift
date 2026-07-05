@@ -52,6 +52,16 @@ enum AppPaths {
         logsDirectory.appendingPathComponent("mihomo-app.log")
     }
 
+    static var coreLogFile: URL {
+        logsDirectory.appendingPathComponent("mihomo-core.log")
+    }
+
+    static func rotatedLogFile(prefix: String, date: Date = Date()) -> URL {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return logsDirectory.appendingPathComponent("\(prefix)-\(formatter.string(from: date)).log")
+    }
+
     static func ensureBaseDirectories() throws {
         let manager = FileManager.default
         for directory in [supportDirectory, profilesDirectory, runtimeDirectory, logsDirectory] {

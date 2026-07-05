@@ -43,12 +43,40 @@ struct MenuBarView: View {
                 modeButton("直连", mode: "direct")
             }
 
+            Menu("策略快捷切换") {
+                if store.proxyGroups.isEmpty {
+                    Text("暂无策略组")
+                } else {
+                    ForEach(store.proxyGroups.prefix(8)) { group in
+                        Menu(Formatters.trimmedMenuText(group.name, limit: 24)) {
+                            Text("当前：\(Formatters.trimmedMenuText(group.now, limit: 24))")
+                            Divider()
+                            ForEach(group.all.prefix(16)) { node in
+                                Button {
+                                    Task { await store.selectProxy(group: group.name, proxy: node.name) }
+                                } label: {
+                                    if node.name == group.now {
+                                        Label(Formatters.trimmedMenuText(node.name, limit: 28), systemImage: "checkmark")
+                                    } else {
+                                        Text(Formatters.trimmedMenuText(node.name, limit: 28))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Button("刷新 Controller") {
                 Task { await store.refreshController() }
             }
 
             Button("刷新订阅") {
                 Task { await store.refreshAllRemoteProfiles() }
+            }
+
+            Button(store.logsPaused ? "继续日志" : "暂停日志") {
+                store.toggleLogPause()
             }
 
             Button("修复系统代理") {

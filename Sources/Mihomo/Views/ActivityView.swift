@@ -2,9 +2,10 @@ import SwiftUI
 
 struct ActivityView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var selectedConnectionID: String?
+    @State private var selectedRowID: String?
     @State private var filterText = ""
     @State private var inspectorVisible = true
+    @State private var groupMode: ConnectionGroupMode = .none
 
     private var filteredConnections: [ConnectionItem] {
         let query = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -15,9 +16,26 @@ struct ActivityView: View {
         }
     }
 
+    private var tableRows: [ConnectionTableRow] {
+        guard groupMode != .none else {
+            return filteredConnections.map(ConnectionTableRow.connection)
+        }
+
+        let grouped = Dictionary(grouping: filteredConnections) { groupMode.groupKey(for: $0) }
+        return grouped.keys.sorted().flatMap { key -> [ConnectionTableRow] in
+            let connections = grouped[key] ?? []
+            let download = connections.reduce(Int64(0)) { $0 + $1.download }
+            let upload = connections.reduce(Int64(0)) { $0 + $1.upload }
+            let header = ConnectionTableRow.group(title: key, count: connections.count, download: download, upload: upload)
+            return [header] + connections.map(ConnectionTableRow.connection)
+        }
+    }
+
     private var selectedConnection: ConnectionItem? {
-        guard let selectedConnectionID else { return nil }
-        return store.connections.first { $0.id == selectedConnectionID }
+        guard let selectedRowID,
+              let row = tableRows.first(where: { $0.id == selectedRowID })
+        else { return nil }
+        return row.connection
     }
 
     var body: some View {
@@ -54,6 +72,14 @@ struct ActivityView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 360)
 
+                Picker("分组", selection: $groupMode) {
+                    ForEach(ConnectionGroupMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 300)
+
                 Toggle("详情", isOn: $inspectorVisible)
                     .toggleStyle(.switch)
 
@@ -61,18 +87,18 @@ struct ActivityView: View {
             }
 
             AppKitTable(
-                rows: filteredConnections,
-                selection: $selectedConnectionID,
+                rows: tableRows,
+                selection: $selectedRowID,
                 columns: [
-                    .init(title: "主机", width: 230) { $0.host },
-                    .init(title: "进程", width: 170) { $0.process },
-                    .init(title: "规则", width: 170) { $0.rule },
-                    .init(title: "链路", width: 280) { $0.chain.isEmpty ? "-" : $0.chain },
-                    .init(title: "流量", width: 190) { "\($0.download.byteString) ↓  \($0.upload.byteString) ↑" }
+                    .init(title: "主机/分组", width: 250) { $0.hostText },
+                    .init(title: "进程", width: 170) { $0.processText },
+                    .init(title: "规则", width: 170) { $0.ruleText },
+                    .init(title: "链路", width: 280) { $0.chainText },
+                    .init(title: "流量", width: 190) { $0.trafficText }
                 ]
             )
             .overlay {
-                if filteredConnections.isEmpty {
+                if tableRows.isEmpty {
                     ContentUnavailableView("没有连接", systemImage: "waveform.path.ecg")
                 }
             }
@@ -84,6 +110,88 @@ struct ActivityView: View {
                 Task { await store.closeConnection(connection.id) }
             }
         }
+    }
+}
+
+private enum ConnectionGroupMode: String, CaseIterable, Identifiable {
+    case none
+    case process
+    case rule
+    case chain
+    case network
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .none: return "不分组"
+        case .process: return "进程"
+        case .rule: return "规则"
+        case .chain: return "链路"
+        case .network: return "网络"
+        }
+    }
+
+    func groupKey(for connection: ConnectionItem) -> String {
+        switch self {
+        case .none: return ""
+        case .process: return connection.process.isEmpty ? "-" : connection.process
+        case .rule: return connection.rule.isEmpty ? "-" : connection.rule
+        case .chain: return connection.chain.isEmpty ? "-" : connection.chain
+        case .network: return connection.network.isEmpty ? "-" : connection.network
+        }
+    }
+}
+
+private struct ConnectionTableRow: Identifiable, Hashable {
+    var id: String
+    var connection: ConnectionItem?
+    var groupTitle: String?
+    var groupCount = 0
+    var groupDownload: Int64 = 0
+    var groupUpload: Int64 = 0
+
+    static func connection(_ connection: ConnectionItem) -> ConnectionTableRow {
+        ConnectionTableRow(id: "connection-\(connection.id)", connection: connection)
+    }
+
+    static func group(title: String, count: Int, download: Int64, upload: Int64) -> ConnectionTableRow {
+        ConnectionTableRow(
+            id: "group-\(title)",
+            connection: nil,
+            groupTitle: title,
+            groupCount: count,
+            groupDownload: download,
+            groupUpload: upload
+        )
+    }
+
+    var hostText: String {
+        if let groupTitle {
+            return "▸ \(groupTitle)（\(groupCount)）"
+        }
+        return connection?.host ?? "-"
+    }
+
+    var processText: String {
+        groupTitle == nil ? (connection?.process ?? "-") : ""
+    }
+
+    var ruleText: String {
+        groupTitle == nil ? (connection?.rule ?? "-") : ""
+    }
+
+    var chainText: String {
+        guard groupTitle == nil else { return "" }
+        return connection?.chain.isEmpty == false ? connection?.chain ?? "-" : "-"
+    }
+
+    var trafficText: String {
+        if groupTitle != nil {
+            return "\(Formatters.bytes(groupDownload)) ↓  \(Formatters.bytes(groupUpload)) ↑"
+        }
+        guard let connection else { return "-" }
+        return "\(Formatters.bytes(connection.download)) ↓  \(Formatters.bytes(connection.upload)) ↑"
     }
 }
 
@@ -137,8 +245,4 @@ struct DetailRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
-}
-
-private extension Int64 {
-    var byteString: String { Formatters.bytes(self) }
 }

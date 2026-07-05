@@ -29,8 +29,14 @@ struct LogsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button(store.logsPaused ? "继续日志" : "暂停日志") {
+                    store.toggleLogPause()
+                }
                 Button("打开日志文件") {
                     NSWorkspace.shared.activateFileViewerSelecting([AppPaths.appLogFile])
+                }
+                Button("打开核心日志") {
+                    NSWorkspace.shared.activateFileViewerSelecting([AppPaths.coreLogFile])
                 }
             }
 
@@ -48,9 +54,13 @@ struct LogsView: View {
 
                 Spacer()
 
-                Text("\(filteredLogs.count) / \(store.logs.count)")
+                Text(store.logsPaused ? "已暂停，缓冲 \(store.bufferedLogCount) 条 · \(filteredLogs.count) / \(store.logs.count)" : "\(filteredLogs.count) / \(store.logs.count)")
                     .foregroundStyle(.secondary)
             }
+
+            Text("日志保留 \(store.settings.logRetentionDays) 天，单文件超过 \(store.settings.logMaxFileSizeMB) MB 自动滚动；核心日志单独写入 mihomo-core.log。")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             AppKitLogView(entries: filteredLogs)
                 .frame(minHeight: 560)

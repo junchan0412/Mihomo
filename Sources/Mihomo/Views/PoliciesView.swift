@@ -84,7 +84,22 @@ struct PoliciesView: View {
                     }
                 }
                 .disabled(selectedRow == nil)
+
+                Button("测试当前组") {
+                    if let selectedRow {
+                        Task { await store.testGroupDelay(selectedRow.group) }
+                    }
+                }
+                .disabled(selectedRow == nil)
+
+                Button("测试全部") {
+                    Task { await store.testAllProxyDelays() }
+                }
             }
+
+            Text(store.delayTestStatus)
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             AppKitTable(
                 rows: rows,

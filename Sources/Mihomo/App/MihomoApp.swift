@@ -53,6 +53,16 @@ struct MihomoApp: App {
                 }
                 .keyboardShortcut("u", modifiers: [.command, .shift])
 
+                Button("测试全部节点延迟") {
+                    Task { await store.testAllProxyDelays() }
+                }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
+
+                Button(store.logsPaused ? "继续日志" : "暂停日志") {
+                    store.toggleLogPause()
+                }
+                .keyboardShortcut("p", modifiers: [.command, .option])
+
                 Button("运行诊断") {
                     Task { await store.runDiagnostics() }
                 }

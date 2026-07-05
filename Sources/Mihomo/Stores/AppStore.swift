@@ -27,20 +27,29 @@ final class AppStore: ObservableObject {
     @Published var lastTunRecoverySnapshot: TunRecoverySnapshot?
     @Published var tunRecoveryStatus = "未捕获 TUN 回滚快照"
     @Published var loginItemStatus = "未检查"
+    @Published var profileRefreshQueue: [ProfileRefreshJob] = []
+    @Published var profileRefreshFailureCount = 0
+    @Published var delayTestStatus = "未运行"
+    @Published var logsPaused = false
+    @Published var bufferedLogCount = 0
 
     private let profileStore = ProfileStore()
     private let coreManager = CoreManager()
     private let systemProxy = SystemProxyManager()
     private let tunRecovery = TunRecoveryManager()
     private let loginItem = LoginItemManager()
+    private let notificationManager = NotificationManager()
     private var pollingTask: Task<Void, Never>?
     private var profileRefreshTask: Task<Void, Never>?
+    private var profileRefreshQueueRunning = false
     private var lastUploadTotal: Int64?
     private var lastDownloadTotal: Int64?
     private var lastTrafficSampleAt: Date?
     private var isExpectedCoreExit = false
     private var shutdownRequested = false
     private var crashRestartCount = 0
+    private var bufferedLogs: [LogEntry] = []
+    private var lastLogPruneAt: Date?
 
     var activeProfile: ProfileItem? {
         profiles.first { $0.id == settings.activeProfileID } ?? profiles.first
@@ -64,6 +73,7 @@ final class AppStore: ObservableObject {
             lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
             tunRecoveryStatus = lastTunRecoverySnapshot == nil ? "未捕获 TUN 回滚快照" : "已有 TUN 回滚快照"
             syncLaunchAtLoginSetting(reportSuccess: false)
+            notificationManager.prepare()
             appendLog("info", "已加载 \(profiles.count) 个配置")
             startPolling()
             startProfileAutoRefreshIfNeeded()
@@ -210,10 +220,24 @@ final class AppStore: ObservableObject {
             let client = MihomoControllerClient(host: settings.controllerHost, port: settings.controllerPort)
             let delay = try await client.proxyDelay(proxy: proxy, url: settings.delayTestURL)
             updateDelay(group: group, proxy: proxy, delay: delay)
+            delayTestStatus = "\(proxy)：\(delay) ms"
             appendLog("info", "\(proxy) 延迟：\(delay) ms")
         } catch {
+            delayTestStatus = "\(proxy) 延迟测试失败"
             appendLog("error", "\(proxy) 延迟测试失败：\(error.localizedDescription)")
         }
+    }
+
+    func testGroupDelay(_ group: ProxyGroup) async {
+        let rows = group.all.map { PolicyTableRow(group: group, node: $0) }
+        await testPolicyRowsDelay(rows, label: group.name)
+    }
+
+    func testAllProxyDelays() async {
+        let rows = proxyGroups.flatMap { group in
+            group.all.map { PolicyTableRow(group: group, node: $0) }
+        }
+        await testPolicyRowsDelay(rows, label: "全部策略")
     }
 
     func closeAllConnections() async {
@@ -339,21 +363,79 @@ final class AppStore: ObservableObject {
     }
 
     func refreshAllRemoteProfiles() async {
+        guard profileRefreshQueueRunning == false else {
+            appendLog("warning", "订阅刷新队列已在运行")
+            return
+        }
+
         let remoteProfiles = profiles.filter(\.isRemote)
         guard remoteProfiles.isEmpty == false else {
             profileAutoRefreshStatus = "没有远程订阅"
             return
         }
 
-        var refreshed = 0
-        for profile in remoteProfiles {
-            let before = profiles
-            await refreshProfile(profile)
-            if profiles != before {
-                refreshed += 1
-            }
+        profileRefreshQueueRunning = true
+        defer { profileRefreshQueueRunning = false }
+
+        profileRefreshFailureCount = 0
+        profileRefreshQueue = remoteProfiles.map { profile in
+            ProfileRefreshJob(
+                profileID: profile.id,
+                profileName: profile.name,
+                state: .pending,
+                message: "等待队列执行",
+                startedAt: nil,
+                finishedAt: nil
+            )
         }
-        profileAutoRefreshStatus = "上次刷新：\(Formatters.shortDate.string(from: Date()))，成功 \(refreshed)/\(remoteProfiles.count)"
+        profileAutoRefreshStatus = "队列运行中：0/\(remoteProfiles.count)"
+
+        var pendingProfiles = remoteProfiles
+        var runningTasks: [Task<ProfileRefreshResult, Never>] = []
+        let maxConcurrent = max(1, settings.profileRefreshMaxConcurrent)
+        var completed = 0
+        var succeeded = 0
+        var failed = 0
+
+        while pendingProfiles.isEmpty == false || runningTasks.isEmpty == false {
+            while runningTasks.count < maxConcurrent, pendingProfiles.isEmpty == false {
+                let profile = pendingProfiles.removeFirst()
+                markRefreshJob(profileID: profile.id, state: .running, message: "正在刷新", startedAt: Date(), finishedAt: nil)
+                runningTasks.append(Task {
+                    let store = ProfileStore()
+                    do {
+                        let updated = try await store.refreshRemoteProfile(profile)
+                        return ProfileRefreshResult(profileID: profile.id, updated: updated, errorMessage: nil)
+                    } catch {
+                        return ProfileRefreshResult(profileID: profile.id, updated: nil, errorMessage: error.localizedDescription)
+                    }
+                })
+            }
+
+            guard runningTasks.isEmpty == false else { break }
+            let result = await runningTasks.removeFirst().value
+            completed += 1
+
+            if let updated = result.updated {
+                if let index = profiles.firstIndex(where: { $0.id == result.profileID }) {
+                    profiles[index] = updated
+                    try? profileStore.saveProfiles(profiles)
+                }
+                succeeded += 1
+                markRefreshJob(profileID: result.profileID, state: .succeeded, message: "刷新成功", finishedAt: Date())
+            } else {
+                failed += 1
+                profileRefreshFailureCount = failed
+                let profileName = profileRefreshQueue.first { $0.profileID == result.profileID }?.profileName ?? "订阅"
+                let message = result.errorMessage ?? "未知错误"
+                markRefreshJob(profileID: result.profileID, state: .failed, message: message, finishedAt: Date())
+                notificationManager.notify(title: "订阅刷新失败", body: "\(profileName)：\(message)")
+                appendLog("error", "订阅刷新失败 \(profileName)：\(message)")
+            }
+            profileAutoRefreshStatus = "队列运行中：\(completed)/\(remoteProfiles.count)，成功 \(succeeded)，失败 \(failed)"
+        }
+
+        profileAutoRefreshStatus = "上次刷新：\(Formatters.shortDate.string(from: Date()))，成功 \(succeeded)/\(remoteProfiles.count)，失败 \(failed)"
     }
 
     func setActiveProfile(_ profile: ProfileItem) async {
@@ -494,14 +576,14 @@ final class AppStore: ObservableObject {
 
         results.append(.init(
             title: "日志文件",
-            detail: FileManager.default.fileExists(atPath: AppPaths.appLogFile.path) ? AppPaths.appLogFile.path : "日志文件将在下一条日志写入时创建。",
+            detail: "App：\(AppPaths.appLogFile.path)\nCore：\(AppPaths.coreLogFile.path)\n保留 \(settings.logRetentionDays) 天，单文件 \(settings.logMaxFileSizeMB) MB。",
             state: .ok
         ))
 
         results.append(.init(
             title: "订阅自动刷新",
-            detail: settings.autoRefreshProfiles ? profileAutoRefreshStatus : "未启用。",
-            state: settings.autoRefreshProfiles ? .ok : .warning
+            detail: settings.autoRefreshProfiles ? "\(profileAutoRefreshStatus)，并发 \(settings.profileRefreshMaxConcurrent)，失败通知 \(profileRefreshFailureCount) 条。" : "未启用。",
+            state: profileRefreshFailureCount > 0 ? .warning : (settings.autoRefreshProfiles ? .ok : .warning)
         ))
 
         diagnostics = results
@@ -512,12 +594,34 @@ final class AppStore: ObservableObject {
         guard !message.isEmpty else { return }
         for line in message.split(separator: "\n", omittingEmptySubsequences: true) {
             let entry = LogEntry(level: level, message: String(line))
-            logs.append(entry)
             persistLog(entry)
+            if logsPaused {
+                bufferedLogs.append(entry)
+                bufferedLogCount = bufferedLogs.count
+            } else {
+                logs.append(entry)
+            }
         }
         if logs.count > 1_200 {
             logs.removeFirst(logs.count - 1_200)
         }
+    }
+
+    func setLogsPaused(_ paused: Bool) {
+        logsPaused = paused
+        if paused == false, bufferedLogs.isEmpty == false {
+            logs.append(contentsOf: bufferedLogs)
+            if logs.count > 1_200 {
+                logs.removeFirst(logs.count - 1_200)
+            }
+            bufferedLogs.removeAll()
+            bufferedLogCount = 0
+        }
+        appendLog("info", paused ? "日志流已暂停，仍会继续落盘。" : "日志流已继续。")
+    }
+
+    func toggleLogPause() {
+        setLogsPaused(!logsPaused)
     }
 
     func enterLightweightMode() {
@@ -595,14 +699,58 @@ final class AppStore: ObservableObject {
     private func persistLog(_ entry: LogEntry) {
         try? AppPaths.ensureBaseDirectories()
         let line = "\(Formatters.shortDate.string(from: entry.date)) [\(entry.level.uppercased())] \(entry.message)\n"
-        let data = Data(line.utf8)
-        if FileManager.default.fileExists(atPath: AppPaths.appLogFile.path) == false {
-            FileManager.default.createFile(atPath: AppPaths.appLogFile.path, contents: nil)
+        writeLogLine(line, to: AppPaths.appLogFile, prefix: "mihomo-app")
+        if entry.level.lowercased() == "core" {
+            writeLogLine(line, to: AppPaths.coreLogFile, prefix: "mihomo-core")
         }
-        guard let handle = try? FileHandle(forWritingTo: AppPaths.appLogFile) else { return }
+        pruneOldLogsIfNeeded()
+    }
+
+    private func writeLogLine(_ line: String, to url: URL, prefix: String) {
+        rotateLogIfNeeded(url: url, prefix: prefix)
+        if FileManager.default.fileExists(atPath: url.path) == false {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return }
         defer { try? handle.close() }
         _ = try? handle.seekToEnd()
-        handle.write(data)
+        handle.write(Data(line.utf8))
+    }
+
+    private func rotateLogIfNeeded(url: URL, prefix: String) {
+        guard settings.logMaxFileSizeMB > 0,
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? NSNumber
+        else { return }
+
+        let maxBytes = Int64(settings.logMaxFileSizeMB) * 1_024 * 1_024
+        guard size.int64Value >= maxBytes else { return }
+        let rotated = AppPaths.rotatedLogFile(prefix: prefix)
+        try? FileManager.default.removeItem(at: rotated)
+        try? FileManager.default.moveItem(at: url, to: rotated)
+    }
+
+    private func pruneOldLogsIfNeeded() {
+        let now = Date()
+        if let lastLogPruneAt, now.timeIntervalSince(lastLogPruneAt) < 300 {
+            return
+        }
+        lastLogPruneAt = now
+        guard settings.logRetentionDays > 0,
+              let urls = try? FileManager.default.contentsOfDirectory(
+                at: AppPaths.logsDirectory,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+              )
+        else { return }
+
+        let cutoff = now.addingTimeInterval(-Double(settings.logRetentionDays) * 24 * 60 * 60)
+        for url in urls where url.pathExtension == "log" && url.lastPathComponent.hasPrefix("mihomo-") {
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
+            if let modified = values?.contentModificationDate, modified < cutoff {
+                try? FileManager.default.removeItem(at: url)
+            }
+        }
     }
 
     private func updateTrafficRates(uploadTotal: Int64, downloadTotal: Int64) {
@@ -644,6 +792,71 @@ final class AppStore: ObservableObject {
         proxyGroups = proxyGroups
     }
 
+    private func testPolicyRowsDelay(_ rows: [PolicyTableRow], label: String) async {
+        guard rows.isEmpty == false else {
+            delayTestStatus = "没有可测速节点"
+            return
+        }
+
+        let maxConcurrent = max(1, settings.delayTestConcurrency)
+        var pendingRows = rows
+        var runningTasks: [Task<ProxyDelayResult, Never>] = []
+        var completed = 0
+        var succeeded = 0
+        var failed = 0
+        delayTestStatus = "\(label) 测速开始，并发 \(maxConcurrent)"
+
+        while pendingRows.isEmpty == false || runningTasks.isEmpty == false {
+            while runningTasks.count < maxConcurrent, pendingRows.isEmpty == false {
+                let row = pendingRows.removeFirst()
+                let host = settings.controllerHost
+                let port = settings.controllerPort
+                let url = settings.delayTestURL
+                runningTasks.append(Task {
+                    let client = MihomoControllerClient(host: host, port: port)
+                    do {
+                        let delay = try await client.proxyDelay(proxy: row.node.name, url: url)
+                        return ProxyDelayResult(group: row.group.name, proxy: row.node.name, delay: delay, errorMessage: nil)
+                    } catch {
+                        return ProxyDelayResult(group: row.group.name, proxy: row.node.name, delay: nil, errorMessage: error.localizedDescription)
+                    }
+                })
+            }
+
+            guard runningTasks.isEmpty == false else { break }
+            let result = await runningTasks.removeFirst().value
+            completed += 1
+            if let delay = result.delay {
+                succeeded += 1
+                updateDelay(group: result.group, proxy: result.proxy, delay: delay)
+            } else {
+                failed += 1
+                appendLog("warning", "\(result.proxy) 测速失败：\(result.errorMessage ?? "未知错误")")
+            }
+            delayTestStatus = "\(label)：\(completed)/\(rows.count)，成功 \(succeeded)，失败 \(failed)"
+        }
+
+        appendLog("info", "\(label) 测速完成：成功 \(succeeded)，失败 \(failed)")
+    }
+
+    private func markRefreshJob(
+        profileID: UUID,
+        state: ProfileRefreshJobState,
+        message: String,
+        startedAt: Date? = nil,
+        finishedAt: Date? = nil
+    ) {
+        guard let index = profileRefreshQueue.firstIndex(where: { $0.profileID == profileID }) else { return }
+        profileRefreshQueue[index].state = state
+        profileRefreshQueue[index].message = message
+        if let startedAt {
+            profileRefreshQueue[index].startedAt = startedAt
+        }
+        if let finishedAt {
+            profileRefreshQueue[index].finishedAt = finishedAt
+        }
+    }
+
     private func startPolling() {
         guard pollingTask == nil else { return }
         pollingTask = Task { [weak self] in
@@ -653,4 +866,17 @@ final class AppStore: ObservableObject {
             }
         }
     }
+}
+
+private struct ProfileRefreshResult {
+    var profileID: UUID
+    var updated: ProfileItem?
+    var errorMessage: String?
+}
+
+private struct ProxyDelayResult {
+    var group: String
+    var proxy: String
+    var delay: Int?
+    var errorMessage: String?
 }

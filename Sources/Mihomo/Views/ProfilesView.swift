@@ -13,6 +13,8 @@ struct ProfilesView: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             remoteSubscriptionBox
+            ProfileRefreshQueueView()
+                .environmentObject(store)
 
             HSplitView {
                 ProfileListPane(
@@ -148,6 +150,57 @@ struct ProfilesView: View {
             }
         }
         return accepted
+    }
+}
+
+private struct ProfileRefreshQueueView: View {
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        GroupBox("订阅刷新队列") {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(store.profileAutoRefreshStatus)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if store.profileRefreshFailureCount > 0 {
+                        Label("\(store.profileRefreshFailureCount) 个失败", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                }
+
+                if store.profileRefreshQueue.isEmpty {
+                    Text("队列为空。自动刷新或手动刷新所有订阅时会在这里显示任务状态。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 6) {
+                        ForEach(store.profileRefreshQueue.prefix(6)) { job in
+                            GridRow {
+                                Text(job.profileName)
+                                    .lineLimit(1)
+                                Text(job.state.title)
+                                    .foregroundStyle(color(for: job.state))
+                                Text(job.message)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    .font(.caption)
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func color(for state: ProfileRefreshJobState) -> Color {
+        switch state {
+        case .pending: return .secondary
+        case .running: return .blue
+        case .succeeded: return .green
+        case .failed: return .red
+        }
     }
 }
 
