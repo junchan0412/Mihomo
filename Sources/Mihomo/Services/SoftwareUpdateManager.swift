@@ -26,6 +26,7 @@ struct AppUpdateCheckResult: Hashable {
     var manifestURL: URL
     var isNewer: Bool
     var currentVersion: String
+    var currentBuild: String
 }
 
 final class SoftwareUpdateManager {
@@ -34,6 +35,10 @@ final class SoftwareUpdateManager {
 
     var currentVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
+    }
+
+    var currentBuild: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
     }
 
     func checkForUpdate() async throws -> AppUpdateCheckResult {
@@ -54,8 +59,9 @@ final class SoftwareUpdateManager {
         return AppUpdateCheckResult(
             manifest: manifest,
             manifestURL: manifestURL,
-            isNewer: compareVersions(manifest.version, currentVersion) == .orderedDescending,
-            currentVersion: currentVersion
+            isNewer: isNewer(manifest: manifest),
+            currentVersion: currentVersion,
+            currentBuild: currentBuild
         )
     }
 
@@ -267,6 +273,21 @@ final class SoftwareUpdateManager {
             if l < r { return .orderedAscending }
         }
         return .orderedSame
+    }
+
+    private func isNewer(manifest: AppUpdateManifest) -> Bool {
+        let versionComparison = compareVersions(manifest.version, currentVersion)
+        if versionComparison == .orderedDescending {
+            return true
+        }
+        guard versionComparison == .orderedSame,
+              let manifestBuild = manifest.build?.trimmingCharacters(in: .whitespacesAndNewlines),
+              manifestBuild.isEmpty == false
+        else {
+            return false
+        }
+        let current = currentBuild.trimmingCharacters(in: .whitespacesAndNewlines)
+        return current.isEmpty || current != manifestBuild
     }
 
     private func versionNumbers(_ value: String) -> [Int] {

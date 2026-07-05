@@ -37,6 +37,10 @@ struct MenuBarView: View {
                 Task { await store.toggleSystemProxy() }
             }
 
+            Button(store.settings.tunEnabled ? "关闭 TUN" : "开启 TUN") {
+                Task { await store.setTunEnabled(!store.settings.tunEnabled) }
+            }
+
             Menu("出站模式") {
                 modeButton("规则", mode: "rule")
                 modeButton("全局", mode: "global")

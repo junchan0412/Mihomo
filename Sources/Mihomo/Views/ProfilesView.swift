@@ -7,40 +7,22 @@ struct ProfilesView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selectedProfileID: UUID?
     @State private var isDropTargeted = false
+    @State private var showingRemoteImport = false
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Divider()
 
-            ScrollView {
-                VStack(spacing: 14) {
-                    remoteSubscriptionBar
-                    ProfileRefreshQueueStrip()
-                        .environmentObject(store)
-
-                    ProfileListPane(
-                        selectedProfileID: $selectedProfileID,
-                        selectedProfile: selectedProfile,
-                        editProfile: openProfileEditor,
-                        deleteProfile: deleteSelectedProfile
-                    )
+            VStack(alignment: .leading, spacing: 12) {
+                storagePane
+                ProfileRefreshQueueStrip()
                     .environmentObject(store)
-
-                    ProfileSummaryPane(
-                        profile: selectedProfile,
-                        stats: selectedProfile.map { store.profileStats(for: $0) },
-                        editProfile: openProfileEditor
-                    )
-
-                    ConfigFragmentsSummaryView {
-                        openWindow(id: "fragments-editor")
-                    }
-                    .environmentObject(store)
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .top)
+                profileTablePane
+                detailPane
             }
+            .padding(16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .navigationTitle("配置")
         .overlay {
@@ -55,6 +37,10 @@ struct ProfilesView: View {
                 selectedProfileID = store.settings.activeProfileID ?? store.profiles.first?.id
             }
         }
+        .sheet(isPresented: $showingRemoteImport) {
+            RemoteProfileImportSheet()
+                .environmentObject(store)
+        }
     }
 
     private var header: some View {
@@ -62,7 +48,7 @@ struct ProfilesView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("配置")
                     .font(.title2.bold())
-                Text("本地、远程订阅、拖入导入和 YAML 编辑。")
+                Text("管理本地配置、远程订阅与运行时覆写。")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -74,51 +60,175 @@ struct ProfilesView: View {
             } label: {
                 Label("导入本地", systemImage: "square.and.arrow.down")
             }
+
+            Button {
+                showingRemoteImport = true
+            } label: {
+                Label("从 URL 导入", systemImage: "link.badge.plus")
+            }
+
+            Button {
+                Task { await store.refreshAllRemoteProfiles() }
+            } label: {
+                Label("刷新订阅", systemImage: "arrow.clockwise")
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
     }
 
-    private var remoteSubscriptionBar: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("远程订阅")
+    private var storagePane: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            Text("配置存储路径")
                 .font(.headline)
+                .frame(width: 110, alignment: .trailing)
 
-            Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
-                GridRow {
-                    Text("名称")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .trailing)
-                    TextField("可选", text: $store.newRemoteName)
-                }
-                GridRow {
-                    Text("URL")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, alignment: .trailing)
-                    HStack {
-                        TextField("https://example.com/profile.yaml", text: $store.newRemoteURL)
-                        Button {
-                            Task { await store.addRemoteProfile() }
-                        } label: {
-                            Label("导入", systemImage: "plus")
-                        }
-                        Button {
-                            Task { await store.refreshAllRemoteProfiles() }
-                        } label: {
-                            Label("刷新", systemImage: "arrow.clockwise")
-                        }
-                    }
+            Text(store.profileStorageDirectory.path)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+
+            Spacer()
+
+            Button {
+                store.revealProfileStorageDirectory()
+            } label: {
+                Label("在 Finder 中显示", systemImage: "folder")
+            }
+
+            Button {
+                chooseProfileStorageDirectory()
+            } label: {
+                Label("修改路径", systemImage: "folder.badge.gearshape")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var profileTablePane: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("配置列表")
+                    .font(.headline)
+                Spacer()
+                Text("\(store.profiles.count) 个配置")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
+            AppKitTable(
+                rows: store.profiles,
+                selection: $selectedProfileID,
+                columns: profileColumns
+            )
+            .overlay {
+                if store.profiles.isEmpty {
+                    ContentUnavailableView("没有配置", systemImage: "doc.text")
                 }
             }
-            .textFieldStyle(.roundedBorder)
+            .frame(minHeight: 280, maxHeight: .infinity)
+
+            HStack(spacing: 10) {
+                Button {
+                    if let selectedProfile {
+                        Task { await store.setActiveProfile(selectedProfile) }
+                    }
+                } label: {
+                    Label("启用", systemImage: "checkmark.circle")
+                }
+                .disabled(selectedProfile == nil)
+
+                Button {
+                    importLocal()
+                } label: {
+                    Label("导入", systemImage: "square.and.arrow.down")
+                }
+
+                Button {
+                    showingRemoteImport = true
+                } label: {
+                    Label("URL", systemImage: "link")
+                }
+
+                Button {
+                    openProfileEditor()
+                } label: {
+                    Label("编辑", systemImage: "pencil")
+                }
+                .disabled(selectedProfile == nil)
+
+                Button {
+                    if let selectedProfile {
+                        Task { await store.refreshProfile(selectedProfile) }
+                    }
+                } label: {
+                    Label("刷新", systemImage: "arrow.clockwise")
+                }
+                .disabled(selectedProfile?.isRemote != true)
+
+                Button(role: .destructive) {
+                    deleteSelectedProfile()
+                } label: {
+                    Label("删除", systemImage: "trash")
+                }
+                .disabled(selectedProfile == nil || store.profiles.count <= 1)
+
+                Spacer()
+
+                Button {
+                    openWindow(id: "fragments-editor")
+                } label: {
+                    Label("覆写", systemImage: "slider.horizontal.3")
+                }
+            }
         }
-        .padding(12)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+        .frame(maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var detailPane: some View {
+        HStack(alignment: .top, spacing: 12) {
+            ProfileSummaryPane(
+                profile: selectedProfile,
+                stats: selectedProfile.map { store.profileStats(for: $0) },
+                editProfile: openProfileEditor
+            )
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+
+            ConfigFragmentsSummaryView {
+                openWindow(id: "fragments-editor")
+            }
+            .environmentObject(store)
+            .frame(width: 340, alignment: .topLeading)
+        }
     }
 
     private var selectedProfile: ProfileItem? {
         guard let selectedProfileID else { return nil }
         return store.profiles.first { $0.id == selectedProfileID }
+    }
+
+    private var profileColumns: [AppKitTableColumn<ProfileItem>] {
+        [
+            .init(title: "状态", width: 72) { profile in
+                profile.id == store.settings.activeProfileID ? "启用" : "-"
+            },
+            .init(title: "名称", width: 260) { $0.name },
+            .init(title: "类型", width: 80) { $0.source == .remote ? "远程" : "本地" },
+            .init(title: "来源", width: 320) { profile in
+                profile.source == .remote ? profile.location : profile.fileName
+            },
+            .init(title: "更新", width: 140) { Formatters.shortDate.string(from: $0.updatedAt) },
+            .init(title: "用量", width: 180) { profileUsageText($0) }
+        ]
+    }
+
+    private func profileUsageText(_ profile: ProfileItem) -> String {
+        guard let total = profile.total else { return "-" }
+        let used = (profile.uploadUsed ?? 0) + (profile.downloadUsed ?? 0)
+        return "\(Formatters.bytes(used)) / \(Formatters.bytes(total))"
     }
 
     private func openProfileEditor() {
@@ -142,6 +252,22 @@ struct ProfilesView: View {
         }
     }
 
+    private func chooseProfileStorageDirectory() {
+        let panel = NSOpenPanel()
+        panel.title = "选择配置存储路径"
+        panel.message = "选择用于保存配置 YAML 文件的目录。现有配置会复制到新目录。"
+        panel.prompt = "使用此目录"
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.directoryURL = store.profileStorageDirectory
+
+        if panel.runModal() == .OK, let url = panel.url {
+            Task { await store.changeProfileStorageDirectory(to: url) }
+        }
+    }
+
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
         var accepted = false
         for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
@@ -158,6 +284,55 @@ struct ProfilesView: View {
             }
         }
         return accepted
+    }
+}
+
+private struct RemoteProfileImportSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("从 URL 导入配置")
+                .font(.title3.bold())
+
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                GridRow {
+                    Text("名称")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 64, alignment: .trailing)
+                    TextField("可选", text: $store.newRemoteName)
+                        .textFieldStyle(.roundedBorder)
+                }
+                GridRow {
+                    Text("URL")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 64, alignment: .trailing)
+                    TextField("https://example.com/profile.yaml", text: $store.newRemoteURL)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 420)
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("取消") {
+                    dismiss()
+                }
+                Button {
+                    Task {
+                        await store.addRemoteProfile()
+                        dismiss()
+                    }
+                } label: {
+                    Label("导入", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(store.newRemoteURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(22)
+        .frame(width: 560)
     }
 }
 
@@ -191,137 +366,51 @@ private struct ProfileRefreshQueueStrip: View {
     }
 }
 
-private struct ProfileListPane: View {
-    @EnvironmentObject private var store: AppStore
-    @Binding var selectedProfileID: UUID?
-    var selectedProfile: ProfileItem?
-    var editProfile: () -> Void
-    var deleteProfile: () -> Void
-
-    var body: some View {
-        GroupBox("配置列表") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Button {
-                        if let selectedProfile {
-                            Task { await store.setActiveProfile(selectedProfile) }
-                        }
-                    } label: {
-                        Label("启用", systemImage: "checkmark.circle")
-                    }
-                    .disabled(selectedProfile == nil)
-
-                    Button {
-                        if let selectedProfile {
-                            Task { await store.refreshProfile(selectedProfile) }
-                        }
-                    } label: {
-                        Label("刷新选中", systemImage: "arrow.clockwise")
-                    }
-                    .disabled(selectedProfile?.isRemote != true)
-
-                    Button {
-                        editProfile()
-                    } label: {
-                        Label("编辑", systemImage: "pencil")
-                    }
-                    .disabled(selectedProfile == nil)
-
-                    Button(role: .destructive) {
-                        deleteProfile()
-                    } label: {
-                        Label("删除", systemImage: "trash")
-                    }
-                    .disabled(selectedProfile == nil || store.profiles.count <= 1)
-
-                    Spacer()
-                }
-
-                AppKitTable(
-                    rows: store.profiles,
-                    selection: $selectedProfileID,
-                    columns: profileColumns
-                )
-                .overlay {
-                    if store.profiles.isEmpty {
-                        ContentUnavailableView("没有配置", systemImage: "doc.text")
-                    }
-                }
-                .frame(height: 260)
-            }
-            .padding(.vertical, 4)
-        }
-    }
-
-    private var profileColumns: [AppKitTableColumn<ProfileItem>] {
-        [
-            .init(title: "状态", width: 72) { profile in
-                profile.id == store.settings.activeProfileID ? "启用" : "-"
-            },
-            .init(title: "名称", width: 230) { profile in
-                profile.name
-            },
-            .init(title: "类型", width: 72) { $0.source == .remote ? "远程" : "本地" },
-            .init(title: "更新", width: 130) { Formatters.shortDate.string(from: $0.updatedAt) },
-            .init(title: "用量", width: 170) { profileUsageText($0) }
-        ]
-    }
-
-    private func profileUsageText(_ profile: ProfileItem) -> String {
-        guard let total = profile.total else { return "-" }
-        let used = (profile.uploadUsed ?? 0) + (profile.downloadUsed ?? 0)
-        return "\(Formatters.bytes(used)) / \(Formatters.bytes(total))"
-    }
-}
-
 private struct ProfileSummaryPane: View {
     var profile: ProfileItem?
     var stats: ProfileStats?
     var editProfile: () -> Void
 
     var body: some View {
-        GroupBox("配置摘要") {
-            if profile == nil {
-                ContentUnavailableView("未选择配置", systemImage: "doc.text.magnifyingglass")
-                    .frame(maxWidth: .infinity, minHeight: 140)
-            } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Label(profile?.name ?? "", systemImage: "doc.text")
-                            .font(.headline)
-                        Spacer()
-                        Button {
-                            editProfile()
-                        } label: {
-                            Label("打开编辑器", systemImage: "square.and.pencil")
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-
-                    if let error = stats?.errorMessage {
-                        Text(error)
-                            .foregroundStyle(.red)
-                            .textSelection(.enabled)
-                    } else {
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                            ProfileMetric(title: "规则", value: "\(stats?.ruleCount ?? 0)")
-                            ProfileMetric(title: "策略组", value: "\(stats?.policyGroupCount ?? 0)")
-                            ProfileMetric(title: "节点", value: "\(stats?.proxyCount ?? 0)")
-                            ProfileMetric(title: "Provider", value: "\(statsProviderCount)")
-                            ProfileMetric(title: "行数", value: "\(stats?.lineCount ?? 0)")
-                            ProfileMetric(title: "大小", value: Formatters.bytes(Int64(stats?.fileSize ?? 0)))
-                            ProfileMetric(title: "来源", value: profile?.source == .remote ? "远程" : "本地")
-                            ProfileMetric(title: "更新", value: profile.map { Formatters.shortDate.string(from: $0.updatedAt) } ?? "-")
-                        }
-                    }
-
-                    Text("默认仅显示统计信息；需要查看或修改 YAML / 结构化规则时打开独立编辑窗口。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label(profile?.name ?? "未选择配置", systemImage: "doc.text")
+                    .font(.headline)
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    editProfile()
+                } label: {
+                    Label("打开编辑器", systemImage: "square.and.pencil")
                 }
-                .padding(.vertical, 4)
+                .disabled(profile == nil)
+            }
+
+            if profile == nil {
+                Text("选择一个配置后查看规则、策略组、节点和 Provider 统计。")
+                    .foregroundStyle(.secondary)
+            } else if let error = stats?.errorMessage {
+                Text(error)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
+                    ProfileMetric(title: "规则", value: "\(stats?.ruleCount ?? 0)")
+                    ProfileMetric(title: "策略组", value: "\(stats?.policyGroupCount ?? 0)")
+                    ProfileMetric(title: "节点", value: "\(stats?.proxyCount ?? 0)")
+                    ProfileMetric(title: "Provider", value: "\(statsProviderCount)")
+                }
+
+                HStack(spacing: 14) {
+                    ProfileSmallFact(title: "类型", value: profile?.source == .remote ? "远程" : "本地")
+                    ProfileSmallFact(title: "行数", value: "\(stats?.lineCount ?? 0)")
+                    ProfileSmallFact(title: "大小", value: Formatters.bytes(Int64(stats?.fileSize ?? 0)))
+                    ProfileSmallFact(title: "更新", value: profile.map { Formatters.shortDate.string(from: $0.updatedAt) } ?? "-")
+                }
             }
         }
+        .padding(12)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var statsProviderCount: Int {
@@ -344,8 +433,23 @@ private struct ProfileMetric: View {
                 .minimumScaleFactor(0.75)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.vertical, 6)
+    }
+}
+
+private struct ProfileSmallFact: View {
+    var title: String
+    var value: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -354,33 +458,31 @@ private struct ConfigFragmentsSummaryView: View {
     var openEditor: () -> Void
 
     var body: some View {
-        GroupBox("覆写摘要") {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Toggle("YAML 覆写", isOn: overrideBinding(\.yamlOverrideEnabled))
-                    Toggle("JS Transform", isOn: overrideBinding(\.jsOverrideEnabled))
-                    Spacer()
-                    Button {
-                        openEditor()
-                    } label: {
-                        Label("管理覆写", systemImage: "slider.horizontal.3")
-                    }
-                    .buttonStyle(.borderedProminent)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("覆写")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    openEditor()
+                } label: {
+                    Label("管理", systemImage: "slider.horizontal.3")
                 }
-
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: 4), spacing: 12) {
-                    ProfileMetric(title: "片段", value: "\(store.configFragments.count)")
-                    ProfileMetric(title: "已启用", value: "\(store.configFragments.filter(\.enabled).count)")
-                    ProfileMetric(title: "YAML", value: "\(store.configFragments.filter { $0.kind == .yaml }.count)")
-                    ProfileMetric(title: "JavaScript", value: "\(store.configFragments.filter { $0.kind == .javascript }.count)")
-                }
-
-                Text("覆写内容不在配置页直接展开；点击管理后在独立窗口中编辑、启用或删除片段。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 4)
+
+            Toggle("YAML 覆写", isOn: overrideBinding(\.yamlOverrideEnabled))
+                .toggleStyle(.checkbox)
+            Toggle("JS Transform", isOn: overrideBinding(\.jsOverrideEnabled))
+                .toggleStyle(.checkbox)
+
+            HStack(spacing: 12) {
+                ProfileSmallFact(title: "片段", value: "\(store.configFragments.count)")
+                ProfileSmallFact(title: "已启用", value: "\(store.configFragments.filter(\.enabled).count)")
+                ProfileSmallFact(title: "禁用规则", value: "\(store.disabledRules.count)")
+            }
         }
+        .padding(12)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func overrideBinding(_ keyPath: WritableKeyPath<AppSettings, Bool>) -> Binding<Bool> {

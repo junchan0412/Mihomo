@@ -31,6 +31,7 @@ final class AppStore: ObservableObject {
     @Published var profileRefreshQueue: [ProfileRefreshJob] = []
     @Published var profileRefreshFailureCount = 0
     @Published var delayTestStatus = "未运行"
+    @Published var delayTestFailureSummary = ""
     @Published var logsPaused = false
     @Published var bufferedLogCount = 0
     @Published var configFragments: [ConfigFragment] = []
@@ -121,11 +122,19 @@ final class AppStore: ObservableObject {
         SoftwareUpdateManager.githubReleasesPage
     }
 
+    var currentAppBuild: String {
+        softwareUpdateManager.currentBuild
+    }
+
+    var profileStorageDirectory: URL {
+        profileStore.profileStorageDirectory(settings: settings)
+    }
+
     func bootstrap() async {
         do {
             try AppPaths.ensureBaseDirectories()
             settings = try profileStore.loadSettings()
-            profiles = try profileStore.loadProfiles()
+            profiles = try profileStore.loadProfiles(settings: settings)
             configFragments = try configFragmentStore.loadFragments()
             disabledRules = try configFragmentStore.loadDisabledRules()
             if settings.activeProfileID == nil {
@@ -311,12 +320,14 @@ final class AppStore: ObservableObject {
     func testProxyDelay(group: String, proxy: String) async {
         do {
             let client = controllerClient()
-            let delay = try await client.proxyDelay(proxy: proxy, url: settings.delayTestURL)
-            updateDelay(group: group, proxy: proxy, delay: delay)
+            let delay = try await client.proxyDelay(proxy: proxy, url: normalizedDelayTestURL)
+            updateDelay(proxy: proxy, delay: delay)
             delayTestStatus = "\(proxy)：\(delay) ms"
+            delayTestFailureSummary = ""
             appendLog("info", "\(proxy) 延迟：\(delay) ms")
         } catch {
-            delayTestStatus = "\(proxy) 延迟测试失败"
+            delayTestStatus = "\(proxy) 延迟测试失败：\(friendlyDelayError(error.localizedDescription))"
+            delayTestFailureSummary = friendlyDelayError(error.localizedDescription)
             appendLog("error", "\(proxy) 延迟测试失败：\(error.localizedDescription)")
         }
     }
@@ -370,6 +381,40 @@ final class AppStore: ObservableObject {
             }
         } catch {
             appendLog("error", "Helper 系统代理操作失败：\(error.localizedDescription)")
+        }
+    }
+
+    func setTunEnabled(_ enabled: Bool) async {
+        guard settings.tunEnabled != enabled else { return }
+        var updated = settings
+        updated.tunEnabled = enabled
+        await saveSettings(updated)
+        if isCoreRunning {
+            appendLog("info", "TUN 已\(enabled ? "启用" : "关闭")，正在重启核心使配置生效")
+            await restartCore()
+        } else {
+            appendLog("info", "TUN 已\(enabled ? "启用" : "关闭")，下次启动核心时生效")
+        }
+    }
+
+    func revealProfileStorageDirectory() {
+        let directory = profileStorageDirectory
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([directory])
+    }
+
+    func changeProfileStorageDirectory(to directory: URL) async {
+        do {
+            let oldSettings = settings
+            try profileStore.migrateProfileStorage(profiles: profiles, from: oldSettings, to: directory)
+            var updated = settings
+            updated.profileStoragePath = directory.standardizedFileURL.path
+            settings = updated
+            try profileStore.saveSettings(updated)
+            refreshConfigArtifacts()
+            appendLog("info", "配置存储路径已切换：\(updated.profileStoragePath)")
+        } catch {
+            appendLog("error", "配置存储路径切换失败：\(error.localizedDescription)")
         }
     }
 
@@ -578,7 +623,7 @@ final class AppStore: ObservableObject {
     func deleteProfile(_ profile: ProfileItem) async {
         guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
         do {
-            let file = profileStore.profileFile(profile)
+            let file = profileStore.profileFile(profile, settings: settings)
             profiles.remove(at: index)
             if FileManager.default.fileExists(atPath: file.path) {
                 try FileManager.default.removeItem(at: file)
@@ -656,7 +701,7 @@ final class AppStore: ObservableObject {
         }
 
         if let activeProfile {
-            let file = profileStore.profileFile(activeProfile)
+            let file = profileStore.profileFile(activeProfile, settings: settings)
             let exists = FileManager.default.fileExists(atPath: file.path)
             results.append(.init(title: "当前配置", detail: exists ? activeProfile.name : "配置文件丢失", state: exists ? .ok : .failed))
             do {
@@ -1282,11 +1327,12 @@ final class AppStore: ObservableObject {
             if result.isNewer {
                 availableUpdate = result.manifest
                 availableUpdateManifestURL = result.manifestURL
-                softwareUpdateStatus = "发现新版本 \(result.manifest.version)，当前 \(result.currentVersion)"
+                let build = result.manifest.build.map { " (\($0))" } ?? ""
+                softwareUpdateStatus = "发现新版本 \(result.manifest.version)\(build)，当前 \(result.currentVersion) (\(result.currentBuild))"
             } else {
                 availableUpdate = nil
                 availableUpdateManifestURL = nil
-                softwareUpdateStatus = "已是最新版本：\(result.currentVersion)"
+                softwareUpdateStatus = "已是最新版本：\(result.currentVersion) (\(result.currentBuild))"
             }
             appendLog("info", softwareUpdateStatus)
         } catch {
@@ -1310,7 +1356,7 @@ final class AppStore: ObservableObject {
             } else {
                 let result = try await softwareUpdateManager.checkForUpdate()
                 guard result.isNewer else {
-                    softwareUpdateStatus = "已是最新：\(result.currentVersion)"
+                    softwareUpdateStatus = "已是最新：\(result.currentVersion) (\(result.currentBuild))"
                     return
                 }
                 manifest = result.manifest
@@ -1555,7 +1601,7 @@ final class AppStore: ObservableObject {
 
     private func reloadPersistentState() throws {
         settings = try profileStore.loadSettings()
-        profiles = try profileStore.loadProfiles()
+        profiles = try profileStore.loadProfiles(settings: settings)
         configFragments = try configFragmentStore.loadFragments()
         disabledRules = try configFragmentStore.loadDisabledRules()
         refreshConfigArtifacts()
@@ -1563,7 +1609,7 @@ final class AppStore: ObservableObject {
 
     private func makeBackupPayload() throws -> BackupPayload {
         let contents = Dictionary(uniqueKeysWithValues: try profiles.map { profile in
-            (profile.fileName, try profileStore.loadProfileStoredContent(profile))
+            (profile.fileName, try profileStore.loadProfileStoredContent(profile, settings: settings))
         })
         return BackupPayload(
             createdAt: Date(),
@@ -1585,9 +1631,10 @@ final class AppStore: ObservableObject {
         try profileStore.saveProfiles(profiles)
         try configFragmentStore.saveFragments(configFragments)
         try configFragmentStore.saveDisabledRules(disabledRules)
+        try FileManager.default.createDirectory(at: profileStore.profileStorageDirectory(settings: settings), withIntermediateDirectories: true)
         for profile in profiles {
             if let content = payload.profileContents[profile.fileName] {
-                try content.write(to: profileStore.profileFile(profile), atomically: true, encoding: .utf8)
+                try content.write(to: profileStore.profileFile(profile, settings: settings), atomically: true, encoding: .utf8)
             }
         }
         refreshConfigArtifacts()
@@ -1811,34 +1858,46 @@ final class AppStore: ObservableObject {
         proxyGroups = proxyGroups
     }
 
+    private func updateDelay(proxy: String, delay: Int) {
+        for groupIndex in proxyGroups.indices {
+            for proxyIndex in proxyGroups[groupIndex].all.indices where proxyGroups[groupIndex].all[proxyIndex].name == proxy {
+                proxyGroups[groupIndex].all[proxyIndex].delay = delay
+            }
+        }
+        proxyGroups = proxyGroups
+    }
+
     private func testPolicyRowsDelay(_ rows: [PolicyTableRow], label: String) async {
         guard rows.isEmpty == false else {
             delayTestStatus = "没有可测速节点"
             return
         }
 
+        let targets = uniqueDelayTargets(from: rows)
         let maxConcurrent = max(1, settings.delayTestConcurrency)
-        var pendingRows = rows
+        var pendingTargets = targets
         var runningTasks: [Task<ProxyDelayResult, Never>] = []
         var completed = 0
         var succeeded = 0
         var failed = 0
-        delayTestStatus = "\(label) 测速开始，并发 \(maxConcurrent)"
+        var failureReasons: [String: Int] = [:]
+        delayTestFailureSummary = ""
+        delayTestStatus = "\(label) 测速开始，节点 \(targets.count)，并发 \(maxConcurrent)"
 
-        while pendingRows.isEmpty == false || runningTasks.isEmpty == false {
-            while runningTasks.count < maxConcurrent, pendingRows.isEmpty == false {
-                let row = pendingRows.removeFirst()
+        while pendingTargets.isEmpty == false || runningTasks.isEmpty == false {
+            while runningTasks.count < maxConcurrent, pendingTargets.isEmpty == false {
+                let target = pendingTargets.removeFirst()
                 let host = settings.controllerHost
                 let port = settings.controllerPort
                 let secret = settings.controllerSecret
-                let url = settings.delayTestURL
+                let url = normalizedDelayTestURL
                 runningTasks.append(Task {
                     let client = MihomoControllerClient(host: host, port: port, secret: secret)
                     do {
-                        let delay = try await client.proxyDelay(proxy: row.node.name, url: url)
-                        return ProxyDelayResult(group: row.group.name, proxy: row.node.name, delay: delay, errorMessage: nil)
+                        let delay = try await client.proxyDelay(proxy: target.proxy, url: url)
+                        return ProxyDelayResult(proxy: target.proxy, delay: delay, errorMessage: nil)
                     } catch {
-                        return ProxyDelayResult(group: row.group.name, proxy: row.node.name, delay: nil, errorMessage: error.localizedDescription)
+                        return ProxyDelayResult(proxy: target.proxy, delay: nil, errorMessage: error.localizedDescription)
                     }
                 })
             }
@@ -1848,15 +1907,61 @@ final class AppStore: ObservableObject {
             completed += 1
             if let delay = result.delay {
                 succeeded += 1
-                updateDelay(group: result.group, proxy: result.proxy, delay: delay)
+                updateDelay(proxy: result.proxy, delay: delay)
             } else {
                 failed += 1
-                appendLog("warning", "\(result.proxy) 测速失败：\(result.errorMessage ?? "未知错误")")
+                let reason = friendlyDelayError(result.errorMessage ?? "未知错误")
+                failureReasons[reason, default: 0] += 1
             }
-            delayTestStatus = "\(label)：\(completed)/\(rows.count)，成功 \(succeeded)，失败 \(failed)"
+            let summary = delayFailureSummary(failureReasons)
+            delayTestFailureSummary = summary
+            delayTestStatus = "\(label)：\(completed)/\(targets.count)，成功 \(succeeded)，失败 \(failed)"
         }
 
+        if failed > 0 {
+            appendLog("warning", "\(label) 测速失败原因：\(delayFailureSummary(failureReasons))")
+        }
         appendLog("info", "\(label) 测速完成：成功 \(succeeded)，失败 \(failed)")
+    }
+
+    private var normalizedDelayTestURL: String {
+        let value = settings.delayTestURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? AppSettings.default.delayTestURL : value
+    }
+
+    private func uniqueDelayTargets(from rows: [PolicyTableRow]) -> [ProxyDelayTarget] {
+        var seen: Set<String> = []
+        var targets: [ProxyDelayTarget] = []
+        for row in rows where seen.contains(row.node.name) == false {
+            seen.insert(row.node.name)
+            targets.append(ProxyDelayTarget(proxy: row.node.name))
+        }
+        return targets
+    }
+
+    private func friendlyDelayError(_ message: String) -> String {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.localizedCaseInsensitiveContains("timeout") {
+            return "Timeout"
+        }
+        if trimmed == "An error occurred in the delay test" {
+            return "mihomo 测速失败"
+        }
+        return trimmed.isEmpty ? "未知错误" : trimmed
+    }
+
+    private func delayFailureSummary(_ reasons: [String: Int]) -> String {
+        guard reasons.isEmpty == false else { return "" }
+        return reasons
+            .sorted {
+                if $0.value == $1.value {
+                    return $0.key.localizedCaseInsensitiveCompare($1.key) == .orderedAscending
+                }
+                return $0.value > $1.value
+            }
+            .prefix(3)
+            .map { "\($0.key) x\($0.value)" }
+            .joined(separator: "，")
     }
 
     private func markRefreshJob(
@@ -1895,8 +2000,11 @@ private struct ProfileRefreshResult {
 }
 
 private struct ProxyDelayResult {
-    var group: String
     var proxy: String
     var delay: Int?
     var errorMessage: String?
+}
+
+private struct ProxyDelayTarget {
+    var proxy: String
 }

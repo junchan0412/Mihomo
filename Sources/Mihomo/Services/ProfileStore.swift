@@ -44,17 +44,25 @@ final class ProfileStore {
         try data.write(to: AppPaths.settingsFile, options: .atomic)
     }
 
-    func loadProfiles() throws -> [ProfileItem] {
+    func profileStorageDirectory(settings: AppSettings = .default) -> URL {
+        let value = settings.profileStoragePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.isEmpty == false else { return AppPaths.profilesDirectory }
+        return URL(fileURLWithPath: (value as NSString).expandingTildeInPath, isDirectory: true)
+            .standardizedFileURL
+    }
+
+    func loadProfiles(settings: AppSettings = .default) throws -> [ProfileItem] {
         try AppPaths.ensureBaseDirectories()
+        try ensureProfileStorageDirectory(settings: settings)
         guard FileManager.default.fileExists(atPath: AppPaths.profilesFile.path) else {
-            let item = try createDefaultProfile()
+            let item = try createDefaultProfile(settings: settings)
             try saveProfiles([item])
             return [item]
         }
         let data = try Data(contentsOf: AppPaths.profilesFile)
         let profiles = try decoder.decode([ProfileItem].self, from: data)
         if profiles.isEmpty {
-            let item = try createDefaultProfile()
+            let item = try createDefaultProfile(settings: settings)
             try saveProfiles([item])
             return [item]
         }
@@ -67,10 +75,11 @@ final class ProfileStore {
         try data.write(to: AppPaths.profilesFile, options: .atomic)
     }
 
-    func createDefaultProfile() throws -> ProfileItem {
+    func createDefaultProfile(settings: AppSettings = .default) throws -> ProfileItem {
+        try ensureProfileStorageDirectory(settings: settings)
         let id = UUID()
         let fileName = "\(id.uuidString).yaml"
-        let url = AppPaths.profilesDirectory.appendingPathComponent(fileName)
+        let url = profileStorageDirectory(settings: settings).appendingPathComponent(fileName)
         try defaultProfileYAML.write(to: url, atomically: true, encoding: .utf8)
         return ProfileItem(
             id: id,
@@ -84,9 +93,10 @@ final class ProfileStore {
 
     func importLocalProfile(fileURL: URL, name: String? = nil, settings: AppSettings = .default) throws -> ProfileItem {
         try AppPaths.ensureBaseDirectories()
+        try ensureProfileStorageDirectory(settings: settings)
         let id = UUID()
         let fileName = "\(id.uuidString).yaml"
-        let target = AppPaths.profilesDirectory.appendingPathComponent(fileName)
+        let target = profileStorageDirectory(settings: settings).appendingPathComponent(fileName)
         let content = try String(contentsOf: fileURL, encoding: .utf8)
         try writeProfileContent(content, to: target, settings: settings)
         return ProfileItem(
@@ -111,7 +121,8 @@ final class ProfileStore {
 
         let id = UUID()
         let fileName = "\(id.uuidString).yaml"
-        let target = AppPaths.profilesDirectory.appendingPathComponent(fileName)
+        try ensureProfileStorageDirectory(settings: settings)
+        let target = profileStorageDirectory(settings: settings).appendingPathComponent(fileName)
         let content = try profileString(data: data)
         try writeProfileContent(content, to: target, settings: settings)
 
@@ -138,7 +149,7 @@ final class ProfileStore {
             throw NSError(domain: "Mihomo", code: 3, userInfo: [NSLocalizedDescriptionKey: "Subscription refresh failed"])
         }
         let content = try profileString(data: data)
-        try writeProfileContent(content, to: profileFile(profile), settings: settings)
+        try writeProfileContent(content, to: profileFile(profile, settings: settings), settings: settings)
         var updated = profile
         updated.updatedAt = Date()
         updated.certificateFingerprint = fingerprint ?? profile.certificateFingerprint
@@ -146,17 +157,17 @@ final class ProfileStore {
         return updated
     }
 
-    func profileFile(_ profile: ProfileItem) -> URL {
-        AppPaths.profilesDirectory.appendingPathComponent(profile.fileName)
+    func profileFile(_ profile: ProfileItem, settings: AppSettings = .default) -> URL {
+        profileStorageDirectory(settings: settings).appendingPathComponent(profile.fileName)
     }
 
     func loadProfileContent(_ profile: ProfileItem, settings: AppSettings = .default) throws -> String {
-        let stored = try loadProfileStoredContent(profile)
+        let stored = try loadProfileStoredContent(profile, settings: settings)
         return try ageService.decryptedContent(stored, settings: settings)
     }
 
-    func loadProfileStoredContent(_ profile: ProfileItem) throws -> String {
-        try String(contentsOf: profileFile(profile), encoding: .utf8)
+    func loadProfileStoredContent(_ profile: ProfileItem, settings: AppSettings = .default) throws -> String {
+        try String(contentsOf: profileFile(profile, settings: settings), encoding: .utf8)
     }
 
     func saveProfileContent(_ profile: ProfileItem, content: String, settings: AppSettings = .default) throws -> ProfileItem {
@@ -165,7 +176,7 @@ final class ProfileStore {
             throw NSError(domain: "Mihomo", code: 4, userInfo: [NSLocalizedDescriptionKey: "Profile content cannot be empty"])
         }
 
-        try writeProfileContent(content, to: profileFile(profile), settings: settings)
+        try writeProfileContent(content, to: profileFile(profile, settings: settings), settings: settings)
         var updated = profile
         updated.updatedAt = Date()
         return updated
@@ -174,7 +185,24 @@ final class ProfileStore {
     func migrateProfileEncryption(_ profiles: [ProfileItem], settings: AppSettings) throws {
         for profile in profiles {
             let plain = try loadProfileContent(profile, settings: settings)
-            try writeProfileContent(plain, to: profileFile(profile), settings: settings)
+            try writeProfileContent(plain, to: profileFile(profile, settings: settings), settings: settings)
+        }
+    }
+
+    func migrateProfileStorage(profiles: [ProfileItem], from oldSettings: AppSettings, to directory: URL) throws {
+        try AppPaths.ensureBaseDirectories()
+        let targetDirectory = directory.standardizedFileURL
+        try FileManager.default.createDirectory(at: targetDirectory, withIntermediateDirectories: true)
+
+        for profile in profiles {
+            let source = profileFile(profile, settings: oldSettings).standardizedFileURL
+            let target = targetDirectory.appendingPathComponent(profile.fileName).standardizedFileURL
+            guard source.path != target.path else { continue }
+            guard FileManager.default.fileExists(atPath: source.path) else { continue }
+            if FileManager.default.fileExists(atPath: target.path) {
+                try FileManager.default.removeItem(at: target)
+            }
+            try FileManager.default.copyItem(at: source, to: target)
         }
     }
 
@@ -272,8 +300,16 @@ final class ProfileStore {
     }
 
     private func writeProfileContent(_ content: String, to url: URL, settings: AppSettings) throws {
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         let stored = try ageService.encryptedContent(content, settings: settings)
         try stored.write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    private func ensureProfileStorageDirectory(settings: AppSettings) throws {
+        try FileManager.default.createDirectory(
+            at: profileStorageDirectory(settings: settings),
+            withIntermediateDirectories: true
+        )
     }
 
     private func profileString(data: Data) throws -> String {

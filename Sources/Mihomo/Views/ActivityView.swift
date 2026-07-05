@@ -38,6 +38,18 @@ struct ActivityView: View {
         return row.connection
     }
 
+    private var inspectorBinding: Binding<Bool> {
+        Binding(
+            get: { inspectorVisible && selectedConnection != nil },
+            set: { visible in
+                inspectorVisible = visible
+                if visible == false {
+                    selectedRowID = nil
+                }
+            }
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -82,6 +94,7 @@ struct ActivityView: View {
 
                 Toggle("详情", isOn: $inspectorVisible)
                     .toggleStyle(.switch)
+                    .disabled(selectedConnection == nil)
 
                 Spacer()
             }
@@ -102,10 +115,12 @@ struct ActivityView: View {
                     ContentUnavailableView("没有连接", systemImage: "waveform.path.ecg")
                 }
             }
+            .frame(minHeight: 260, maxHeight: .infinity)
         }
         .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("活动")
-        .inspector(isPresented: $inspectorVisible) {
+        .inspector(isPresented: inspectorBinding) {
             ConnectionInspectorView(connection: selectedConnection) { connection in
                 Task { await store.closeConnection(connection.id) }
             }

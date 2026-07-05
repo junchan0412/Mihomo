@@ -238,7 +238,7 @@ struct SettingsRootView: View {
     private var softwareUpdatePane: some View {
         SettingsSection(title: "软件更新", systemImage: "arrow.down.app") {
             SettingsRow("当前版本") {
-                Text(store.currentAppVersion)
+                Text("\(store.currentAppVersion) (\(store.currentAppBuild))")
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
             }

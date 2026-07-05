@@ -15,7 +15,7 @@ MIN_SYSTEM_VERSION="14.0"
 EXPECTED_UPDATE_PUBLIC_KEY="V4ac9RiJwSRBGJG/mD7xM2D40VB5feBCin6gCm8Cu3E="
 MANIFEST_PATH="$(dirname "$ZIP_PATH")/Mihomo-$VERSION-update.json"
 LATEST_PATH="$(dirname "$ZIP_PATH")/mihomo-update.json"
-BUILD="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%d%H%M%S)"
+BUILD="${APP_BUILD:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%d%H%M%S)}"
 SHA256="$(/usr/bin/shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
 PUBLISHED_AT="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 

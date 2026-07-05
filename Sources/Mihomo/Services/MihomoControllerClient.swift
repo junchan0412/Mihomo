@@ -61,7 +61,13 @@ struct MihomoControllerClient {
         let path = "/proxies/\(proxy.urlPathEscaped)/delay"
         let query = "?url=\(url.urlQueryEscaped)&timeout=\(timeout)"
         let json = try await getJSON(path + query)
-        return Int(number(json["delay"]))
+        if let delay = json["delay"] {
+            return Int(number(delay))
+        }
+        if let message = json["message"] as? String, message.isEmpty == false {
+            throw controllerError(message)
+        }
+        throw controllerError("mihomo 未返回延迟结果。")
     }
 
     func closeConnections() async throws {
@@ -213,9 +219,26 @@ struct MihomoControllerClient {
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else { return }
         guard (200..<300).contains(http.statusCode) else {
-            let message = String(data: data, encoding: .utf8) ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
-            throw NSError(domain: "MihomoController", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: message])
+            let fallback = String(data: data, encoding: .utf8) ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
+            throw controllerError(parsedErrorMessage(data: data, fallback: fallback), code: http.statusCode)
         }
+    }
+
+    private func parsedErrorMessage(data: Data, fallback: String) -> String {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return fallback
+        }
+        if let message = object["message"] as? String, message.isEmpty == false {
+            return message
+        }
+        if let error = object["error"] as? String, error.isEmpty == false {
+            return error
+        }
+        return fallback
+    }
+
+    private func controllerError(_ message: String, code: Int = 1) -> NSError {
+        NSError(domain: "MihomoController", code: code, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
     private func number(_ value: Any?) -> Int64 {
@@ -229,10 +252,14 @@ struct MihomoControllerClient {
 
 private extension String {
     var urlPathEscaped: String {
-        addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? self
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?#")
+        return addingPercentEncoding(withAllowedCharacters: allowed) ?? self
     }
 
     var urlQueryEscaped: String {
-        addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? self
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "&+=#")
+        return addingPercentEncoding(withAllowedCharacters: allowed) ?? self
     }
 }

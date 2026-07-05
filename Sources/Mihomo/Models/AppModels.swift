@@ -149,6 +149,7 @@ struct AppSettings: Codable, Hashable {
     var mihomoPath: String
     var coreSource: CoreSource
     var activeProfileID: UUID?
+    var profileStoragePath: String
     var controllerHost: String
     var controllerPort: Int
     var mixedPort: Int
@@ -212,6 +213,7 @@ struct AppSettings: Codable, Hashable {
         mihomoPath: String = "",
         coreSource: CoreSource = .managed,
         activeProfileID: UUID? = nil,
+        profileStoragePath: String = "",
         controllerHost: String = "127.0.0.1",
         controllerPort: Int = 9090,
         mixedPort: Int = 7890,
@@ -272,6 +274,7 @@ struct AppSettings: Codable, Hashable {
         self.mihomoPath = mihomoPath
         self.coreSource = coreSource
         self.activeProfileID = activeProfileID
+        self.profileStoragePath = profileStoragePath
         self.controllerHost = controllerHost
         self.controllerPort = controllerPort
         self.mixedPort = mixedPort
@@ -334,6 +337,7 @@ struct AppSettings: Codable, Hashable {
         case mihomoPath
         case coreSource
         case activeProfileID
+        case profileStoragePath
         case controllerHost
         case controllerPort
         case mixedPort
@@ -400,6 +404,7 @@ struct AppSettings: Codable, Hashable {
         coreSource = try container.decodeIfPresent(CoreSource.self, forKey: .coreSource)
             ?? AppSettings.migratedCoreSource(legacyManagedCoreEnabled: legacyManagedCoreEnabled, mihomoPath: mihomoPath)
         activeProfileID = try container.decodeIfPresent(UUID.self, forKey: .activeProfileID) ?? fallback.activeProfileID
+        profileStoragePath = try container.decodeIfPresent(String.self, forKey: .profileStoragePath) ?? fallback.profileStoragePath
         controllerHost = try container.decodeIfPresent(String.self, forKey: .controllerHost) ?? fallback.controllerHost
         controllerPort = try container.decodeIfPresent(Int.self, forKey: .controllerPort) ?? fallback.controllerPort
         mixedPort = try container.decodeIfPresent(Int.self, forKey: .mixedPort) ?? fallback.mixedPort
