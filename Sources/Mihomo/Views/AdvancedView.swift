@@ -5,10 +5,6 @@ import UniformTypeIdentifiers
 struct AdvancedView: View {
     @EnvironmentObject private var store: AppStore
     @State private var draft = AppSettings.default
-    @State private var fragmentName = ""
-    @State private var fragmentKind: ConfigFragmentKind = .yaml
-    @State private var fragmentContent = ""
-    @State private var editingFragment: ConfigFragment?
 
     var body: some View {
         ScrollView {
@@ -16,12 +12,10 @@ struct AdvancedView: View {
                 header
                 coreGroup
                 profileEncryptionGroup
-                softwareUpdateGroup
                 controllerGroup
                 dnsGroup
                 snifferGroup
                 externalUIGroup
-                fragmentsGroup
                 previewGroup
                 geoGroup
                 backupGroup
@@ -69,7 +63,7 @@ struct AdvancedView: View {
             VStack(alignment: .leading) {
                 Text("高级")
                     .font(.largeTitle.bold())
-                Text("Core、远程 API、DNS、Sniffer、覆写、备份与导入。")
+                Text("Helper、远程 API、DNS、Sniffer、备份与导入。")
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -82,7 +76,7 @@ struct AdvancedView: View {
     }
 
     private var coreGroup: some View {
-        GroupBox("Core 与 LaunchDaemon") {
+        GroupBox("Helper 与 LaunchDaemon") {
             VStack(alignment: .leading, spacing: 10) {
                 LabeledContent("XPC Helper") {
                     Text(store.helperStatus)
@@ -123,27 +117,15 @@ struct AdvancedView: View {
 
                 Divider()
 
-                Toggle("使用托管/内置 mihomo core", isOn: $draft.managedCoreEnabled)
-                TextField("Core 下载 URL", text: $draft.managedCoreDownloadURL)
+                LabeledContent("核心来源") {
+                    Text(store.settings.coreSource.title)
+                        .foregroundStyle(.secondary)
+                }
                 LabeledContent("当前有效路径") {
                     Text(store.effectiveMihomoPath.isEmpty ? "未设置" : store.effectiveMihomoPath)
                         .textSelection(.enabled)
                 }
-                LabeledContent("托管状态") {
-                    Text(store.managedCoreStatus)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
                 HStack {
-                    Button {
-                        Task {
-                            await store.saveSettings(draft)
-                            await store.installManagedCore()
-                        }
-                    } label: {
-                        Label("更新 Core", systemImage: "square.and.arrow.down")
-                    }
-
                     Toggle("LaunchDaemon 托管核心", isOn: $draft.launchDaemonEnabled)
 
                     Button {
@@ -188,46 +170,6 @@ struct AdvancedView: View {
                 GridRow {
                     Text("Secret")
                     SecureField("Bearer token", text: $draft.controllerSecret)
-                }
-            }
-            .textFieldStyle(.roundedBorder)
-            .padding(.vertical, 4)
-        }
-    }
-
-    private var softwareUpdateGroup: some View {
-        GroupBox("软件更新") {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                GridRow {
-                    Text("Manifest URL")
-                    TextField("https://example.com/mihomo-update.json", text: $draft.softwareUpdateManifestURL)
-                }
-                GridRow {
-                    Text("状态")
-                    HStack {
-                        Text(store.softwareUpdateStatus)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                        Spacer()
-                        Button {
-                            Task {
-                                await store.saveSettings(draft)
-                                await store.checkForSoftwareUpdate()
-                            }
-                        } label: {
-                            Label("检查", systemImage: "arrow.clockwise")
-                        }
-
-                        Button {
-                            Task {
-                                await store.saveSettings(draft)
-                                await store.installSoftwareUpdate()
-                            }
-                        } label: {
-                            Label("安装更新", systemImage: "square.and.arrow.down")
-                        }
-                        .disabled(store.availableUpdate == nil)
-                    }
                 }
             }
             .textFieldStyle(.roundedBorder)
@@ -383,79 +325,6 @@ struct AdvancedView: View {
                 }
             }
             .textFieldStyle(.roundedBorder)
-            .padding(.vertical, 4)
-        }
-    }
-
-    private var fragmentsGroup: some View {
-        GroupBox("覆写片段") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Toggle("YAML 覆写", isOn: $draft.yamlOverrideEnabled)
-                    Toggle("JS Transform", isOn: $draft.jsOverrideEnabled)
-                    Spacer()
-                }
-
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                    GridRow {
-                        TextField("片段名称", text: $fragmentName)
-                        Picker("类型", selection: $fragmentKind) {
-                            ForEach(ConfigFragmentKind.allCases, id: \.self) { kind in
-                                Text(kind.title).tag(kind)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        Button {
-                            saveFragmentEditor()
-                        } label: {
-                            Label(editingFragment == nil ? "添加" : "保存片段", systemImage: "plus")
-                        }
-                    }
-                }
-                .textFieldStyle(.roundedBorder)
-
-                TextEditor(text: $fragmentContent)
-                    .font(.system(.body, design: .monospaced))
-                    .frame(minHeight: 120)
-                    .border(.quaternary)
-
-                ForEach(store.configFragments) { fragment in
-                    HStack {
-                        Toggle(isOn: Binding(
-                            get: { fragment.enabled },
-                            set: { enabled in
-                                var updated = fragment
-                                updated.enabled = enabled
-                                store.updateConfigFragment(updated)
-                            }
-                        )) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(fragment.name)
-                                    .font(.headline)
-                                Text("\(fragment.kind.title) · \(Formatters.shortDate.string(from: fragment.updatedAt))")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .toggleStyle(.checkbox)
-                        Spacer()
-                        Button {
-                            editingFragment = fragment
-                            fragmentName = fragment.name
-                            fragmentKind = fragment.kind
-                            fragmentContent = fragment.content
-                        } label: {
-                            Label("编辑", systemImage: "pencil")
-                        }
-                        Button {
-                            store.deleteConfigFragment(fragment)
-                        } label: {
-                            Label("删除", systemImage: "trash")
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-            }
             .padding(.vertical, 4)
         }
     }
@@ -630,21 +499,6 @@ struct AdvancedView: View {
         text.components(separatedBy: CharacterSet(charactersIn: ",\n"))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
-    }
-
-    private func saveFragmentEditor() {
-        if var editingFragment {
-            editingFragment.name = fragmentName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? editingFragment.name : fragmentName
-            editingFragment.kind = fragmentKind
-            editingFragment.content = fragmentContent
-            store.updateConfigFragment(editingFragment)
-            self.editingFragment = nil
-        } else {
-            store.addConfigFragment(name: fragmentName, kind: fragmentKind, content: fragmentContent)
-        }
-        fragmentName = ""
-        fragmentContent = ""
-        fragmentKind = .yaml
     }
 
     private func restoreLocalBackup() {

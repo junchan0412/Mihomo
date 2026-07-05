@@ -76,29 +76,47 @@ final class AppStore: ObservableObject {
     private var crashRestartCount = 0
     private var bufferedLogs: [LogEntry] = []
     private var lastLogPruneAt: Date?
+    private var ruleHitBaselines: [String: Int] = [:]
+    private var availableUpdateManifestURL: URL?
 
     var activeProfile: ProfileItem? {
         profiles.first { $0.id == settings.activeProfileID } ?? profiles.first
     }
 
     var effectiveMihomoPath: String {
-        if settings.managedCoreEnabled,
-           FileManager.default.isExecutableFile(atPath: AppPaths.managedCoreFile.path) {
-            return AppPaths.managedCoreFile.path
+        let localPath = settings.mihomoPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch settings.coreSource {
+        case .managed:
+            if FileManager.default.isExecutableFile(atPath: AppPaths.managedCoreFile.path) {
+                return AppPaths.managedCoreFile.path
+            }
+            if let bundled = ManagedCoreManager.bundledCorePath,
+               FileManager.default.isExecutableFile(atPath: bundled) {
+                return bundled
+            }
+            return localPath.isEmpty ? AppPaths.managedCoreFile.path : localPath
+        case .bundled:
+            return ManagedCoreManager.bundledCorePath ?? ""
+        case .local:
+            return localPath
         }
-        if settings.mihomoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-            return settings.mihomoPath
-        }
-        if let bundled = ManagedCoreManager.bundledCorePath,
-           FileManager.default.isExecutableFile(atPath: bundled) {
-            return bundled
-        }
-        return settings.mihomoPath
     }
 
     var menuBarTitle: String {
         let state = isCoreRunning ? "开" : "关"
         return "Mihomo \(state) ↓\(Formatters.rate(downloadRate))"
+    }
+
+    var currentAppVersion: String {
+        softwareUpdateManager.currentVersion
+    }
+
+    var softwareUpdateSourceDescription: String {
+        "GitHub Releases"
+    }
+
+    var softwareUpdateSourceURL: URL {
+        SoftwareUpdateManager.githubReleasesPage
     }
 
     func bootstrap() async {
@@ -115,7 +133,7 @@ final class AppStore: ObservableObject {
             lastSystemProxySnapshot = systemProxy.loadSnapshot()
             lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
             tunRecoveryStatus = lastTunRecoverySnapshot == nil ? "未捕获 TUN 回滚快照" : "已有 TUN 回滚快照"
-            managedCoreStatus = FileManager.default.isExecutableFile(atPath: AppPaths.managedCoreFile.path) ? AppPaths.managedCoreFile.path : (ManagedCoreManager.bundledCorePath ?? "未托管")
+            refreshManagedCoreStatus()
             externalUIStatus = externalUIManager.status(name: settings.externalUIName)
             ageStatus = settings.profileEncryptionEnabled ? "Profile 加密已启用" : "Profile 加密未启用"
             launchDaemonStatus = MihomoHelperConstants.coreLaunchDaemonPlistPath
@@ -554,18 +572,18 @@ final class AppStore: ObservableObject {
 
     func saveSettings(_ settings: AppSettings) async {
         do {
+            var normalized = settings
+            normalized.managedCoreEnabled = normalized.coreSource == .managed
             let previous = self.settings
-            if previous.profileEncryptionEnabled != settings.profileEncryptionEnabled {
-                try profileStore.migrateProfileEncryption(profiles, settings: settings)
+            if previous.profileEncryptionEnabled != normalized.profileEncryptionEnabled {
+                try profileStore.migrateProfileEncryption(profiles, settings: normalized)
             }
-            self.settings = settings
-            try profileStore.saveSettings(settings)
-            ageStatus = settings.profileEncryptionEnabled ? "Profile 加密已启用" : "Profile 加密未启用"
+            self.settings = normalized
+            try profileStore.saveSettings(normalized)
+            ageStatus = normalized.profileEncryptionEnabled ? "Profile 加密已启用" : "Profile 加密未启用"
+            refreshManagedCoreStatus()
             syncLaunchAtLoginSetting(reportSuccess: true)
             startProfileAutoRefreshIfNeeded()
-            if settings.lightweightMode {
-                enterLightweightMode()
-            }
             refreshConfigArtifacts()
             appendLog("info", "设置已保存")
         } catch {
@@ -677,8 +695,8 @@ final class AppStore: ObservableObject {
         ))
 
         results.append(.init(
-            title: "托管/内置核心",
-            detail: "当前有效路径：\(mihomoPath)\n托管路径：\(AppPaths.managedCoreFile.path)\n内置路径：\(ManagedCoreManager.bundledCorePath ?? "未随包提供")",
+            title: "核心来源",
+            detail: "当前来源：\(settings.coreSource.title)\n当前有效路径：\(mihomoPath)\n托管路径：\(AppPaths.managedCoreFile.path)\n内置路径：\(ManagedCoreManager.bundledCorePath ?? "未随包提供")\n本地路径：\(settings.mihomoPath.isEmpty ? "未设置" : settings.mihomoPath)",
             state: FileManager.default.isExecutableFile(atPath: mihomoPath) ? .ok : .failed
         ))
 
@@ -790,6 +808,62 @@ final class AppStore: ObservableObject {
         }
     }
 
+    func upsertActiveProfileRule(originalIndex: Int?, rule: EditableProfileRule) async {
+        guard let activeProfile,
+              let profileIndex = profiles.firstIndex(where: { $0.id == activeProfile.id })
+        else {
+            appendLog("error", "没有可编辑的当前配置")
+            return
+        }
+
+        do {
+            let content = try profileStore.loadProfileContent(activeProfile, settings: settings)
+            let updatedContent = try ProfileYAMLStructureEditor().upsertRule(
+                content: content,
+                originalIndex: originalIndex,
+                rule: rule
+            )
+            let updatedProfile = try profileStore.saveProfileContent(activeProfile, content: updatedContent, settings: settings)
+            profiles[profileIndex] = updatedProfile
+            try profileStore.saveProfiles(profiles)
+            refreshConfigArtifacts()
+            appendLog("info", originalIndex == nil ? "已添加规则" : "已保存规则 \(originalIndex ?? rule.index)")
+        } catch {
+            appendLog("error", "规则保存失败：\(error.localizedDescription)")
+        }
+    }
+
+    func deleteActiveProfileRule(index: Int) async {
+        guard let activeProfile,
+              let profileIndex = profiles.firstIndex(where: { $0.id == activeProfile.id })
+        else {
+            appendLog("error", "没有可编辑的当前配置")
+            return
+        }
+
+        do {
+            let removedRule = rules.first { $0.index == index }
+            let content = try profileStore.loadProfileContent(activeProfile, settings: settings)
+            let updatedContent = try ProfileYAMLStructureEditor().deleteRule(content: content, index: index)
+            let updatedProfile = try profileStore.saveProfileContent(activeProfile, content: updatedContent, settings: settings)
+            profiles[profileIndex] = updatedProfile
+            if let removedRule, disabledRules.remove(removedRule.content) != nil {
+                try configFragmentStore.saveDisabledRules(disabledRules)
+            }
+            try profileStore.saveProfiles(profiles)
+            refreshConfigArtifacts()
+            appendLog("info", "已删除规则 \(index)")
+        } catch {
+            appendLog("error", "规则删除失败：\(error.localizedDescription)")
+        }
+    }
+
+    func resetRuleHitStatistics() {
+        ruleHitBaselines = currentRuleHitCounts()
+        updateRuleProviderHitStatistics()
+        appendLog("info", "规则使用计数已重置")
+    }
+
     func addConfigFragment(name: String, kind: ConfigFragmentKind, content: String) {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -824,10 +898,8 @@ final class AppStore: ObservableObject {
             let version = try await managedCoreManager.installOrUpdate(from: settings.managedCoreDownloadURL)
             managedCoreStatus = version.isEmpty ? AppPaths.managedCoreFile.path : version
             var updated = settings
+            updated.coreSource = .managed
             updated.managedCoreEnabled = true
-            if updated.mihomoPath.isEmpty {
-                updated.mihomoPath = AppPaths.managedCoreFile.path
-            }
             await saveSettings(updated)
             appendLog("info", "托管 mihomo core 已更新")
         } catch {
@@ -1111,14 +1183,16 @@ final class AppStore: ObservableObject {
 
     func checkForSoftwareUpdate() async {
         do {
-            softwareUpdateStatus = "正在检查更新"
-            let result = try await softwareUpdateManager.checkForUpdate(manifestURLString: settings.softwareUpdateManifestURL)
+            softwareUpdateStatus = "正在检查 GitHub Releases..."
+            let result = try await softwareUpdateManager.checkForUpdate()
             if result.isNewer {
                 availableUpdate = result.manifest
-                softwareUpdateStatus = "发现 \(result.manifest.version)，当前 \(result.currentVersion)"
+                availableUpdateManifestURL = result.manifestURL
+                softwareUpdateStatus = "发现新版本 \(result.manifest.version)，当前 \(result.currentVersion)"
             } else {
                 availableUpdate = nil
-                softwareUpdateStatus = "已是最新：\(result.currentVersion)"
+                availableUpdateManifestURL = nil
+                softwareUpdateStatus = "已是最新版本：\(result.currentVersion)"
             }
             appendLog("info", softwareUpdateStatus)
         } catch {
@@ -1130,19 +1204,29 @@ final class AppStore: ObservableObject {
     func installSoftwareUpdate() async {
         do {
             let manifest: AppUpdateManifest
+            let manifestURL: URL
             if let availableUpdate {
                 manifest = availableUpdate
+                if let availableUpdateManifestURL {
+                    manifestURL = availableUpdateManifestURL
+                } else {
+                    let result = try await softwareUpdateManager.checkForUpdate()
+                    manifestURL = result.manifestURL
+                }
             } else {
-                let result = try await softwareUpdateManager.checkForUpdate(manifestURLString: settings.softwareUpdateManifestURL)
+                let result = try await softwareUpdateManager.checkForUpdate()
                 guard result.isNewer else {
                     softwareUpdateStatus = "已是最新：\(result.currentVersion)"
                     return
                 }
                 manifest = result.manifest
+                manifestURL = result.manifestURL
+                availableUpdate = manifest
+                availableUpdateManifestURL = manifestURL
             }
 
             softwareUpdateStatus = "正在下载 \(manifest.version)"
-            let message = try await softwareUpdateManager.installUpdate(manifest, manifestURLString: settings.softwareUpdateManifestURL)
+            let message = try await softwareUpdateManager.installUpdate(manifest, manifestURL: manifestURL)
             softwareUpdateStatus = message
             appendLog("info", message)
             try? await Task.sleep(nanoseconds: 500_000_000)
@@ -1238,6 +1322,15 @@ final class AppStore: ObservableObject {
         appendLog("info", "已进入轻量模式，主窗口隐藏，菜单栏保留。")
     }
 
+    func refreshManagedCoreStatus() {
+        let managedAvailable = FileManager.default.isExecutableFile(atPath: AppPaths.managedCoreFile.path)
+        let bundledPath = ManagedCoreManager.bundledCorePath
+        let bundledAvailable = bundledPath.map { FileManager.default.isExecutableFile(atPath: $0) } ?? false
+        let managedText = managedAvailable ? "托管已安装：\(AppPaths.managedCoreFile.path)" : "托管未安装"
+        let bundledText = bundledAvailable ? "内置可用：\(bundledPath ?? "")" : "内置不可用"
+        managedCoreStatus = "\(managedText)；\(bundledText)"
+    }
+
     func shutdown() async {
         shutdownRequested = true
         profileRefreshTask?.cancel()
@@ -1298,15 +1391,13 @@ final class AppStore: ObservableObject {
     }
 
     private func updateRuleProviderHitStatistics() {
-        let ruleHits = connections.reduce(into: [String: Int]()) { result, connection in
-            let key = ruleHitKey(type: connection.ruleType, payload: connection.rulePayload)
-            guard key.isEmpty == false else { return }
-            result[key, default: 0] += 1
-        }
+        let ruleHits = currentRuleHitCounts()
 
         rules = rules.map { rule in
             var updated = rule
-            updated.hitCount = ruleHits[ruleHitKey(content: rule.content), default: 0]
+            let key = ruleHitKey(content: rule.content)
+            let resetBaseline = ruleHitBaselines[key, default: 0]
+            updated.hitCount = max(0, ruleHits[key, default: 0] - resetBaseline)
             return updated
         }
 
@@ -1330,6 +1421,14 @@ final class AppStore: ObservableObject {
                 }.count
             }
             return updated
+        }
+    }
+
+    private func currentRuleHitCounts() -> [String: Int] {
+        connections.reduce(into: [String: Int]()) { result, connection in
+            let key = ruleHitKey(type: connection.ruleType, payload: connection.rulePayload)
+            guard key.isEmpty == false else { return }
+            result[key, default: 0] += 1
         }
     }
 

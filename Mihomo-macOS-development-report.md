@@ -207,6 +207,19 @@ flowchart LR
 | Age Profile 加密 | 已实现基础链路 | 高级页可安装托管 `age`/`age-keygen`、生成 identity/recipient，并在 ProfileStore 读写 Profile YAML 时透明加解密。启用后磁盘 Profile 可为标准 Age armor。 |
 | 备份与运行时兼容 | 已实现 | 运行时配置生成使用解密后的 Profile；Gist payload 保存磁盘原文，因此启用 Age 后不会把 Profile 明文写入云端 JSON。 |
 
+## 5.5 v0.9.0 规则表、核心来源与 GitHub 更新入口
+
+第九版把“能维护配置”推进到“更像成熟 macOS 网络工具”：Profile 与 Rules 页面都改成更接近 Surge 的密集工作台布局，同时清理核心来源和软件更新的入口混乱。
+
+| 第九版要求 | v0.9.0 状态 | 主要落点 |
+| --- | --- | --- |
+| Profile 上下布局 | 已实现 | Profile 页改为上方配置列表、下方配置编辑器，并把覆写片段移动到配置编辑器下方，减少高级页跳转。 |
+| Surge 风格规则表 | 已实现 | Rules 页使用 ID、类型、值、策略、使用计数、注释列，支持搜索、启用/禁用、添加、编辑、删除和重置计数。 |
+| 保存不隐藏窗口 | 已修复 | `saveSettings` 不再因轻量模式开关而调用隐藏主窗口；轻量模式只由显式入口或启动行为触发。 |
+| 核心来源统一 | 已实现 | 新增托管远程、随包内置、本地外部三种 core source；Settings 为唯一切换入口，高级页只保留 Helper/LaunchDaemon 运维。 |
+| 软件更新入口 | 已简化 | 应用不再要求用户填写 manifest URL；检查更新固定读取 GitHub Latest Release 中的 `mihomo-update.json`。 |
+| 菜单栏更新 | 已实现 | App 菜单和菜单栏都新增检查更新入口；发现新版后可直接触发安装。 |
+
 ## 6. 建议 MVP 范围
 
 第一版建议控制在“稳定运行 + 高质量原生体验”：
@@ -222,7 +235,7 @@ flowchart LR
 | 诊断 | 一键检查核心、controller、系统代理、TUN、DNS、订阅可达性。 |
 | 菜单栏 | 速率、开关、当前 Profile、出站模式、打开主窗口。 |
 
-早期建议将 Sub-Store 深度集成、复杂主题和自定义图标后置。v0.5.0 已把 JS 覆写、WebDAV/Gist 同步和远程 HTTP API 做成高级页能力；v0.6.0 已加入 XPC Helper 边界；v0.7.0 已完成无 Apple Developer 账号路径下的固定签名更新、Helper 审计、非 Keychain secret vault、Yams 合并和命中统计；v0.8.0 已补上 Ed25519 更新签名、策略组/规则结构化编辑和 Age Profile 加密。
+早期建议将 Sub-Store 深度集成、复杂主题和自定义图标后置。v0.5.0 已把 JS 覆写、WebDAV/Gist 同步和远程 HTTP API 做成高级页能力；v0.6.0 已加入 XPC Helper 边界；v0.7.0 已完成无 Apple Developer 账号路径下的固定签名更新、Helper 审计、非 Keychain secret vault、Yams 合并和命中统计；v0.8.0 已补上 Ed25519 更新签名、策略组/规则结构化编辑和 Age Profile 加密；v0.9.0 已完成 Profile/Rules 工作台重排、核心来源统一和 GitHub Release 更新入口。
 
 ## 7. 数据与配置设计
 

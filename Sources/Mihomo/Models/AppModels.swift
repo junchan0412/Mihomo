@@ -50,6 +50,30 @@ enum ProfileSource: String, Codable, CaseIterable {
     case remote
 }
 
+enum CoreSource: String, Codable, CaseIterable, Identifiable, Hashable {
+    case managed
+    case bundled
+    case local
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .managed: return "托管远程"
+        case .bundled: return "随包内置"
+        case .local: return "本地外部"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .managed: return "由应用下载并维护 mihomo core"
+        case .bundled: return "使用 App 包内附带的 mihomo core"
+        case .local: return "使用用户指定的本地可执行文件"
+        }
+    }
+}
+
 struct ProfileItem: Identifiable, Codable, Hashable {
     var id: UUID
     var name: String
@@ -123,6 +147,7 @@ struct ProfileItem: Identifiable, Codable, Hashable {
 
 struct AppSettings: Codable, Hashable {
     var mihomoPath: String
+    var coreSource: CoreSource
     var activeProfileID: UUID?
     var controllerHost: String
     var controllerPort: Int
@@ -185,6 +210,7 @@ struct AppSettings: Codable, Hashable {
 
     init(
         mihomoPath: String = "",
+        coreSource: CoreSource = .managed,
         activeProfileID: UUID? = nil,
         controllerHost: String = "127.0.0.1",
         controllerPort: Int = 9090,
@@ -208,7 +234,7 @@ struct AppSettings: Codable, Hashable {
         delayTestConcurrency: Int = 6,
         logRetentionDays: Int = 7,
         logMaxFileSizeMB: Int = 8,
-        managedCoreEnabled: Bool = false,
+        managedCoreEnabled: Bool? = nil,
         managedCoreDownloadURL: String = "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.27/mihomo-darwin-arm64-v1.19.27.gz",
         launchDaemonEnabled: Bool = false,
         autoSetSystemDNS: Bool = false,
@@ -244,6 +270,7 @@ struct AppSettings: Codable, Hashable {
         ageDownloadURL: String = "https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-darwin-arm64.tar.gz"
     ) {
         self.mihomoPath = mihomoPath
+        self.coreSource = coreSource
         self.activeProfileID = activeProfileID
         self.controllerHost = controllerHost
         self.controllerPort = controllerPort
@@ -267,7 +294,7 @@ struct AppSettings: Codable, Hashable {
         self.delayTestConcurrency = delayTestConcurrency
         self.logRetentionDays = logRetentionDays
         self.logMaxFileSizeMB = logMaxFileSizeMB
-        self.managedCoreEnabled = managedCoreEnabled
+        self.managedCoreEnabled = managedCoreEnabled ?? (coreSource == .managed)
         self.managedCoreDownloadURL = managedCoreDownloadURL
         self.launchDaemonEnabled = launchDaemonEnabled
         self.autoSetSystemDNS = autoSetSystemDNS
@@ -305,6 +332,7 @@ struct AppSettings: Codable, Hashable {
 
     private enum CodingKeys: String, CodingKey {
         case mihomoPath
+        case coreSource
         case activeProfileID
         case controllerHost
         case controllerPort
@@ -368,6 +396,9 @@ struct AppSettings: Codable, Hashable {
         let fallback = AppSettings.default
         let container = try decoder.container(keyedBy: CodingKeys.self)
         mihomoPath = try container.decodeIfPresent(String.self, forKey: .mihomoPath) ?? fallback.mihomoPath
+        let legacyManagedCoreEnabled = try container.decodeIfPresent(Bool.self, forKey: .managedCoreEnabled)
+        coreSource = try container.decodeIfPresent(CoreSource.self, forKey: .coreSource)
+            ?? AppSettings.migratedCoreSource(legacyManagedCoreEnabled: legacyManagedCoreEnabled, mihomoPath: mihomoPath)
         activeProfileID = try container.decodeIfPresent(UUID.self, forKey: .activeProfileID) ?? fallback.activeProfileID
         controllerHost = try container.decodeIfPresent(String.self, forKey: .controllerHost) ?? fallback.controllerHost
         controllerPort = try container.decodeIfPresent(Int.self, forKey: .controllerPort) ?? fallback.controllerPort
@@ -391,7 +422,7 @@ struct AppSettings: Codable, Hashable {
         delayTestConcurrency = try container.decodeIfPresent(Int.self, forKey: .delayTestConcurrency) ?? fallback.delayTestConcurrency
         logRetentionDays = try container.decodeIfPresent(Int.self, forKey: .logRetentionDays) ?? fallback.logRetentionDays
         logMaxFileSizeMB = try container.decodeIfPresent(Int.self, forKey: .logMaxFileSizeMB) ?? fallback.logMaxFileSizeMB
-        managedCoreEnabled = try container.decodeIfPresent(Bool.self, forKey: .managedCoreEnabled) ?? fallback.managedCoreEnabled
+        managedCoreEnabled = legacyManagedCoreEnabled ?? (coreSource == .managed)
         managedCoreDownloadURL = try container.decodeIfPresent(String.self, forKey: .managedCoreDownloadURL) ?? fallback.managedCoreDownloadURL
         launchDaemonEnabled = try container.decodeIfPresent(Bool.self, forKey: .launchDaemonEnabled) ?? fallback.launchDaemonEnabled
         autoSetSystemDNS = try container.decodeIfPresent(Bool.self, forKey: .autoSetSystemDNS) ?? fallback.autoSetSystemDNS
@@ -425,6 +456,13 @@ struct AppSettings: Codable, Hashable {
         ageIdentityPath = try container.decodeIfPresent(String.self, forKey: .ageIdentityPath) ?? fallback.ageIdentityPath
         ageRecipient = try container.decodeIfPresent(String.self, forKey: .ageRecipient) ?? fallback.ageRecipient
         ageDownloadURL = try container.decodeIfPresent(String.self, forKey: .ageDownloadURL) ?? fallback.ageDownloadURL
+    }
+
+    private static func migratedCoreSource(legacyManagedCoreEnabled: Bool?, mihomoPath: String) -> CoreSource {
+        if legacyManagedCoreEnabled == true {
+            return .managed
+        }
+        return mihomoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .managed : .local
     }
 }
 

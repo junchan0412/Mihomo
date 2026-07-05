@@ -19,13 +19,13 @@ struct ProfilesView: View {
                 ProfileRefreshQueueStrip()
                     .environmentObject(store)
 
-                HSplitView {
+                VSplitView {
                     ProfileListPane(
                         selectedProfileID: $selectedProfileID,
                         selectedProfile: selectedProfile
                     )
                     .environmentObject(store)
-                    .frame(minWidth: 320, idealWidth: 430)
+                    .frame(minHeight: 140, idealHeight: 220)
 
                     ProfileEditorPane(
                         profile: selectedProfile,
@@ -34,7 +34,11 @@ struct ProfilesView: View {
                         reload: loadEditor,
                         save: saveEditor
                     )
-                    .frame(minWidth: 360, idealWidth: 520)
+                    .frame(minHeight: 220, idealHeight: 420)
+
+                    ConfigFragmentsEditorView()
+                        .environmentObject(store)
+                        .frame(minHeight: 160, idealHeight: 240)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -319,7 +323,6 @@ private struct ProfileEditorPane: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.leading, 12)
     }
 }
 

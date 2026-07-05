@@ -75,6 +75,19 @@ struct MenuBarView: View {
                 Task { await store.refreshAllRemoteProfiles() }
             }
 
+            Button("检查更新") {
+                Task { await store.checkForSoftwareUpdate() }
+            }
+
+            if let update = store.availableUpdate {
+                Button("安装 \(update.version)") {
+                    Task { await store.installSoftwareUpdate() }
+                }
+            }
+
+            Text("更新：\(Formatters.trimmedMenuText(store.softwareUpdateStatus, limit: 22))")
+                .foregroundStyle(.secondary)
+
             Button(store.logsPaused ? "继续日志" : "暂停日志") {
                 store.toggleLogPause()
             }

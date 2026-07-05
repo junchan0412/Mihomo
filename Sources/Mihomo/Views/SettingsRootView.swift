@@ -70,13 +70,70 @@ struct SettingsRootView: View {
 
     private var corePane: some View {
         SettingsSection(title: "核心", systemImage: "cpu") {
-            SettingsRow("mihomo 可执行文件") {
+            SettingsRow("核心来源") {
+                Picker("核心来源", selection: $draft.coreSource) {
+                    ForEach(CoreSource.allCases) { source in
+                        Text(source.title).tag(source)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 360)
+            }
+
+            SettingsRow("来源说明") {
+                Text(draft.coreSource.detail)
+                    .foregroundStyle(.secondary)
+            }
+
+            SettingsRow("托管下载 URL") {
+                HStack {
+                    TextField("mihomo core 下载地址", text: $draft.managedCoreDownloadURL)
+                    Button {
+                        Task {
+                            await store.saveSettings(draft)
+                            await store.installManagedCore()
+                            draft = store.settings
+                        }
+                    } label: {
+                        Label("更新", systemImage: "square.and.arrow.down")
+                    }
+                }
+            }
+
+            SettingsRow("随包内置路径") {
+                Text(ManagedCoreManager.bundledCorePath ?? "未随包提供")
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
+            SettingsRow("本地可执行文件") {
                 HStack {
                     TextField("路径", text: $draft.mihomoPath)
                     Button {
                         chooseMihomoBinary()
                     } label: {
                         Label("选择", systemImage: "folder")
+                    }
+                }
+            }
+            .disabled(draft.coreSource != .local)
+
+            SettingsRow("保存后有效路径") {
+                Text(effectiveDraftCorePath.isEmpty ? "未设置" : effectiveDraftCorePath)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+
+            SettingsRow("托管状态") {
+                HStack {
+                    Text(store.managedCoreStatus)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button {
+                        store.refreshManagedCoreStatus()
+                    } label: {
+                        Label("刷新", systemImage: "arrow.clockwise")
                     }
                 }
             }
@@ -173,6 +230,43 @@ struct SettingsRootView: View {
                         .frame(width: 120)
                 }
             }
+
+            softwareUpdatePane
+        }
+    }
+
+    private var softwareUpdatePane: some View {
+        SettingsSection(title: "软件更新", systemImage: "arrow.down.app") {
+            SettingsRow("当前版本") {
+                Text(store.currentAppVersion)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            SettingsRow("检查来源") {
+                Link(store.softwareUpdateSourceDescription, destination: store.softwareUpdateSourceURL)
+            }
+            SettingsRow("状态") {
+                Text(store.softwareUpdateStatus)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            SettingsRow("操作") {
+                HStack {
+                    Button {
+                        Task { await store.checkForSoftwareUpdate() }
+                    } label: {
+                        Label("检查 GitHub", systemImage: "arrow.clockwise")
+                    }
+
+                    Button {
+                        Task { await store.installSoftwareUpdate() }
+                    } label: {
+                        Label(installUpdateTitle, systemImage: "square.and.arrow.down")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(store.availableUpdate == nil)
+                }
+            }
         }
     }
 
@@ -202,6 +296,13 @@ struct SettingsRootView: View {
         .background(.bar)
     }
 
+    private var installUpdateTitle: String {
+        if let version = store.availableUpdate?.version {
+            return "安装 \(version)"
+        }
+        return "安装更新"
+    }
+
     private func chooseMihomoBinary() {
         let panel = NSOpenPanel()
         panel.title = "选择 mihomo 可执行文件"
@@ -213,6 +314,26 @@ struct SettingsRootView: View {
 
         if panel.runModal() == .OK, let url = panel.url {
             draft.mihomoPath = url.path
+            draft.coreSource = .local
+        }
+    }
+
+    private var effectiveDraftCorePath: String {
+        let localPath = draft.mihomoPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch draft.coreSource {
+        case .managed:
+            if FileManager.default.isExecutableFile(atPath: AppPaths.managedCoreFile.path) {
+                return AppPaths.managedCoreFile.path
+            }
+            if let bundled = ManagedCoreManager.bundledCorePath,
+               FileManager.default.isExecutableFile(atPath: bundled) {
+                return bundled
+            }
+            return localPath.isEmpty ? AppPaths.managedCoreFile.path : localPath
+        case .bundled:
+            return ManagedCoreManager.bundledCorePath ?? ""
+        case .local:
+            return localPath
         }
     }
 }

@@ -56,6 +56,17 @@ struct MihomoApp: App {
                 }
                 .keyboardShortcut("u", modifiers: [.command, .shift])
 
+                Button("检查更新...") {
+                    Task { await store.checkForSoftwareUpdate() }
+                }
+                .keyboardShortcut("u", modifiers: [.command, .option])
+
+                if let update = store.availableUpdate {
+                    Button("安装更新 \(update.version)") {
+                        Task { await store.installSoftwareUpdate() }
+                    }
+                }
+
                 Button("测试全部节点延迟") {
                     Task { await store.testAllProxyDelays() }
                 }

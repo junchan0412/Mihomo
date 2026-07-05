@@ -23,18 +23,28 @@ struct AppUpdateSignature: Codable, Hashable {
 
 struct AppUpdateCheckResult: Hashable {
     var manifest: AppUpdateManifest
+    var manifestURL: URL
     var isNewer: Bool
     var currentVersion: String
 }
 
 final class SoftwareUpdateManager {
+    static let githubLatestManifestURL = URL(string: "https://github.com/junchan0412/Mihomo/releases/latest/download/mihomo-update.json")!
+    static let githubReleasesPage = URL(string: "https://github.com/junchan0412/Mihomo/releases/latest")!
+
     var currentVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
     }
 
-    func checkForUpdate(manifestURLString: String) async throws -> AppUpdateCheckResult {
-        let manifestURL = try resolvedManifestURL(manifestURLString)
-        let (data, response) = try await URLSession.shared.data(from: manifestURL)
+    func checkForUpdate() async throws -> AppUpdateCheckResult {
+        try await checkForUpdate(manifestURL: Self.githubLatestManifestURL)
+    }
+
+    func checkForUpdate(manifestURL: URL) async throws -> AppUpdateCheckResult {
+        var request = URLRequest(url: manifestURL)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("Mihomo", forHTTPHeaderField: "User-Agent")
+        let (data, response) = try await URLSession.shared.data(for: request)
         try validateHTTP(response: response, data: data)
         try validateManifestSignature(data)
         let decoder = JSONDecoder()
@@ -43,13 +53,13 @@ final class SoftwareUpdateManager {
         try validateManifest(manifest)
         return AppUpdateCheckResult(
             manifest: manifest,
+            manifestURL: manifestURL,
             isNewer: compareVersions(manifest.version, currentVersion) == .orderedDescending,
             currentVersion: currentVersion
         )
     }
 
-    func installUpdate(_ manifest: AppUpdateManifest, manifestURLString: String) async throws -> String {
-        let manifestURL = try resolvedManifestURL(manifestURLString)
+    func installUpdate(_ manifest: AppUpdateManifest, manifestURL: URL) async throws -> String {
         let packageURL = try resolvedPackageURL(manifest.url, manifestURL: manifestURL)
         let tempRoot = AppPaths.runtimeDirectory.appendingPathComponent("app-update-\(UUID().uuidString)", isDirectory: true)
         let unpackRoot = tempRoot.appendingPathComponent("unpack", isDirectory: true)
@@ -74,14 +84,6 @@ final class SoftwareUpdateManager {
         let script = try writeInstallScript(tempRoot: tempRoot)
         try launchInstallScript(script: script, candidate: candidate, tempRoot: tempRoot)
         return "更新 \(manifest.version) 已验证，Mihomo 将退出并由安装器替换应用。"
-    }
-
-    private func resolvedManifestURL(_ value: String) throws -> URL {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.isEmpty == false, let url = URL(string: trimmed), url.scheme != nil else {
-            throw updateError("请先填写完整的更新 manifest URL。")
-        }
-        return url
     }
 
     private func resolvedPackageURL(_ value: String, manifestURL: URL) throws -> URL {
