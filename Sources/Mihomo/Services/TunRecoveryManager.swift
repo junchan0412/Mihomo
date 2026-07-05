@@ -57,41 +57,9 @@ final class TunRecoveryManager {
     }
 
     func restore(systemProxy: SystemProxyManager) throws -> TunRecoveryRestoreResult {
-        guard let snapshot = loadSnapshot() else {
-            throw NSError(domain: "TunRecovery", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "没有可用的 TUN 回滚快照"
-            ])
-        }
-
-        try systemProxy.restore(snapshot.proxySnapshot)
-
-        let currentIPv4Routes = routes(family: "inet")
-        let currentIPv6Routes = routes(family: "inet6")
-        let addedRoutes = rollbackCandidates(
-            current: currentIPv4Routes + currentIPv6Routes,
-            baseline: snapshot.ipv4Routes + snapshot.ipv6Routes
-        )
-        let currentDefault = defaultRoute()
-        let shouldRestoreDefault = shouldRestoreDefaultRoute(current: currentDefault, snapshot: snapshot.defaultIPv4Route)
-
-        for route in addedRoutes {
-            _ = try? Shell.run("/sbin/route", ["-n", "delete", route.destination])
-        }
-
-        if shouldRestoreDefault, let gateway = snapshot.defaultIPv4Route?.gateway, gateway.isEmpty == false {
-            _ = try? Shell.run("/sbin/route", ["-n", "delete", "default"])
-            _ = try Shell.run("/sbin/route", ["-n", "add", "default", gateway])
-        }
-        _ = try? Shell.run("/usr/bin/dscacheutil", ["-flushcache"])
-
-        try removeSnapshot()
-        let detail = "已恢复 \(snapshot.proxySnapshot.services.count) 个网络服务，删除 \(addedRoutes.count) 条 TUN 新增路由\(shouldRestoreDefault ? "，并恢复默认路由" : "")。"
-        return TunRecoveryRestoreResult(
-            restoredNetworkServices: snapshot.proxySnapshot.services.count,
-            deletedRoutes: addedRoutes.count,
-            restoredDefaultRoute: shouldRestoreDefault,
-            detail: detail
-        )
+        throw NSError(domain: "TunRecovery", code: 9, userInfo: [
+            NSLocalizedDescriptionKey: "TUN 回滚操作已迁移到 XPC Helper"
+        ])
     }
 
     func verifyAdministratorAccess() throws {

@@ -42,56 +42,19 @@ final class SystemProxyManager {
     }
 
     func enable(host: String, port: Int, socksPort: Int) throws {
-        if loadSnapshot() == nil {
-            try saveSnapshot(captureSnapshot())
-        }
-
-        for service in networkServices() {
-            try run(["-setwebproxy", service, host, "\(port)"])
-            try run(["-setsecurewebproxy", service, host, "\(port)"])
-            if socksPort > 0 {
-                try run(["-setsocksfirewallproxy", service, host, "\(socksPort)"])
-            }
-            try run(["-setproxybypassdomains", service, "localhost", "127.0.0.1", "*.local"])
-        }
+        throw helperOnlyError()
     }
 
     func setDNSServers(_ servers: [String]) throws {
-        let cleaned = servers
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        guard cleaned.isEmpty == false else { return }
-
-        if loadSnapshot() == nil {
-            try saveSnapshot(captureSnapshot())
-        }
-
-        for service in networkServices() {
-            try run(["-setdnsservers", service] + cleaned)
-        }
+        throw helperOnlyError()
     }
 
     func disable() throws {
-        if let snapshot = loadSnapshot() {
-            try restore(snapshot)
-            try removeSnapshot()
-            return
-        }
-
-        for service in networkServices() {
-            try run(["-setwebproxystate", service, "off"])
-            try run(["-setsecurewebproxystate", service, "off"])
-            try run(["-setsocksfirewallproxystate", service, "off"])
-        }
+        throw helperOnlyError()
     }
 
     func repairFromSnapshot() throws {
-        guard let snapshot = loadSnapshot() else {
-            try disable()
-            return
-        }
-        try restore(snapshot)
-        try removeSnapshot()
+        throw helperOnlyError()
     }
 
     func loadSnapshot() -> SystemProxySnapshot? {
@@ -114,56 +77,7 @@ final class SystemProxyManager {
     }
 
     func restore(_ snapshot: SystemProxySnapshot) throws {
-        for serviceState in snapshot.services {
-            try restoreEndpoint(service: serviceState.service, kind: "web", state: serviceState.web)
-            try restoreEndpoint(service: serviceState.service, kind: "secureWeb", state: serviceState.secureWeb)
-            try restoreEndpoint(service: serviceState.service, kind: "socks", state: serviceState.socks)
-
-            if serviceState.bypassDomains.isEmpty {
-                try run(["-setproxybypassdomains", serviceState.service, "Empty"])
-            } else {
-                try run(["-setproxybypassdomains", serviceState.service] + serviceState.bypassDomains)
-            }
-
-            if serviceState.dnsServers.isEmpty {
-                try run(["-setdnsservers", serviceState.service, "Empty"])
-            } else {
-                try run(["-setdnsservers", serviceState.service] + serviceState.dnsServers)
-            }
-        }
-    }
-
-    private func restoreEndpoint(service: String, kind: String, state: ProxyEndpointState) throws {
-        let proxyCommand: String
-        let stateCommand: String
-        switch kind {
-        case "web":
-            proxyCommand = "-setwebproxy"
-            stateCommand = "-setwebproxystate"
-        case "secureWeb":
-            proxyCommand = "-setsecurewebproxy"
-            stateCommand = "-setsecurewebproxystate"
-        default:
-            proxyCommand = "-setsocksfirewallproxy"
-            stateCommand = "-setsocksfirewallproxystate"
-        }
-
-        if state.server.isEmpty == false, state.port > 0 {
-            try run([proxyCommand, service, state.server, "\(state.port)"])
-        }
-        try run([stateCommand, service, state.enabled ? "on" : "off"])
-    }
-
-    private func saveSnapshot(_ snapshot: SystemProxySnapshot) throws {
-        try AppPaths.ensureBaseDirectories()
-        let data = try encoder.encode(snapshot)
-        try data.write(to: AppPaths.systemProxySnapshotFile, options: .atomic)
-    }
-
-    private func removeSnapshot() throws {
-        if FileManager.default.fileExists(atPath: AppPaths.systemProxySnapshotFile.path) {
-            try FileManager.default.removeItem(at: AppPaths.systemProxySnapshotFile)
-        }
+        throw helperOnlyError()
     }
 
     private func endpointState(command: String, service: String) -> ProxyEndpointState {
@@ -202,12 +116,9 @@ final class SystemProxyManager {
         return String(line.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func run(_ arguments: [String]) throws {
-        let result = try Shell.run("/usr/sbin/networksetup", arguments)
-        guard result.status == 0 else {
-            throw NSError(domain: "SystemProxy", code: Int(result.status), userInfo: [
-                NSLocalizedDescriptionKey: result.stderr.isEmpty ? result.stdout : result.stderr
-            ])
-        }
+    private func helperOnlyError() -> NSError {
+        NSError(domain: "SystemProxy", code: 9, userInfo: [
+            NSLocalizedDescriptionKey: "系统代理/DNS 写入操作已迁移到 XPC Helper"
+        ])
     }
 }
