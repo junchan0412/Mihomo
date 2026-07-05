@@ -92,6 +92,24 @@ final class HelperSystemNetworkTool {
         return snapshot.services.count
     }
 
+    func restoreDNS(snapshotPath: String) throws -> Int {
+        guard let snapshot = loadSnapshot(snapshotPath: snapshotPath) else { return 0 }
+        let count = try restoreDNS(from: snapshot)
+        try removeSnapshot(snapshotPath: snapshotPath)
+        return count
+    }
+
+    func restoreDNS(from snapshot: HelperSystemProxySnapshot) throws -> Int {
+        for serviceState in snapshot.services {
+            if serviceState.dnsServers.isEmpty {
+                try runNetworkSetup(["-setdnsservers", serviceState.service, "Empty"])
+            } else {
+                try runNetworkSetup(["-setdnsservers", serviceState.service] + serviceState.dnsServers)
+            }
+        }
+        return snapshot.services.count
+    }
+
     func captureSnapshot() throws -> HelperSystemProxySnapshot {
         let services = networkServices().map { service in
             HelperNetworkServiceProxyState(
@@ -236,9 +254,8 @@ final class HelperTunRecoveryTool {
         decoder.dateDecodingStrategy = .iso8601
     }
 
-    func capture(proxySnapshotPath: String, tunSnapshotPath: String) throws -> HelperTunRecoverySnapshot {
+    func capture(tunSnapshotPath: String) throws -> HelperTunRecoverySnapshot {
         let proxySnapshot = try networkTool.captureSnapshot()
-        try networkTool.saveSnapshot(proxySnapshot, snapshotPath: proxySnapshotPath)
         let snapshot = HelperTunRecoverySnapshot(
             createdAt: Date(),
             proxySnapshot: proxySnapshot,
@@ -250,15 +267,14 @@ final class HelperTunRecoveryTool {
         return snapshot
     }
 
-    func restore(proxySnapshotPath: String, tunSnapshotPath: String) throws -> String {
+    func restore(tunSnapshotPath: String) throws -> String {
         guard let snapshot = load(tunSnapshotPath: tunSnapshotPath) else {
             throw NSError(domain: "MihomoHelper.TUN", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "没有可用的 TUN 回滚快照"
             ])
         }
 
-        try networkTool.saveSnapshot(snapshot.proxySnapshot, snapshotPath: proxySnapshotPath)
-        let restoredServices = try networkTool.restore(snapshotPath: proxySnapshotPath)
+        let restoredServices = try networkTool.restoreDNS(from: snapshot.proxySnapshot)
         let addedRoutes = rollbackCandidates(
             current: routes(family: "inet") + routes(family: "inet6"),
             baseline: snapshot.ipv4Routes + snapshot.ipv6Routes
@@ -275,7 +291,7 @@ final class HelperTunRecoveryTool {
 
         _ = try? HelperShell.run("/usr/bin/dscacheutil", ["-flushcache"])
         try remove(tunSnapshotPath: tunSnapshotPath)
-        return "已恢复 \(restoredServices) 个网络服务，删除 \(addedRoutes.count) 条 TUN 新增路由\(shouldRestoreDefault ? "，并恢复默认路由" : "")。"
+        return "已恢复 \(restoredServices) 个网络服务的 DNS，删除 \(addedRoutes.count) 条 TUN 新增路由\(shouldRestoreDefault ? "，并恢复默认路由" : "")。"
     }
 
     private func save(_ snapshot: HelperTunRecoverySnapshot, tunSnapshotPath: String) throws {

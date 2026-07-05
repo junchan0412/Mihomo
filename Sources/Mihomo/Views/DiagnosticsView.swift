@@ -42,6 +42,15 @@ struct DiagnosticsView: View {
                         Text(item.detail)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
+                        if item.title == "系统代理快照", item.state == .warning {
+                            Button {
+                                Task { await store.repairSystemProxy() }
+                            } label: {
+                                Label("恢复代理快照", systemImage: "wrench.and.screwdriver")
+                            }
+                            .buttonStyle(.bordered)
+                            .padding(.top, 4)
+                        }
                     }
                     Spacer()
                 }

@@ -80,6 +80,10 @@ enum AppPaths {
         supportDirectory.appendingPathComponent("system-proxy-snapshot.json")
     }
 
+    static var systemDNSSnapshotFile: URL {
+        supportDirectory.appendingPathComponent("system-dns-snapshot.json")
+    }
+
     static var tunRecoverySnapshotFile: URL {
         supportDirectory.appendingPathComponent("tun-recovery-snapshot.json")
     }

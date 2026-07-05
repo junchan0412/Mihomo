@@ -236,7 +236,7 @@ final class SoftwareUpdateManager {
           exit 1
         fi
 
-        /usr/bin/open "$current"
+        /usr/bin/open -n "$current"
         /bin/rm -rf "$backup" "$temp"
         """
         try body.write(to: script, atomically: true, encoding: .utf8)

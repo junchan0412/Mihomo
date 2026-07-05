@@ -38,6 +38,7 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
         workDirectory: NSString,
         logPath: NSString,
         proxySnapshotPath: NSString,
+        dnsSnapshotPath: NSString,
         tunSnapshotPath: NSString,
         autoSetDNS: Bool,
         dnsServers: NSArray,
@@ -48,14 +49,13 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
             if autoSetDNS {
                 try networkTool.setDNS(
                     dnsServers.compactMap { $0 as? String },
-                    snapshotPath: proxySnapshotPath as String
+                    snapshotPath: dnsSnapshotPath as String
                 )
             }
 
             var tunDetail = ""
             if captureTun {
                 let snapshot = try tunTool.capture(
-                    proxySnapshotPath: proxySnapshotPath as String,
                     tunSnapshotPath: tunSnapshotPath as String
                 )
                 tunDetail = "已捕获 TUN 回滚快照：\(snapshot.createdAt)"
@@ -80,6 +80,7 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
         restoreDNS: Bool,
         restoreTun: Bool,
         proxySnapshotPath: NSString,
+        dnsSnapshotPath: NSString,
         tunSnapshotPath: NSString,
         withReply reply: @escaping (NSDictionary) -> Void
     ) {
@@ -88,12 +89,11 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
             var details: [String] = []
             if restoreTun {
                 details.append(try tunTool.restore(
-                    proxySnapshotPath: proxySnapshotPath as String,
                     tunSnapshotPath: tunSnapshotPath as String
                 ))
             } else if restoreDNS {
-                let restored = try networkTool.restore(snapshotPath: proxySnapshotPath as String)
-                details.append("已恢复 \(restored) 个网络服务的系统 DNS/代理快照")
+                let restored = try networkTool.restoreDNS(snapshotPath: dnsSnapshotPath as String)
+                details.append("已恢复 \(restored) 个网络服务的系统 DNS 快照")
             }
             reply(HelperReply.ok(details.isEmpty ? "核心已由 Helper 停止" : details.joined(separator: "\n")))
         } catch {
@@ -187,13 +187,13 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
 
     func setSystemDNS(
         servers: NSArray,
-        proxySnapshotPath: NSString,
+        dnsSnapshotPath: NSString,
         withReply reply: @escaping (NSDictionary) -> Void
     ) {
         do {
             try networkTool.setDNS(
                 servers.compactMap { $0 as? String },
-                snapshotPath: proxySnapshotPath as String
+                snapshotPath: dnsSnapshotPath as String
             )
             reply(HelperReply.ok("系统 DNS 已由 Helper 设置"))
         } catch {
@@ -208,7 +208,6 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
     ) {
         do {
             let snapshot = try tunTool.capture(
-                proxySnapshotPath: proxySnapshotPath as String,
                 tunSnapshotPath: tunSnapshotPath as String
             )
             reply(HelperReply.ok("已捕获 TUN 回滚快照", payload: [
@@ -228,7 +227,6 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
     ) {
         do {
             let detail = try tunTool.restore(
-                proxySnapshotPath: proxySnapshotPath as String,
                 tunSnapshotPath: tunSnapshotPath as String
             )
             reply(HelperReply.ok(detail))

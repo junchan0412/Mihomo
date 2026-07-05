@@ -1,10 +1,10 @@
+import AppKit
 import SwiftUI
 
 struct ActivityView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selectedRowID: String?
     @State private var filterText = ""
-    @State private var inspectorVisible = true
     @State private var groupMode: ConnectionGroupMode = .none
 
     private var filteredConnections: [ConnectionItem] {
@@ -36,18 +36,6 @@ struct ActivityView: View {
               let row = tableRows.first(where: { $0.id == selectedRowID })
         else { return nil }
         return row.connection
-    }
-
-    private var inspectorBinding: Binding<Bool> {
-        Binding(
-            get: { inspectorVisible && selectedConnection != nil },
-            set: { visible in
-                inspectorVisible = visible
-                if visible == false {
-                    selectedRowID = nil
-                }
-            }
-        )
     }
 
     var body: some View {
@@ -97,40 +85,79 @@ struct ActivityView: View {
                 .pickerStyle(.segmented)
                 .frame(width: 300)
 
-                Toggle("详情", isOn: $inspectorVisible)
-                    .toggleStyle(.switch)
-                    .disabled(selectedConnection == nil)
+                if selectedConnection != nil {
+                    Button {
+                        selectedRowID = nil
+                    } label: {
+                        Label("收起详情", systemImage: "sidebar.right")
+                    }
+                }
 
                 Spacer()
             }
 
-            AppKitTable(
-                rows: tableRows,
-                selection: $selectedRowID,
-                columns: [
-                    .init(title: "主机/分组", width: 230) { $0.hostText },
-                    .init(title: "进程", width: 140) { $0.processText },
-                    .init(title: "规则", width: 170) { $0.ruleText },
-                    .init(title: "链路", width: 300) { $0.chainText }
-                ],
-                hasHorizontalScroller: false
-            )
-            .overlay {
-                if tableRows.isEmpty {
-                    ContentUnavailableView("没有连接", systemImage: "waveform.path.ecg")
-                }
-            }
-            .frame(minHeight: 260, maxHeight: .infinity)
+            connectionContent
+                .frame(minHeight: 260, maxHeight: .infinity)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("活动")
-        .inspector(isPresented: inspectorBinding) {
-            ConnectionInspectorView(connection: selectedConnection) { connection in
-                Task { await store.closeConnection(connection.id) }
+    }
+
+    private var connectionContent: some View {
+        Group {
+            if let selectedConnection {
+                HStack(spacing: 0) {
+                    connectionTable
+                        .frame(minWidth: 560, maxWidth: .infinity)
+                    Divider()
+                        .padding(.horizontal, 14)
+                    ConnectionInspectorView(connection: selectedConnection) { connection in
+                        selectedRowID = nil
+                        Task { await store.closeConnection(connection.id) }
+                    }
+                    .frame(width: 320)
+                    .frame(maxHeight: .infinity, alignment: .topLeading)
+                }
+            } else {
+                connectionTable
             }
-            .inspectorColumnWidth(min: 300, ideal: 330, max: 380)
         }
+    }
+
+    private var connectionTable: some View {
+        AppKitTable(
+            rows: tableRows,
+            selection: $selectedRowID,
+            columns: [
+                .init(title: "主机/分组", width: 230) { $0.hostText },
+                .init(title: "进程", width: 150) { $0.processText },
+                .init(title: "规则", width: 180) { $0.ruleText },
+                .init(title: "链路", width: 240) { $0.chainText }
+            ],
+            hasHorizontalScroller: false
+        )
+        .overlay {
+            if tableRows.isEmpty {
+                ContentUnavailableView("没有连接", systemImage: "waveform.path.ecg")
+            }
+        }
+    }
+}
+
+struct ConnectionDetailPanelView: View {
+    @EnvironmentObject private var store: AppStore
+
+    private var connection: ConnectionItem? {
+        guard let id = store.connectionDetailConnectionID else { return nil }
+        return store.connections.first { $0.id == id }
+    }
+
+    var body: some View {
+        ConnectionInspectorView(connection: connection) { connection in
+            Task { await store.closeConnection(connection.id) }
+        }
+        .frame(minWidth: 340, minHeight: 420)
     }
 }
 

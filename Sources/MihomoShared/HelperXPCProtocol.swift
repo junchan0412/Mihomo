@@ -29,6 +29,7 @@ public protocol MihomoHelperXPCProtocol {
         workDirectory: NSString,
         logPath: NSString,
         proxySnapshotPath: NSString,
+        dnsSnapshotPath: NSString,
         tunSnapshotPath: NSString,
         autoSetDNS: Bool,
         dnsServers: NSArray,
@@ -40,6 +41,7 @@ public protocol MihomoHelperXPCProtocol {
         restoreDNS: Bool,
         restoreTun: Bool,
         proxySnapshotPath: NSString,
+        dnsSnapshotPath: NSString,
         tunSnapshotPath: NSString,
         withReply reply: @escaping (NSDictionary) -> Void
     )
@@ -71,7 +73,7 @@ public protocol MihomoHelperXPCProtocol {
 
     func setSystemDNS(
         servers: NSArray,
-        proxySnapshotPath: NSString,
+        dnsSnapshotPath: NSString,
         withReply reply: @escaping (NSDictionary) -> Void
     )
 

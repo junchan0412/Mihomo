@@ -58,9 +58,11 @@ struct PoliciesView: View {
         .navigationTitle("策略")
         .onAppear {
             ensureSelection()
+            Task { await store.preloadPolicyGroupIcons() }
         }
         .onChange(of: store.proxyGroups) {
             ensureSelection()
+            Task { await store.preloadPolicyGroupIcons() }
         }
         .onChange(of: searchText) {
             ensureSelection()
@@ -118,6 +120,13 @@ struct PoliciesView: View {
             Spacer()
 
             Button {
+                applySelectedNode()
+            } label: {
+                Label("使用节点", systemImage: "checkmark.circle")
+            }
+            .disabled(canApplySelectedNode == false)
+
+            Button {
                 if let selectedGroup, let selectedNodeRow {
                     Task { await store.testProxyDelay(group: selectedGroup.name, proxy: selectedNodeRow.node.name) }
                 }
@@ -148,6 +157,7 @@ struct PoliciesView: View {
         HStack(spacing: 0) {
             PolicyGroupList(
                 groups: visibleGroups,
+                iconImages: store.policyGroupIconImages,
                 selectedGroupID: $selectedGroupID
             )
             .frame(width: 310)
@@ -176,11 +186,12 @@ struct PoliciesView: View {
                     rows: nodeRows,
                     selection: $selectedNodeID,
                     columns: [
-                        .init(title: "节点", width: 380, textColor: currentNodeColor) { $0.displayName },
-                        .init(title: "类型", width: 130, textColor: currentNodeColor) { $0.node.type },
-                        .init(title: "延迟", width: 110, textColor: currentNodeColor) { $0.delayText }
+                        .init(title: "节点", width: 280, textColor: currentNodeColor) { $0.displayName },
+                        .init(title: "类型", width: 110, textColor: currentNodeColor) { $0.node.type },
+                        .init(title: "延迟", width: 90, textColor: currentNodeColor) { $0.delayText }
                     ],
-                    onDoubleClick: handleNodeDoubleClick
+                    onDoubleClick: handleNodeDoubleClick,
+                    hasHorizontalScroller: false
                 )
                 .overlay {
                     if nodeRows.isEmpty {
@@ -259,6 +270,16 @@ struct PoliciesView: View {
         }
     }
 
+    private var canApplySelectedNode: Bool {
+        guard let selectedNodeRow else { return false }
+        return selectedNodeRow.isCurrent == false
+    }
+
+    private func applySelectedNode() {
+        guard let selectedNodeRow, canApplySelectedNode else { return }
+        handleNodeDoubleClick(selectedNodeRow)
+    }
+
     private func selectNode(_ row: PolicyNodeRow) {
         Task { await store.selectProxy(group: row.group.name, proxy: row.node.name) }
     }
@@ -280,12 +301,13 @@ private struct PolicyNodeRow: Identifiable, Hashable {
 
 private struct PolicyGroupList: View {
     var groups: [ProxyGroup]
+    var iconImages: [String: NSImage]
     @Binding var selectedGroupID: String?
 
     var body: some View {
         List(selection: $selectedGroupID) {
             ForEach(groups) { group in
-                PolicyGroupRow(group: group)
+                PolicyGroupRow(group: group, image: iconImages[group.id])
                     .tag(group.id)
             }
         }
@@ -300,10 +322,11 @@ private struct PolicyGroupList: View {
 
 private struct PolicyGroupRow: View {
     var group: ProxyGroup
+    var image: NSImage?
 
     var body: some View {
         HStack(spacing: 10) {
-            PolicyGroupIcon(group: group)
+            PolicyGroupIcon(group: group, image: image)
                 .frame(width: 20, height: 20)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -328,27 +351,13 @@ private struct PolicyGroupRow: View {
 
 private struct PolicyGroupIcon: View {
     var group: ProxyGroup
+    var image: NSImage?
 
     var body: some View {
-        if let icon = group.icon?.trimmingCharacters(in: .whitespacesAndNewlines),
-           icon.isEmpty == false {
-            if let url = URL(string: icon), url.scheme?.hasPrefix("http") == true {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image
-                            .resizable()
-                            .scaledToFit()
-                    } else {
-                        fallbackIcon
-                    }
-                }
-            } else if let image = NSImage(contentsOfFile: (icon as NSString).expandingTildeInPath) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-            } else {
-                fallbackIcon
-            }
+        if let image {
+            Image(nsImage: image)
+                .resizable()
+                .scaledToFit()
         } else {
             fallbackIcon
         }

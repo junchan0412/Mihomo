@@ -126,15 +126,16 @@ struct RulesView: View {
                 rows: filteredEntries,
                 selection: ruleSelectionBinding,
                 columns: [
-                    .init(title: "状态", width: 72, textColor: ruleTextColor) { $0.rule.disabled ? "禁用" : "启用" },
-                    .init(title: "ID", width: 64, textColor: ruleTextColor) { "\($0.rule.index)" },
-                    .init(title: "类型", width: 136, textColor: ruleTextColor) { $0.type },
-                    .init(title: "值", width: 380, textColor: ruleTextColor) { $0.value.isEmpty ? "-" : $0.value },
-                    .init(title: "策略", width: 150, textColor: ruleTextColor) { $0.policy },
-                    .init(title: "计数", width: 80, textColor: ruleTextColor) { "\($0.rule.hitCount)" },
-                    .init(title: "注释", width: 180, textColor: ruleTextColor) { $0.note.isEmpty ? "-" : $0.note }
+                    .init(title: "状态", width: 62, textColor: ruleTextColor) { $0.rule.disabled ? "禁用" : "启用" },
+                    .init(title: "ID", width: 52, textColor: ruleTextColor) { "\($0.rule.index)" },
+                    .init(title: "类型", width: 124, textColor: ruleTextColor) { $0.type },
+                    .init(title: "值", width: 250, textColor: ruleTextColor) { $0.value.isEmpty ? "-" : $0.value },
+                    .init(title: "策略", width: 130, textColor: ruleTextColor) { $0.policy },
+                    .init(title: "计数", width: 68, textColor: ruleTextColor) { "\($0.rule.hitCount)" },
+                    .init(title: "注释", width: 140, textColor: ruleTextColor) { $0.note.isEmpty ? "-" : $0.note }
                 ],
-                onDoubleClick: beginEdit
+                onDoubleClick: beginEdit,
+                hasHorizontalScroller: false
             )
         }
         .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))

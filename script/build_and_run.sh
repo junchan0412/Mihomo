@@ -138,7 +138,7 @@ if command -v codesign >/dev/null 2>&1; then
 fi
 
 open_app() {
-  /usr/bin/open -n "$APP_BUNDLE"
+  /usr/bin/open -n -F -a "$APP_BUNDLE"
 }
 
 case "$MODE" in

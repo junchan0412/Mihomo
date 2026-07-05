@@ -50,6 +50,7 @@ struct RootView: View {
                 .buttonStyle(.borderedProminent)
             }
         }
+        .background(WindowIdentifierView(identifier: AppWindowIdentifier.main))
     }
 }
 

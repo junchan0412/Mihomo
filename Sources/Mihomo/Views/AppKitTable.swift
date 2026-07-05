@@ -50,6 +50,7 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
         tableView.target = context.coordinator
+        tableView.action = #selector(Coordinator.clicked(_:))
         tableView.doubleAction = #selector(Coordinator.doubleClicked(_:))
         tableView.headerView = NSTableHeaderView()
         tableView.allowsMultipleSelection = false
@@ -107,11 +108,23 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
             return cell
         }
 
+        @objc func clicked(_ sender: NSTableView) {
+            let row = sender.clickedRow >= 0 ? sender.clickedRow : sender.selectedRow
+            guard row >= 0, row < parent.rows.count else { return }
+            parent.selection = parent.rows[row].id
+        }
+
         @objc func doubleClicked(_ sender: NSTableView) {
             let row = sender.clickedRow >= 0 ? sender.clickedRow : sender.selectedRow
             guard row >= 0, row < parent.rows.count else { return }
             parent.selection = parent.rows[row].id
             parent.onDoubleClick?(parent.rows[row])
+        }
+
+        func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
+            guard row >= 0, row < parent.rows.count else { return false }
+            parent.selection = parent.rows[row].id
+            return true
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {

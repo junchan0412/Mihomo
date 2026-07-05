@@ -6,10 +6,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        MainWindowPresenter.presentExisting()
+        return false
+    }
 }
 
 @main
 struct MihomoApp: App {
+    @Environment(\.openWindow) private var openWindow
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = AppStore()
 
@@ -31,6 +37,11 @@ struct MihomoApp: App {
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Mihomo") {
+                Button("显示主窗口") {
+                    MainWindowPresenter.present(openWindow: openWindow)
+                }
+                .keyboardShortcut("m", modifiers: [.command])
+
                 Button(store.isCoreRunning ? "停止核心" : "启动核心") {
                     Task { await store.toggleCore() }
                 }
@@ -57,6 +68,7 @@ struct MihomoApp: App {
                 .keyboardShortcut("u", modifiers: [.command, .shift])
 
                 Button("检查更新...") {
+                    openWindow(id: "software-update")
                     Task { await store.checkForSoftwareUpdate() }
                 }
                 .keyboardShortcut("u", modifiers: [.command, .option])
@@ -100,6 +112,20 @@ struct MihomoApp: App {
                 .frame(minWidth: 860, minHeight: 620)
         }
         .defaultSize(width: 980, height: 720)
+
+        Window("连接详情", id: "connection-detail") {
+            ConnectionDetailPanelView()
+                .environmentObject(store)
+                .frame(minWidth: 340, minHeight: 420)
+        }
+        .defaultSize(width: 380, height: 520)
+
+        Window("软件更新", id: "software-update") {
+            SoftwareUpdateWindowView()
+                .environmentObject(store)
+                .frame(minWidth: 460, minHeight: 360)
+        }
+        .defaultSize(width: 520, height: 420)
 
         WindowGroup("覆写管理", id: "fragments-editor") {
             ConfigFragmentsWindowView()

@@ -54,24 +54,6 @@ struct ProfilesView: View {
             }
 
             Spacer()
-
-            Button {
-                importLocal()
-            } label: {
-                Label("导入本地", systemImage: "square.and.arrow.down")
-            }
-
-            Button {
-                showingRemoteImport = true
-            } label: {
-                Label("从 URL 导入", systemImage: "link.badge.plus")
-            }
-
-            Button {
-                Task { await store.refreshAllRemoteProfiles() }
-            } label: {
-                Label("刷新订阅", systemImage: "arrow.clockwise")
-            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -105,7 +87,7 @@ struct ProfilesView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+        .background(.quaternary.opacity(0.24), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var profileTablePane: some View {
@@ -122,7 +104,8 @@ struct ProfilesView: View {
             AppKitTable(
                 rows: store.profiles,
                 selection: $selectedProfileID,
-                columns: profileColumns
+                columns: profileColumns,
+                hasHorizontalScroller: false
             )
             .overlay {
                 if store.profiles.isEmpty {
@@ -142,18 +125,6 @@ struct ProfilesView: View {
                 .disabled(selectedProfile == nil)
 
                 Button {
-                    importLocal()
-                } label: {
-                    Label("导入", systemImage: "square.and.arrow.down")
-                }
-
-                Button {
-                    showingRemoteImport = true
-                } label: {
-                    Label("URL", systemImage: "link")
-                }
-
-                Button {
                     openProfileEditor()
                 } label: {
                     Label("编辑", systemImage: "pencil")
@@ -169,12 +140,23 @@ struct ProfilesView: View {
                 }
                 .disabled(selectedProfile?.isRemote != true)
 
-                Button(role: .destructive) {
-                    deleteSelectedProfile()
+                Button {
+                    Task { await store.refreshAllRemoteProfiles() }
                 } label: {
-                    Label("删除", systemImage: "trash")
+                    Label("刷新订阅", systemImage: "arrow.triangle.2.circlepath")
                 }
-                .disabled(selectedProfile == nil || store.profiles.count <= 1)
+
+                Button {
+                    importLocal()
+                } label: {
+                    Label("导入...", systemImage: "square.and.arrow.down")
+                }
+
+                Button {
+                    showingRemoteImport = true
+                } label: {
+                    Label("从 URL 安装配置...", systemImage: "link.badge.plus")
+                }
 
                 Spacer()
 
@@ -183,6 +165,13 @@ struct ProfilesView: View {
                 } label: {
                     Label("覆写", systemImage: "slider.horizontal.3")
                 }
+
+                Button(role: .destructive) {
+                    deleteSelectedProfile()
+                } label: {
+                    Label("删除", systemImage: "trash")
+                }
+                .disabled(selectedProfile == nil || store.profiles.count <= 1)
             }
         }
         .frame(maxHeight: .infinity, alignment: .topLeading)
@@ -203,6 +192,7 @@ struct ProfilesView: View {
             .environmentObject(store)
             .frame(width: 340, alignment: .topLeading)
         }
+        .frame(minHeight: 150, maxHeight: 190)
     }
 
     private var selectedProfile: ProfileItem? {
@@ -220,15 +210,8 @@ struct ProfilesView: View {
             .init(title: "来源", width: 320) { profile in
                 profile.source == .remote ? profile.location : profile.fileName
             },
-            .init(title: "更新", width: 140) { Formatters.shortDate.string(from: $0.updatedAt) },
-            .init(title: "用量", width: 180) { profileUsageText($0) }
+            .init(title: "更新", width: 140) { Formatters.shortDate.string(from: $0.updatedAt) }
         ]
-    }
-
-    private func profileUsageText(_ profile: ProfileItem) -> String {
-        guard let total = profile.total else { return "-" }
-        let used = (profile.uploadUsed ?? 0) + (profile.downloadUsed ?? 0)
-        return "\(Formatters.bytes(used)) / \(Formatters.bytes(total))"
     }
 
     private func openProfileEditor() {

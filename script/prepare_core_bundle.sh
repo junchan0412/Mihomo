@@ -6,17 +6,17 @@ VENDOR_DIR="$ROOT_DIR/vendor"
 CORE_PATH="$VENDOR_DIR/mihomo"
 CORE_URL="${MIHOMO_CORE_URL:-}"
 
+if [[ -x "$CORE_PATH" ]]; then
+  echo "$CORE_PATH"
+  exit 0
+fi
+
 if [[ -z "$CORE_URL" ]] && command -v gh >/dev/null 2>&1; then
   CORE_URL="$(gh release view --repo MetaCubeX/mihomo --json assets --jq '.assets[] | select(.name | test("^mihomo-darwin-arm64-v[0-9].*\\.gz$")) | .url' | head -n 1)"
 fi
 
 if [[ -z "$CORE_URL" ]]; then
   CORE_URL="https://github.com/MetaCubeX/mihomo/releases/download/v1.19.27/mihomo-darwin-arm64-v1.19.27.gz"
-fi
-
-if [[ -x "$CORE_PATH" ]]; then
-  echo "$CORE_PATH"
-  exit 0
 fi
 
 mkdir -p "$VENDOR_DIR"

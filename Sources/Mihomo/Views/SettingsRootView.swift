@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct SettingsRootView: View {
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var store: AppStore
     @State private var draft = AppSettings.default
     @State private var tab: SettingsTab = .core
@@ -176,7 +177,11 @@ struct SettingsRootView: View {
                     .frame(width: 120)
             }
             SettingsRow("延迟测试 URL") {
-                TextField("https://www.gstatic.com/generate_204", text: $draft.delayTestURL)
+                TextField("https://cp.cloudflare.com/generate_204", text: $draft.delayTestURL)
+            }
+            SettingsRow("延迟测试超时（ms）") {
+                TextField("8000", value: $draft.delayTestTimeoutMS, format: .number)
+                    .frame(width: 120)
             }
             SettingsRow("延迟测试并发数") {
                 TextField("6", value: $draft.delayTestConcurrency, format: .number)
@@ -253,15 +258,17 @@ struct SettingsRootView: View {
             SettingsRow("操作") {
                 HStack {
                     Button {
+                        openWindow(id: "software-update")
                         Task { await store.checkForSoftwareUpdate() }
                     } label: {
                         Label("检查 GitHub", systemImage: "arrow.clockwise")
                     }
 
                     Button {
+                        openWindow(id: "software-update")
                         Task { await store.installSoftwareUpdate() }
                     } label: {
-                        Label(installUpdateTitle, systemImage: "square.and.arrow.down")
+                        Label("\(installUpdateTitle) 并重启", systemImage: "square.and.arrow.down")
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(store.availableUpdate == nil)

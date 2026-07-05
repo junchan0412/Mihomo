@@ -28,9 +28,7 @@ struct ProfileEditorWindowView: View {
                         .textFieldStyle(.roundedBorder)
 
                     if editorMode == "yaml" {
-                        TextEditor(text: $editorContent)
-                            .font(.system(.body, design: .monospaced))
-                            .border(Color.secondary.opacity(0.25))
+                        YAMLHighlightTextEditor(text: $editorContent)
                     } else {
                         ProfileStructureEditorView(content: $editorContent)
                     }

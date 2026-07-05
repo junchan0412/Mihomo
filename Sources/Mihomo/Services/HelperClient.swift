@@ -84,6 +84,7 @@ final class MihomoHelperClient {
                 workDirectory: workDirectory.path as NSString,
                 logPath: logPath.path as NSString,
                 proxySnapshotPath: AppPaths.systemProxySnapshotFile.path as NSString,
+                dnsSnapshotPath: AppPaths.systemDNSSnapshotFile.path as NSString,
                 tunSnapshotPath: AppPaths.tunRecoverySnapshotFile.path as NSString,
                 autoSetDNS: autoSetDNS,
                 dnsServers: dnsServers as NSArray,
@@ -99,6 +100,7 @@ final class MihomoHelperClient {
                 restoreDNS: restoreDNS,
                 restoreTun: restoreTun,
                 proxySnapshotPath: AppPaths.systemProxySnapshotFile.path as NSString,
+                dnsSnapshotPath: AppPaths.systemDNSSnapshotFile.path as NSString,
                 tunSnapshotPath: AppPaths.tunRecoverySnapshotFile.path as NSString,
                 withReply: reply
             )
@@ -160,7 +162,7 @@ final class MihomoHelperClient {
         try await call { proxy, reply in
             proxy.setSystemDNS(
                 servers: servers as NSArray,
-                proxySnapshotPath: AppPaths.systemProxySnapshotFile.path as NSString,
+                dnsSnapshotPath: AppPaths.systemDNSSnapshotFile.path as NSString,
                 withReply: reply
             )
         }

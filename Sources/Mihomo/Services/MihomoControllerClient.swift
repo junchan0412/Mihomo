@@ -58,7 +58,7 @@ struct MihomoControllerClient {
         try await sendJSON("/proxies/\(group.urlPathEscaped)", method: "PUT", body: ["name": proxy])
     }
 
-    func proxyDelay(proxy: String, url: String = "https://www.gstatic.com/generate_204", timeout: Int = 5000) async throws -> Int {
+    func proxyDelay(proxy: String, url: String = "https://cp.cloudflare.com/generate_204", timeout: Int = 8000) async throws -> Int {
         let path = "/proxies/\(proxy.urlPathEscaped)/delay"
         let query = "?url=\(url.urlQueryEscaped)&timeout=\(timeout)"
         let json = try await getJSON(path + query)

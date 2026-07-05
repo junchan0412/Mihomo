@@ -52,6 +52,8 @@ final class AppStore: ObservableObject {
     @Published var softwareUpdateStatus = "未检查"
     @Published var availableUpdate: AppUpdateManifest?
     @Published var profileEditorProfileID: UUID?
+    @Published var connectionDetailConnectionID: String?
+    @Published var policyGroupIconImages: [String: NSImage] = [:]
 
     private let profileStore = ProfileStore()
     private let systemProxy = SystemProxyManager()
@@ -211,7 +213,6 @@ final class AppStore: ObservableObject {
                 lastRuntimeValidation = "mihomo 配置校验通过"
             }
             if settings.autoSetSystemDNS {
-                lastSystemProxySnapshot = systemProxy.loadSnapshot()
                 appendLog("info", "Helper 已临时设置系统 DNS：\(settings.systemDNSServers.joined(separator: "、"))")
             }
             if settings.tunEnabled {
@@ -276,7 +277,9 @@ final class AppStore: ObservableObject {
             async let connectionResult = client.connections()
             coreVersion = try await version
             currentMode = try await mode
-            proxyGroups = try await groups
+            let loadedGroups = try await groups
+            await preloadPolicyGroupIcons(for: loadedGroups)
+            proxyGroups = loadedGroups
             let (items, up, down) = try await connectionResult
             connections = items
             updateRuleProviderHitStatistics()
@@ -318,13 +321,25 @@ final class AppStore: ObservableObject {
     }
 
     func testProxyDelay(group: String, proxy: String) async {
+        let urls = normalizedDelayTestURLs
+        let timeout = normalizedDelayTestTimeout
+        var failures: [String] = []
         do {
             let client = controllerClient()
-            let delay = try await client.proxyDelay(proxy: proxy, url: normalizedDelayTestURL)
-            updateDelay(proxy: proxy, delay: delay)
-            delayTestStatus = "\(proxy)：\(delay) ms"
-            delayTestFailureSummary = ""
-            appendLog("info", "\(proxy) 延迟：\(delay) ms")
+            for url in urls {
+                do {
+                    let delay = try await client.proxyDelay(proxy: proxy, url: url, timeout: timeout)
+                    updateDelay(proxy: proxy, delay: delay)
+                    delayTestStatus = "\(proxy)：\(delay) ms"
+                    delayTestFailureSummary = ""
+                    appendLog("info", "\(proxy) 延迟：\(delay) ms（\(url)）")
+                    return
+                } catch {
+                    failures.append(error.localizedDescription)
+                }
+            }
+            let message = failures.map(friendlyDelayError).joined(separator: "，")
+            throw NSError(domain: "DelayTest", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
         } catch {
             delayTestStatus = "\(proxy) 延迟测试失败：\(friendlyDelayError(error.localizedDescription))"
             delayTestFailureSummary = friendlyDelayError(error.localizedDescription)
@@ -731,7 +746,7 @@ final class AppStore: ObservableObject {
         if let snapshot = systemProxy.loadSnapshot() {
             results.append(.init(
                 title: "系统代理快照",
-                detail: "已保存 \(snapshot.services.count) 个网络服务的原代理/DNS 状态，可一键修复。",
+                detail: "已保存 \(snapshot.services.count) 个网络服务在开启系统代理前的代理状态。若系统代理异常、端口残留或被错误关闭，可恢复到保存前的状态；TUN/DNS 回滚不再使用此代理快照。",
                 state: .warning
             ))
         } else {
@@ -748,19 +763,19 @@ final class AppStore: ObservableObject {
             if let snapshot = tunRecovery.loadSnapshot() {
                 results.append(.init(
                     title: "TUN 回滚快照",
-                    detail: "已保存 \(snapshot.ipv4Routes.count) 条 IPv4 路由、\(snapshot.ipv6Routes.count) 条 IPv6 路由和 \(snapshot.proxySnapshot.services.count) 个网络服务状态。",
+                    detail: "已保存 \(snapshot.ipv4Routes.count) 条 IPv4 路由、\(snapshot.ipv6Routes.count) 条 IPv6 路由和 \(snapshot.proxySnapshot.services.count) 个网络服务的 DNS 状态。回滚 TUN 不会改动系统代理开关。",
                     state: .ok
                 ))
             } else {
                 results.append(.init(
                     title: "TUN 回滚快照",
-                    detail: "尚未捕获快照。启动 TUN 核心前会自动捕获 DNS、代理和路由状态。",
+                    detail: "尚未捕获快照。启动 TUN 核心前会自动捕获 DNS 与路由状态。",
                     state: .warning
                 ))
             }
             results.append(.init(
                 title: "TUN 模式",
-                detail: "已写入 mihomo runtime overlay。可通过诊断页验证管理员授权，并在停止/退出或手动操作时回滚 DNS/路由。",
+                detail: "已写入 mihomo runtime overlay。可通过诊断页验证管理员授权，并在停止/退出或手动操作时回滚 DNS/路由；不会再恢复系统代理快照。",
                 state: .ok
             ))
         } else {
@@ -864,6 +879,10 @@ final class AppStore: ObservableObject {
             advancedStatus = "配置预览失败：\(error.localizedDescription)"
             appendLog("error", advancedStatus)
         }
+    }
+
+    func preloadPolicyGroupIcons() async {
+        await preloadPolicyGroupIcons(for: proxyGroups)
     }
 
     func refreshProvidersFromController() async {
@@ -1367,7 +1386,7 @@ final class AppStore: ObservableObject {
 
             softwareUpdateStatus = "正在下载 \(manifest.version)"
             let message = try await softwareUpdateManager.installUpdate(manifest, manifestURL: manifestURL)
-            softwareUpdateStatus = message
+            softwareUpdateStatus = "\(message) 正在重启..."
             appendLog("info", message)
             try? await Task.sleep(nanoseconds: 500_000_000)
             NSApp.terminate(nil)
@@ -1674,6 +1693,41 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private func preloadPolicyGroupIcons(for groups: [ProxyGroup]) async {
+        let groupIconPairs = groups.compactMap { group -> (String, String)? in
+            guard let icon = group.icon?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  icon.isEmpty == false
+            else { return nil }
+            return (group.id, icon)
+        }
+        let validIDs = Set(groupIconPairs.map(\.0))
+        policyGroupIconImages = policyGroupIconImages.filter { validIDs.contains($0.key) }
+
+        await withTaskGroup(of: (String, Data?).self) { taskGroup in
+            for (groupID, icon) in groupIconPairs where policyGroupIconImages[groupID] == nil {
+                taskGroup.addTask {
+                    (groupID, await Self.loadPolicyGroupIconData(icon))
+                }
+            }
+
+            for await (groupID, data) in taskGroup {
+                guard let data, let image = NSImage(data: data) else { continue }
+                policyGroupIconImages[groupID] = image
+            }
+        }
+    }
+
+    nonisolated private static func loadPolicyGroupIconData(_ icon: String) async -> Data? {
+        if let url = URL(string: icon), url.scheme?.hasPrefix("http") == true {
+            var request = URLRequest(url: url)
+            request.cachePolicy = .returnCacheDataElseLoad
+            request.timeoutInterval = 8
+            guard let (data, _) = try? await URLSession.shared.data(for: request) else { return nil }
+            return data
+        }
+        return try? Data(contentsOf: URL(fileURLWithPath: (icon as NSString).expandingTildeInPath))
+    }
+
     private func currentRuleHitCounts() -> [String: Int] {
         connections.reduce(into: [String: Int]()) { result, connection in
             let key = ruleHitKey(type: connection.ruleType, payload: connection.rulePayload)
@@ -1686,6 +1740,9 @@ final class AppStore: ObservableObject {
         let parts = content.split(separator: ",", omittingEmptySubsequences: false)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard parts.isEmpty == false else { return "" }
+        if parts[0].uppercased() == "MATCH" {
+            return "MATCH"
+        }
         if parts.count >= 2 {
             return ruleHitKey(type: parts[0], payload: parts[1])
         }
@@ -1890,15 +1947,20 @@ final class AppStore: ObservableObject {
                 let host = settings.controllerHost
                 let port = settings.controllerPort
                 let secret = settings.controllerSecret
-                let url = normalizedDelayTestURL
+                let urls = normalizedDelayTestURLs
+                let timeout = normalizedDelayTestTimeout
                 runningTasks.append(Task {
                     let client = MihomoControllerClient(host: host, port: port, secret: secret)
-                    do {
-                        let delay = try await client.proxyDelay(proxy: target.proxy, url: url)
-                        return ProxyDelayResult(proxy: target.proxy, delay: delay, errorMessage: nil)
-                    } catch {
-                        return ProxyDelayResult(proxy: target.proxy, delay: nil, errorMessage: error.localizedDescription)
+                    var failures: [String] = []
+                    for url in urls {
+                        do {
+                            let delay = try await client.proxyDelay(proxy: target.proxy, url: url, timeout: timeout)
+                            return ProxyDelayResult(proxy: target.proxy, delay: delay, errorMessage: nil)
+                        } catch {
+                            failures.append(error.localizedDescription)
+                        }
                     }
+                    return ProxyDelayResult(proxy: target.proxy, delay: nil, errorMessage: failures.joined(separator: "，"))
                 })
             }
 
@@ -1929,6 +1991,21 @@ final class AppStore: ObservableObject {
         return value.isEmpty ? AppSettings.default.delayTestURL : value
     }
 
+    private var normalizedDelayTestURLs: [String] {
+        var seen: Set<String> = []
+        var urls: [String] = []
+        for url in [normalizedDelayTestURL, AppSettings.default.delayTestURL, "https://www.gstatic.com/generate_204"] {
+            let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard trimmed.isEmpty == false, seen.insert(trimmed).inserted else { continue }
+            urls.append(trimmed)
+        }
+        return urls
+    }
+
+    private var normalizedDelayTestTimeout: Int {
+        min(max(settings.delayTestTimeoutMS, 3000), 30000)
+    }
+
     private func uniqueDelayTargets(from rows: [PolicyTableRow]) -> [ProxyDelayTarget] {
         var seen: Set<String> = []
         var targets: [ProxyDelayTarget] = []
@@ -1942,10 +2019,19 @@ final class AppStore: ObservableObject {
     private func friendlyDelayError(_ message: String) -> String {
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.localizedCaseInsensitiveContains("timeout") {
-            return "Timeout"
+            return "超时"
         }
         if trimmed == "An error occurred in the delay test" {
-            return "mihomo 测速失败"
+            return "测速 URL 不可达"
+        }
+        if trimmed.localizedCaseInsensitiveContains("could not resolve host") || trimmed.localizedCaseInsensitiveContains("no such host") {
+            return "DNS 解析失败"
+        }
+        if trimmed.localizedCaseInsensitiveContains("connection refused") {
+            return "连接被拒绝"
+        }
+        if trimmed.localizedCaseInsensitiveContains("unauthorized") || trimmed.localizedCaseInsensitiveContains("401") {
+            return "Controller 密钥错误"
         }
         return trimmed.isEmpty ? "未知错误" : trimmed
     }
