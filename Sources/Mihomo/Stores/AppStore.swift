@@ -92,6 +92,9 @@ final class AppStore: ObservableObject {
     private var ruleHitBaselines: [String: Int] = [:]
     private var availableUpdateManifestURL: URL?
     private var lastNetworkOperations: [NetworkTakeoverKind: String] = [:]
+    private var lastNetworkTakeoverRefreshAt = Date.distantPast
+    private var profileStatsCache: [UUID: ProfileStatsCacheEntry] = [:]
+    private var profileQualityCache: [UUID: ProfileQualityCacheEntry] = [:]
 
     var activeProfile: ProfileItem? {
         profiles.first { $0.id == settings.activeProfileID } ?? profiles.first
@@ -169,7 +172,7 @@ final class AppStore: ObservableObject {
             lastSystemProxySnapshot = systemProxy.loadSnapshot()
             lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
             tunRecoveryStatus = lastTunRecoverySnapshot == nil ? "未捕获 TUN 回滚快照" : "已有 TUN 回滚快照"
-            refreshNetworkTakeoverStates()
+            refreshNetworkTakeoverStates(force: true)
             refreshManagedCoreStatus()
             externalUIStatus = externalUIManager.status(name: settings.externalUIName)
             ageStatus = settings.profileEncryptionEnabled ? "Profile 加密已启用" : "Profile 加密未启用"
@@ -263,7 +266,7 @@ final class AppStore: ObservableObject {
             try? profileStore.restoreRuntimeBackup()
             appendLog("error", "启动失败：\(error.localizedDescription)")
         }
-        refreshNetworkTakeoverStates()
+        refreshNetworkTakeoverStates(force: true)
     }
 
     private func ensureHelperReadyForCoreStart() async throws {
@@ -325,7 +328,7 @@ final class AppStore: ObservableObject {
         }
         try? await Task.sleep(nanoseconds: 500_000_000)
         isExpectedCoreExit = false
-        refreshNetworkTakeoverStates()
+        refreshNetworkTakeoverStates(force: true)
     }
 
     func restartCore() async {
@@ -342,23 +345,26 @@ final class AppStore: ObservableObject {
             async let mode = client.configMode()
             async let groups = client.proxyGroups()
             async let connectionResult = client.connections()
-            coreVersion = try await version
-            currentMode = try await mode
+            publishIfChanged(\.coreVersion, try await version)
+            publishIfChanged(\.currentMode, try await mode)
             let loadedGroups = try await groups
             await preloadPolicyGroupIcons(for: loadedGroups)
-            proxyGroups = loadedGroups
+            publishIfChanged(\.proxyGroups, loadedGroups)
             let (items, up, down) = try await connectionResult
-            connections = items
-            updateRuleProviderHitStatistics()
+            let connectionsChanged = connections != items
+            publishIfChanged(\.connections, items)
+            if connectionsChanged {
+                updateRuleProviderHitStatistics()
+            }
             updateTrafficRates(uploadTotal: up, downloadTotal: down)
             if isCoreRunning {
                 crashRestartCount = 0
-                coreStatus = "运行中"
+                publishIfChanged(\.coreStatus, "运行中")
             }
             refreshNetworkTakeoverStates()
         } catch {
             if isCoreRunning {
-                coreStatus = "控制器不可用"
+                publishIfChanged(\.coreStatus, "控制器不可用")
             }
             refreshNetworkTakeoverStates()
         }
@@ -490,7 +496,7 @@ final class AppStore: ObservableObject {
         } catch {
             appendLog("error", "Helper 系统代理操作失败：\(error.localizedDescription)")
         }
-        refreshNetworkTakeoverStates()
+        refreshNetworkTakeoverStates(force: true)
     }
 
     func setTunEnabled(_ enabled: Bool) async {
@@ -506,7 +512,7 @@ final class AppStore: ObservableObject {
                 appendLog("info", result.message)
             } catch {
                 appendLog("error", "关闭系统代理失败，已取消开启 TUN：\(error.localizedDescription)")
-                refreshNetworkTakeoverStates()
+                refreshNetworkTakeoverStates(force: true)
                 return
             }
         }
@@ -529,7 +535,7 @@ final class AppStore: ObservableObject {
         } else {
             appendLog("info", "TUN 已\(enabled ? "启用" : "关闭")，下次启动核心时生效")
         }
-        refreshNetworkTakeoverStates()
+        refreshNetworkTakeoverStates(force: true)
     }
 
     func revealProfileStorageDirectory() {
@@ -563,7 +569,7 @@ final class AppStore: ObservableObject {
         } catch {
             appendLog("error", "Helper 系统代理修复失败：\(error.localizedDescription)")
         }
-        refreshNetworkTakeoverStates()
+        refreshNetworkTakeoverStates(force: true)
     }
 
     func restoreSystemDNS() async {
@@ -574,7 +580,7 @@ final class AppStore: ObservableObject {
         } catch {
             appendLog("error", "Helper 系统 DNS 恢复失败：\(error.localizedDescription)")
         }
-        refreshNetworkTakeoverStates()
+        refreshNetworkTakeoverStates(force: true)
     }
 
     func restoreTunRecovery() async {
@@ -590,7 +596,7 @@ final class AppStore: ObservableObject {
             tunRecoveryStatus = "TUN 回滚失败：\(error.localizedDescription)"
             appendLog("error", tunRecoveryStatus)
         }
-        refreshNetworkTakeoverStates()
+        refreshNetworkTakeoverStates(force: true)
     }
 
     func clearNetworkRecoverySnapshots() {
@@ -608,7 +614,7 @@ final class AppStore: ObservableObject {
         } catch {
             appendLog("error", "清理网络快照失败：\(error.localizedDescription)")
         }
-        refreshNetworkTakeoverStates()
+        refreshNetworkTakeoverStates(force: true)
     }
 
     func verifyTunPrivileges() async {
@@ -812,11 +818,16 @@ final class AppStore: ObservableObject {
     }
 
     func profileStats(for profile: ProfileItem) -> ProfileStats {
+        let fingerprint = profileStatsFingerprint(for: profile)
+        if let cached = profileStatsCache[profile.id], cached.fingerprint == fingerprint {
+            return cached.stats
+        }
+
         do {
             let content = try profileStore.loadProfileContent(profile, settings: settings)
             let snapshot = try ProfileYAMLStructureEditor().snapshot(content: content)
             let providers = configFragmentStore.parseProviders(profileContent: content)
-            return ProfileStats(
+            let stats = ProfileStats(
                 lineCount: content.split(separator: "\n", omittingEmptySubsequences: false).count,
                 fileSize: content.data(using: .utf8)?.count ?? 0,
                 policyGroupCount: snapshot.groups.count,
@@ -826,16 +837,25 @@ final class AppStore: ObservableObject {
                 ruleProviderCount: providers.filter { $0.kind == "Rule" }.count,
                 errorMessage: nil
             )
+            profileStatsCache[profile.id] = ProfileStatsCacheEntry(fingerprint: fingerprint, stats: stats)
+            return stats
         } catch {
-            return ProfileStats(errorMessage: error.localizedDescription)
+            let stats = ProfileStats(errorMessage: error.localizedDescription)
+            profileStatsCache[profile.id] = ProfileStatsCacheEntry(fingerprint: fingerprint, stats: stats)
+            return stats
         }
     }
 
     func profileQualityReport(for profile: ProfileItem?) -> ProfileQualityReport {
         guard let profile else { return .empty }
+        let fingerprint = profileQualityFingerprint(for: profile)
+        if let cached = profileQualityCache[profile.id], cached.fingerprint == fingerprint {
+            return cached.report
+        }
+
         do {
             let content = try profileStore.loadProfileContent(profile, settings: settings)
-            return profileQualityAnalyzer.analyze(
+            let report = profileQualityAnalyzer.analyze(
                 profile: profile,
                 profileContent: content,
                 settings: settings,
@@ -843,8 +863,10 @@ final class AppStore: ObservableObject {
                 disabledRules: disabledRules,
                 migrationLog: settingsMigrationLog
             )
+            profileQualityCache[profile.id] = ProfileQualityCacheEntry(fingerprint: fingerprint, report: report)
+            return report
         } catch {
-            return ProfileQualityReport(
+            let report = ProfileQualityReport(
                 score: 0,
                 headline: "配置无法读取",
                 issues: [
@@ -859,7 +881,28 @@ final class AppStore: ObservableObject {
                 migrationLog: settingsMigrationLog,
                 generatedConfig: ""
             )
+            profileQualityCache[profile.id] = ProfileQualityCacheEntry(fingerprint: fingerprint, report: report)
+            return report
         }
+    }
+
+    private func profileStatsFingerprint(for profile: ProfileItem) -> ProfileStatsFingerprint {
+        ProfileStatsFingerprint(
+            fileName: profile.fileName,
+            location: profile.location,
+            updatedAt: profile.updatedAt,
+            profileStoragePath: settings.profileStoragePath
+        )
+    }
+
+    private func profileQualityFingerprint(for profile: ProfileItem) -> ProfileQualityFingerprint {
+        ProfileQualityFingerprint(
+            profile: profileStatsFingerprint(for: profile),
+            settings: settings,
+            fragments: configFragments,
+            disabledRules: disabledRules,
+            migrationLog: settingsMigrationLog
+        )
     }
 
     func saveSettings(_ settings: AppSettings) async {
@@ -927,7 +970,7 @@ final class AppStore: ObservableObject {
             state: services.isEmpty ? .warning : .ok
         ))
 
-        refreshNetworkTakeoverStates()
+        refreshNetworkTakeoverStates(force: true)
         results.append(contentsOf: networkTakeoverStates.map { state in
             DiagnosticResult(
                 title: "网络接管：\(state.kind.title)",
@@ -1059,25 +1102,26 @@ final class AppStore: ObservableObject {
 
     func refreshConfigArtifacts() {
         guard let activeProfile else {
-            rules = []
-            providers = []
-            configPreview = ""
-            configDiff = ""
+            publishIfChanged(\.rules, [])
+            publishIfChanged(\.providers, [])
+            publishIfChanged(\.configPreview, "")
+            publishIfChanged(\.configDiff, "")
             return
         }
 
         do {
             let original = try profileStore.loadProfileContent(activeProfile, settings: settings)
-            rules = configFragmentStore.parseRules(profileContent: original, disabledRules: disabledRules)
-            providers = configFragmentStore.parseProviders(profileContent: original)
+            publishIfChanged(\.rules, configFragmentStore.parseRules(profileContent: original, disabledRules: disabledRules))
+            publishIfChanged(\.providers, configFragmentStore.parseProviders(profileContent: original))
             let candidate = try profileStore.generateRuntimeConfigCandidate(
                 profile: activeProfile,
                 settings: settings,
                 fragments: configFragments,
                 disabledRules: disabledRules
             )
-            configPreview = try String(contentsOf: candidate, encoding: .utf8)
-            configDiff = configFragmentStore.makeDiff(original: original, generated: configPreview)
+            let preview = try String(contentsOf: candidate, encoding: .utf8)
+            publishIfChanged(\.configPreview, preview)
+            publishIfChanged(\.configDiff, configFragmentStore.makeDiff(original: original, generated: preview))
             updateRuleProviderHitStatistics()
             advancedStatus = "配置预览已更新：\(Formatters.shortDate.string(from: Date()))"
         } catch {
@@ -1763,16 +1807,24 @@ final class AppStore: ObservableObject {
         )
     }
 
-    func refreshNetworkTakeoverStates() {
-        let current = try? systemProxy.captureSnapshot()
-        lastSystemProxySnapshot = systemProxy.loadSnapshot()
-        lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
+    func refreshNetworkTakeoverStates(force: Bool = false) {
+        let now = Date()
+        if force == false,
+           networkTakeoverStates.isEmpty == false,
+           now.timeIntervalSince(lastNetworkTakeoverRefreshAt) < 20 {
+            return
+        }
+        lastNetworkTakeoverRefreshAt = now
 
-        networkTakeoverStates = [
+        let current = try? systemProxy.captureSnapshot()
+        publishIfChanged(\.lastSystemProxySnapshot, systemProxy.loadSnapshot())
+        publishIfChanged(\.lastTunRecoverySnapshot, tunRecovery.loadSnapshot())
+
+        publishIfChanged(\.networkTakeoverStates, [
             systemProxyTakeoverState(current: current),
             systemDNSTakeoverState(current: current),
             tunTakeoverState()
-        ]
+        ])
     }
 
     private func systemProxyTakeoverState(current: SystemProxySnapshot?) -> NetworkTakeoverState {
@@ -2103,13 +2155,14 @@ final class AppStore: ObservableObject {
     private func updateRuleProviderHitStatistics() {
         let ruleHits = currentRuleHitCounts()
 
-        rules = rules.map { rule in
+        let updatedRules = rules.map { rule in
             var updated = rule
             let key = ruleHitKey(content: rule.content)
             let resetBaseline = ruleHitBaselines[key, default: 0]
             updated.hitCount = max(0, ruleHits[key, default: 0] - resetBaseline)
             return updated
         }
+        publishIfChanged(\.rules, updatedRules)
 
         let ruleProviderHits = connections.reduce(into: [String: Int]()) { result, connection in
             guard connection.ruleType.uppercased() == "RULE-SET",
@@ -2118,7 +2171,7 @@ final class AppStore: ObservableObject {
             result[connection.rulePayload, default: 0] += 1
         }
 
-        providers = providers.map { provider in
+        let updatedProviders = providers.map { provider in
             var updated = provider
             if provider.kind == "Rule" {
                 updated.hitCount = ruleProviderHits[provider.name, default: 0]
@@ -2132,6 +2185,7 @@ final class AppStore: ObservableObject {
             }
             return updated
         }
+        publishIfChanged(\.providers, updatedProviders)
     }
 
     private func preloadPolicyGroupIcons(for groups: [ProxyGroup]) async {
@@ -2142,7 +2196,9 @@ final class AppStore: ObservableObject {
             return (group.id, icon)
         }
         let validIDs = Set(groupIconPairs.map(\.0))
-        policyGroupIconImages = policyGroupIconImages.filter { validIDs.contains($0.key) }
+        if policyGroupIconImages.keys.contains(where: { validIDs.contains($0) == false }) {
+            policyGroupIconImages = policyGroupIconImages.filter { validIDs.contains($0.key) }
+        }
 
         await withTaskGroup(of: (String, Data?).self) { taskGroup in
             for (groupID, icon) in groupIconPairs where policyGroupIconImages[groupID] == nil {
@@ -2151,9 +2207,14 @@ final class AppStore: ObservableObject {
                 }
             }
 
+            var loadedImages: [String: NSImage] = [:]
             for await (groupID, data) in taskGroup {
                 guard let data, let image = NSImage(data: data) else { continue }
-                policyGroupIconImages[groupID] = image
+                loadedImages[groupID] = image
+            }
+
+            if loadedImages.isEmpty == false {
+                policyGroupIconImages.merge(loadedImages) { current, _ in current }
             }
         }
     }
@@ -2203,6 +2264,12 @@ final class AppStore: ObservableObject {
             port: settings.controllerPort,
             secret: settings.controllerSecret
         )
+    }
+
+    private func publishIfChanged<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<AppStore, Value>, _ value: Value) {
+        if self[keyPath: keyPath] != value {
+            self[keyPath: keyPath] = value
+        }
     }
 
     private func syncLaunchAtLoginSetting(reportSuccess: Bool) {
@@ -2326,26 +2393,40 @@ final class AppStore: ObservableObject {
             lastTrafficSampleAt = now
             lastUploadTotal = uploadTotal
             lastDownloadTotal = downloadTotal
-            uploadRate = 0
-            downloadRate = 0
-            appendTrafficSample()
+            publishIfChanged(\.uploadRate, 0)
+            publishIfChanged(\.downloadRate, 0)
+            if connections.isEmpty == false {
+                appendTrafficSampleIfNeeded(uploadRate: 0, downloadRate: 0)
+            }
             return
         }
 
         let interval = max(now.timeIntervalSince(lastAt), 0.1)
-        uploadRate = max(0, Int64(Double(uploadTotal - lastUpload) / interval))
-        downloadRate = max(0, Int64(Double(downloadTotal - lastDownload) / interval))
+        let nextUploadRate = max(0, Int64(Double(uploadTotal - lastUpload) / interval))
+        let nextDownloadRate = max(0, Int64(Double(downloadTotal - lastDownload) / interval))
+        publishIfChanged(\.uploadRate, nextUploadRate)
+        publishIfChanged(\.downloadRate, nextDownloadRate)
         lastTrafficSampleAt = now
         lastUploadTotal = uploadTotal
         lastDownloadTotal = downloadTotal
-        appendTrafficSample()
+        appendTrafficSampleIfNeeded(uploadRate: nextUploadRate, downloadRate: nextDownloadRate)
     }
 
-    private func appendTrafficSample() {
-        trafficSamples.append(TrafficSample(uploadRate: uploadRate, downloadRate: downloadRate))
-        if trafficSamples.count > 120 {
-            trafficSamples.removeFirst(trafficSamples.count - 120)
+    private func appendTrafficSampleIfNeeded(uploadRate: Int64, downloadRate: Int64) {
+        if uploadRate == 0,
+           downloadRate == 0,
+           connections.isEmpty,
+           trafficSamples.last?.uploadRate == 0,
+           trafficSamples.last?.downloadRate == 0 {
+            return
         }
+
+        var updatedSamples = trafficSamples
+        updatedSamples.append(TrafficSample(uploadRate: uploadRate, downloadRate: downloadRate))
+        if updatedSamples.count > 120 {
+            updatedSamples.removeFirst(updatedSamples.count - 120)
+        }
+        publishIfChanged(\.trafficSamples, updatedSamples)
     }
 
     private func updateDelay(group: String, proxy: String, delay: Int) {
@@ -2767,4 +2848,29 @@ private struct ProxyDelayResult {
 private struct ProxyDelayTarget {
     var proxy: String
     var type: String
+}
+
+private struct ProfileStatsFingerprint: Hashable {
+    var fileName: String
+    var location: String
+    var updatedAt: Date
+    var profileStoragePath: String
+}
+
+private struct ProfileQualityFingerprint: Hashable {
+    var profile: ProfileStatsFingerprint
+    var settings: AppSettings
+    var fragments: [ConfigFragment]
+    var disabledRules: Set<String>
+    var migrationLog: [String]
+}
+
+private struct ProfileStatsCacheEntry {
+    var fingerprint: ProfileStatsFingerprint
+    var stats: ProfileStats
+}
+
+private struct ProfileQualityCacheEntry {
+    var fingerprint: ProfileQualityFingerprint
+    var report: ProfileQualityReport
 }

@@ -40,6 +40,8 @@ struct ActivityView: View {
     }
 
     var body: some View {
+        let rows = tableRows
+
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 VStack(alignment: .leading) {
@@ -97,7 +99,7 @@ struct ActivityView: View {
                 Spacer()
             }
 
-            connectionTable
+            connectionTable(rows: rows)
                 .frame(minHeight: 260, maxHeight: .infinity)
         }
         .padding(24)
@@ -111,9 +113,9 @@ struct ActivityView: View {
         }
     }
 
-    private var connectionTable: some View {
+    private func connectionTable(rows: [ConnectionTableRow]) -> some View {
         AppKitTable(
-            rows: tableRows,
+            rows: rows,
             selection: $selectedRowID,
             columns: [
                 .init(title: "主机/分组", width: 230) { $0.hostText },
@@ -130,7 +132,7 @@ struct ActivityView: View {
             hasHorizontalScroller: false
         )
         .overlay {
-            if tableRows.isEmpty {
+            if rows.isEmpty {
                 ContentUnavailableView("没有连接", systemImage: "waveform.path.ecg")
             }
         }

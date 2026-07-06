@@ -43,15 +43,17 @@ struct PoliciesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            toolbar
-            PolicyStatusStrip(
-                groupCount: store.proxyGroups.count,
-                nodeCount: store.proxyGroups.reduce(0) { $0 + $1.all.count },
-                selectedGroup: selectedGroup,
-                delayStatus: store.delayTestStatus,
-                failureSummary: store.delayTestFailureSummary
-            )
-            content
+            if store.proxyGroups.isEmpty == false {
+                toolbar
+                PolicyStatusStrip(
+                    groupCount: store.proxyGroups.count,
+                    nodeCount: store.proxyGroups.reduce(0) { $0 + $1.all.count },
+                    selectedGroup: selectedGroup,
+                    delayStatus: store.delayTestStatus,
+                    failureSummary: store.delayTestFailureSummary
+                )
+            }
+            mainContent
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -91,6 +93,42 @@ struct PoliciesView: View {
         }
     }
 
+    @ViewBuilder
+    private var mainContent: some View {
+        if store.proxyGroups.isEmpty {
+            PolicyStartupEmptyState(
+                isCoreRunning: store.isCoreRunning,
+                coreStatus: store.coreStatus,
+                activeProfileName: store.activeProfile?.name,
+                tunEnabled: store.settings.tunEnabled,
+                startOrRestartCore: {
+                    Task {
+                        if store.isCoreRunning {
+                            await store.restartCore()
+                        } else {
+                            await store.startCore()
+                        }
+                    }
+                },
+                refreshController: {
+                    Task { await store.refreshController() }
+                },
+                openProfiles: {
+                    store.selectedSection = .profiles
+                },
+                toggleTun: {
+                    Task { await store.setTunEnabled(!store.settings.tunEnabled) }
+                }
+            )
+        } else if visibleGroups.isEmpty {
+            PolicySearchEmptyState(query: searchText) {
+                searchText = ""
+            }
+        } else {
+            content
+        }
+    }
+
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
@@ -103,13 +141,14 @@ struct PoliciesView: View {
 
             Spacer()
 
-            Button {
-                Task { await store.testAllProxyDelays() }
-            } label: {
-                Label("测速全部", systemImage: "speedometer")
+            if store.proxyGroups.isEmpty == false {
+                Button {
+                    Task { await store.testAllProxyDelays() }
+                } label: {
+                    Label("测速全部", systemImage: "speedometer")
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(store.proxyGroups.isEmpty)
 
             Button {
                 Task { await store.refreshController() }
@@ -441,5 +480,147 @@ private struct PolicyStatusStrip: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct PolicyStartupEmptyState: View {
+    var isCoreRunning: Bool
+    var coreStatus: String
+    var activeProfileName: String?
+    var tunEnabled: Bool
+    var startOrRestartCore: () -> Void
+    var refreshController: () -> Void
+    var openProfiles: () -> Void
+    var toggleTun: () -> Void
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 0)
+
+            Image(systemName: isCoreRunning ? "point.3.connected.trianglepath.dotted" : "power.circle")
+                .font(.system(size: 42, weight: .semibold))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 6) {
+                Text(title)
+                    .font(.title2.weight(.semibold))
+                Text(message)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    startOrRestartCore()
+                } label: {
+                    Label(isCoreRunning ? "重启核心" : "启动核心", systemImage: isCoreRunning ? "arrow.clockwise" : "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(activeProfileName == nil)
+
+                Button {
+                    refreshController()
+                } label: {
+                    Label("刷新 Controller", systemImage: "arrow.clockwise")
+                }
+
+                Button {
+                    openProfiles()
+                } label: {
+                    Label("配置", systemImage: "doc.text")
+                }
+
+                Button {
+                    toggleTun()
+                } label: {
+                    Label(tunEnabled ? "关闭 TUN" : "开启 TUN", systemImage: "lock.shield")
+                }
+            }
+
+            Divider()
+                .frame(maxWidth: 520)
+
+            HStack(spacing: 22) {
+                PolicyStartupFact(title: "核心", value: coreStatus)
+                PolicyStartupFact(title: "配置", value: activeProfileName ?? "未选择")
+                PolicyStartupFact(title: "TUN", value: tunEnabled ? "将随核心启用" : "关闭")
+            }
+            .frame(maxWidth: 620)
+
+            Spacer(minLength: 0)
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
+        .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var title: String {
+        isCoreRunning ? "Controller 暂无策略组" : "mihomo 未启动"
+    }
+
+    private var message: String {
+        if activeProfileName == nil {
+            return "请选择或导入配置后启动核心。"
+        }
+        if isCoreRunning {
+            return "当前运行状态没有返回可用策略组。"
+        }
+        return "启动核心后将在这里显示策略组和候选节点。"
+    }
+}
+
+private struct PolicyStartupFact: View {
+    var title: String
+    var value: String
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout.weight(.medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+private struct PolicySearchEmptyState: View {
+    var query: String
+    var resetSearch: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Spacer(minLength: 0)
+
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 36, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 5) {
+                Text("没有匹配的策略")
+                    .font(.title3.weight(.semibold))
+                Text("未找到包含“\(query)”的策略组或节点。")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Button {
+                resetSearch()
+            } label: {
+                Label("清除搜索", systemImage: "xmark.circle")
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
+        .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
     }
 }

@@ -34,6 +34,8 @@ struct MihomoApp: App {
                     Task { await store.handleDeepLink(url) }
                 }
         }
+        .defaultSize(width: 1180, height: 780)
+        .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Mihomo") {

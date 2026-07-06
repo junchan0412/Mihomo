@@ -10,22 +10,19 @@ struct ProfilesView: View {
     @State private var showingRemoteImport = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Divider()
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    storagePane
-                    ProfileRefreshQueueStrip()
-                        .environmentObject(store)
-                    profileTablePane
-                    detailPane
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                header
+                storagePane
+                ProfileRefreshQueueStrip()
+                    .environmentObject(store)
+                profileTablePane
+                detailPane
             }
+            .padding(24)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("配置")
         .overlay {
             DropTargetOverlay(isTargeted: isDropTargeted)
@@ -49,7 +46,7 @@ struct ProfilesView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("配置")
-                    .font(.title2.bold())
+                    .font(.largeTitle.bold())
                 Text("管理本地配置、远程订阅与运行时覆写。")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -57,8 +54,6 @@ struct ProfilesView: View {
 
             Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
     }
 
     private var storagePane: some View {
@@ -107,14 +102,15 @@ struct ProfilesView: View {
                 rows: store.profiles,
                 selection: $selectedProfileID,
                 columns: profileColumns,
-                hasHorizontalScroller: false
+                hasHorizontalScroller: false,
+                allowsParentScrollPassthrough: true
             )
             .overlay {
                 if store.profiles.isEmpty {
                     ContentUnavailableView("没有配置", systemImage: "doc.text")
                 }
             }
-            .frame(height: 330)
+            .frame(height: profileTableHeight)
 
             HStack(spacing: 10) {
                 Button {
@@ -204,6 +200,12 @@ struct ProfilesView: View {
     private var selectedProfile: ProfileItem? {
         guard let selectedProfileID else { return nil }
         return store.profiles.first { $0.id == selectedProfileID }
+    }
+
+    private var profileTableHeight: CGFloat {
+        let visibleRows = max(store.profiles.count, 1)
+        let naturalHeight = 30 + CGFloat(visibleRows) * 28
+        return min(max(naturalHeight, 176), 280)
     }
 
     private var profileColumns: [AppKitTableColumn<ProfileItem>] {

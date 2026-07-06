@@ -260,6 +260,7 @@ v1.4.0 完成状态：
 | v1.3.0 | 完成测试与发版体系：新增 SwiftPM 测试目标、8 个核心 XCTest、Controller/Helper mock 解析测试、release smoke 脚本和第三方清单。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.3.0` 和线上更新清单校验作为小版本发布门禁。 |
 | v1.4.0 | 完成专业工具体验打磨：新增网络接管互斥提示、诊断包导出、Provider 更新历史、连接到规则/资源联动和更多主菜单快捷键。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.0` 和线上更新清单校验作为小版本发布门禁。 |
 | v1.4.1 | 根据稳定性审查完成修缮：连接详情独立窗口化、菜单核心状态实时刷新、日志批量发布、表格差异刷新、配置页纵向滚动、Helper 启动前自修复、系统代理/TUN 互斥和 TUN 关闭前路由恢复。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.1`、manifest、签名和线上更新清单校验作为补丁版本发布门禁。 |
+| v1.4.2 | 完成 UI 性能全量审查与修复：Controller 轮询改为差异发布，网络接管系统命令改为节流刷新，配置统计/质量分析加入指纹缓存，日志和 AppKit 表格避免重复渲染，同时纳入策略无启动空态、配置页滚动和主窗口尺寸稳定性修复。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.2`、manifest、签名和线上更新清单校验作为补丁版本发布门禁。 |
 
 ## 11. 稳定性与性能审查记录
 
@@ -287,3 +288,28 @@ v1.4.1 完成状态：
 | 配置页布局 | 已修复 | 配置页主体改为纵向滚动，配置表使用稳定高度，质量 Inspector 使用自适应网格，窗口较矮时不再裁切。 |
 | Helper 更新后启动失败 | 已修复路径 | `startCore()` 前先探测 Helper，通信失败时自动移除旧注册并注册当前 bundle Helper，必要时打开系统设置提示授权。 |
 | 系统代理 / TUN 稳定性 | 已修复 | 开启 TUN 前关闭系统代理，开启系统代理前关闭 TUN；关闭 TUN 且核心运行时先恢复 TUN 路由快照再保存设置。 |
+
+## 12. UI 性能全量审查记录
+
+本轮审查针对主窗口、概览、活动、策略、配置、规则、资源、日志、诊断和菜单栏的刷新链路进行，重点检查 SwiftUI 观察范围、轮询发布频率、AppKit 桥接、YAML 解析、列表滚动和系统命令调用。
+
+| 类别 | 发现 | 本轮处理 | 后续建议 |
+| --- | --- | --- | --- |
+| 观察范围 | 单一 `AppStore` 承载几十个 `@Published`，任一高频字段变化都会触发使用 `@EnvironmentObject` 的页面更新。 | Controller 轮询结果改为 `publishIfChanged` 差异发布，减少相同版本、模式、策略组、连接、速率、规则和 Provider 的重复通知。 | 中期拆分 `ConnectionStore`、`LogStore`、`ProfileAnalysisStore` 和 `NetworkTakeoverStore`，让页面订阅更窄的状态面。 |
+| 主线程阻塞 | 普通 Controller 轮询会调用 `networksetup` 抓系统代理/DNS 快照，系统命令在主 actor 上执行，容易造成周期性 UI 卡顿。 | 网络接管状态增加 20 秒节流；启动、停止、切换系统代理/TUN、诊断等显式操作仍强制刷新。 | 后续把系统快照采集移入后台服务，并用异步结果回填 UI。 |
+| 配置页解析 | 配置页每次重绘都会读取 profile、解析 YAML 结构并生成质量报告。 | `profileStats` 和 `profileQualityReport` 增加 profile/settings/fragments/disabledRules/migrationLog 指纹缓存。 | 后续把质量分析改成后台任务，展示上次分析时间和可取消状态。 |
+| AppKit 表格 | SwiftUI 更新会进入 `updateNSView`，即使行数组未变也会构造单元格字符串签名。 | `AppKitTable` 要求行类型 `Hashable`，先比较行数组，只有行变化时才计算签名和 reload。 | 大连接量场景可进一步使用行级 diff reload。 |
+| 日志渲染 | 日志 AppKit 文本视图每次更新都会先拼接全部日志字符串。 | `AppKitLogView` 先比较 `entries` 数组，日志未变时跳过字符串拼接和 NSTextView 更新。 | 日志流后续应拆成独立 store，避免日志新增影响非日志页面。 |
+| 活动页分组 | 连接分组/排序在一次 body 中被多处读取。 | 活动页将本轮 `tableRows` 作为局部值传入表格，避免同一轮渲染重复分组。 | Controller WebSocket 事件流上线后可改为连接 diff，而不是全量轮询。 |
+| 空态和窗口 | 策略未启动时仍渲染空表格骨架，配置页底部质量面板会被裁切，主窗口默认高度不稳定。 | 策略无启动态改为启动引导面板；配置页整页滚动并自适应表格高度；主窗口设置默认尺寸和内容最小尺寸。 | 继续保持 Surge 风格的密度，避免把状态面板做成大面积营销式空态。 |
+
+v1.4.2 完成状态：
+
+| 修缮项 | 完成状态 | 主要落点 |
+| --- | --- | --- |
+| 轮询差异发布 | 已实现 | `refreshController()` 对版本、模式、策略组、连接、速率和核心状态使用差异发布，连接未变时跳过规则/Provider 命中重算。 |
+| 网络接管节流 | 已实现 | 普通轮询下网络接管状态 20 秒节流，显式网络操作和诊断强制刷新。 |
+| 配置分析缓存 | 已实现 | profile 统计和质量报告按指纹缓存，避免配置页因无关状态变化重复读盘和解析 YAML。 |
+| AppKit 渲染优化 | 已实现 | 表格先比较行数组再计算签名；日志视图先比较日志 entries 再拼接文本。 |
+| 活动页渲染收敛 | 已实现 | 连接表格行在一次 body 内只计算一次。 |
+| UI 布局稳定性 | 已实现 | 策略启动空态、配置页可滚动和主窗口尺寸稳定修复纳入 1.4.2。 |

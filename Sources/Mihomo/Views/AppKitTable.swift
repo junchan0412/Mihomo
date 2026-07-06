@@ -20,25 +20,28 @@ struct AppKitTableColumn<Row> {
     }
 }
 
-struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashable {
+struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID: Hashable {
     var rows: [Row]
     @Binding var selection: Row.ID?
     var columns: [AppKitTableColumn<Row>]
     var onDoubleClick: ((Row) -> Void)?
     var hasHorizontalScroller: Bool
+    var allowsParentScrollPassthrough: Bool
 
     init(
         rows: [Row],
         selection: Binding<Row.ID?>,
         columns: [AppKitTableColumn<Row>],
         onDoubleClick: ((Row) -> Void)? = nil,
-        hasHorizontalScroller: Bool = true
+        hasHorizontalScroller: Bool = true,
+        allowsParentScrollPassthrough: Bool = false
     ) {
         self.rows = rows
         self._selection = selection
         self.columns = columns
         self.onDoubleClick = onDoubleClick
         self.hasHorizontalScroller = hasHorizontalScroller
+        self.allowsParentScrollPassthrough = allowsParentScrollPassthrough
     }
 
     func makeCoordinator() -> Coordinator {
@@ -59,9 +62,10 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
         tableView.rowHeight = 26
         tableView.intercellSpacing = NSSize(width: 0, height: 2)
 
-        let scrollView = NSScrollView()
+        let scrollView = AppKitTableScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = hasHorizontalScroller
+        scrollView.allowsParentScrollPassthrough = allowsParentScrollPassthrough
         scrollView.autohidesScrollers = true
         scrollView.borderType = .bezelBorder
         scrollView.documentView = tableView
@@ -74,6 +78,7 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
         guard let tableView = scrollView.documentView as? NSTableView else { return }
         context.coordinator.parent = self
         scrollView.hasHorizontalScroller = hasHorizontalScroller
+        (scrollView as? AppKitTableScrollView)?.allowsParentScrollPassthrough = allowsParentScrollPassthrough
         context.coordinator.configureColumns(on: tableView)
         context.coordinator.reloadDataIfNeeded(on: tableView)
         context.coordinator.applySelection(on: tableView)
@@ -82,6 +87,7 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         var parent: AppKitTable
         private var columnSignature: [String] = []
+        private var lastRows: [Row] = []
         private var rowSignature: [String] = []
         private var isApplyingSelection = false
 
@@ -155,15 +161,22 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
                 tableView.addTableColumn(tableColumn)
             }
             columnSignature = nextSignature
+            lastRows = []
             rowSignature = []
         }
 
         func reloadDataIfNeeded(on tableView: NSTableView) {
+            guard parent.rows != lastRows || rowSignature.isEmpty else { return }
+
             let nextSignature = parent.rows.map { row in
                 let values = parent.columns.map { $0.value(row) }.joined(separator: "\u{1f}")
                 return "\(row.id)\u{1e}\(values)"
             }
-            guard nextSignature != rowSignature else { return }
+            guard nextSignature != rowSignature else {
+                lastRows = parent.rows
+                return
+            }
+            lastRows = parent.rows
             rowSignature = nextSignature
             tableView.reloadData()
         }
@@ -205,5 +218,52 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
 
             return cell
         }
+    }
+}
+
+private final class AppKitTableScrollView: NSScrollView {
+    var allowsParentScrollPassthrough = false
+
+    override func scrollWheel(with event: NSEvent) {
+        guard allowsParentScrollPassthrough else {
+            super.scrollWheel(with: event)
+            return
+        }
+
+        guard shouldPassVerticalScrollToParent(event), let nextResponder else {
+            super.scrollWheel(with: event)
+            return
+        }
+
+        nextResponder.scrollWheel(with: event)
+    }
+
+    private func shouldPassVerticalScrollToParent(_ event: NSEvent) -> Bool {
+        guard abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX) else { return false }
+
+        let visibleHeight = contentView.bounds.height
+        let contentHeight = tableContentHeight
+        guard contentHeight > visibleHeight + 1 else { return true }
+
+        let originY = contentView.bounds.origin.y
+        let maxY = max(0, contentHeight - visibleHeight)
+
+        if originY <= 1, event.scrollingDeltaY > 0 {
+            return true
+        }
+        if originY >= maxY - 1, event.scrollingDeltaY < 0 {
+            return true
+        }
+        return false
+    }
+
+    private var tableContentHeight: CGFloat {
+        guard let tableView = documentView as? NSTableView else {
+            return documentView?.bounds.height ?? 0
+        }
+
+        let headerHeight = tableView.headerView?.frame.height ?? 0
+        let rowStride = tableView.rowHeight + tableView.intercellSpacing.height
+        return headerHeight + CGFloat(tableView.numberOfRows) * rowStride
     }
 }

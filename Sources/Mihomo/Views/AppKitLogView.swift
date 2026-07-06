@@ -35,7 +35,10 @@ struct AppKitLogView: NSViewRepresentable {
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
+        guard context.coordinator.lastEntries != entries else { return }
+
         let nextText = renderedText
+        context.coordinator.lastEntries = entries
         guard context.coordinator.lastRenderedText != nextText else { return }
 
         textView.string = nextText
@@ -53,6 +56,7 @@ struct AppKitLogView: NSViewRepresentable {
     }
 
     final class Coordinator {
+        var lastEntries: [LogEntry] = []
         var lastRenderedText = ""
     }
 }
