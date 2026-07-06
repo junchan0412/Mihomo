@@ -63,6 +63,7 @@ struct ActivityView: View {
                 StatusCard(title: "连接", value: "\(store.connections.count)", systemImage: "link", isGood: true)
                 StatusCard(title: "下载", value: Formatters.rate(store.downloadRate), systemImage: "arrow.down", isGood: true)
                 StatusCard(title: "上传", value: Formatters.rate(store.uploadRate), systemImage: "arrow.up", isGood: true)
+                StatusCard(title: "事件流", value: store.controllerEventStreamStatus, systemImage: "bolt.horizontal", isGood: store.controllerEventStreamStatus == "实时")
             }
 
             VStack(alignment: .leading, spacing: 8) {
