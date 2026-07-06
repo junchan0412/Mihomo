@@ -5,7 +5,7 @@ import MihomoShared
 
 private struct ProviderResourceUpdateResult {
     var provider: ProviderItem
-    var target: URL?
+    var download: ProviderResourceDownloadResult?
     var errorMessage: String?
 }
 
@@ -173,6 +173,7 @@ final class AppStore: ObservableObject {
             profiles = try profileStore.loadProfiles(settings: settings)
             configFragments = try configFragmentStore.loadFragments()
             disabledRules = try configFragmentStore.loadDisabledRules()
+            providerUpdateHistory = loadProviderUpdateHistory()
             if settings.activeProfileID == nil {
                 settings.activeProfileID = profiles.first?.id
                 try profileStore.saveSettings(settings)
@@ -1203,15 +1204,17 @@ final class AppStore: ObservableObject {
 
     func updateProviderResource(_ provider: ProviderItem) async {
         do {
-            let target = try await Self.downloadProviderResource(provider)
-            resourceUpdateStatus = "\(provider.name) 已更新：\(target.path)"
+            let result = try await ProviderResourceManager().download(provider)
+            let backupSuffix = result.backup.map { "；已备份上一版：\($0.path)" } ?? ""
+            resourceUpdateStatus = "\(provider.name) 已更新：\(result.target.path)\(backupSuffix)"
             appendLog("info", resourceUpdateStatus)
             recordProviderUpdate(
                 provider,
                 action: "下载",
                 succeeded: true,
-                targetPath: target.path,
-                message: resourceUpdateStatus
+                targetPath: result.target.path,
+                message: resourceUpdateStatus,
+                backupPath: result.backup?.path
             )
             refreshConfigArtifacts()
         } catch {
@@ -1223,6 +1226,67 @@ final class AppStore: ObservableObject {
                 succeeded: false,
                 targetPath: provider.path ?? "-",
                 message: error.localizedDescription
+            )
+        }
+    }
+
+    func providerUpdateHistory(for provider: ProviderItem) -> [ProviderUpdateRecord] {
+        providerUpdateHistory.filter {
+            $0.providerKind == provider.kind && $0.providerName == provider.name
+        }
+    }
+
+    func latestProviderRollbackRecord(for provider: ProviderItem) -> ProviderUpdateRecord? {
+        providerUpdateHistory(for: provider).first { record in
+            guard let path = record.backupPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  path.isEmpty == false
+            else {
+                return false
+            }
+            return FileManager.default.fileExists(atPath: path)
+        }
+    }
+
+    func rollbackProviderResource(_ provider: ProviderItem) async {
+        guard let record = latestProviderRollbackRecord(for: provider),
+              let backupPath = record.backupPath
+        else {
+            resourceUpdateStatus = "\(provider.name) 没有可用的 Provider 备份。"
+            appendLog("warning", resourceUpdateStatus)
+            recordProviderUpdate(
+                provider,
+                action: "回滚",
+                succeeded: false,
+                targetPath: provider.path ?? "-",
+                message: resourceUpdateStatus
+            )
+            return
+        }
+
+        do {
+            let result = try ProviderResourceManager().rollback(provider, from: URL(fileURLWithPath: backupPath))
+            resourceUpdateStatus = "\(provider.name) 已回滚：\(result.restoredFrom.path)"
+            appendLog("info", resourceUpdateStatus)
+            recordProviderUpdate(
+                provider,
+                action: "回滚",
+                succeeded: true,
+                targetPath: result.target.path,
+                message: resourceUpdateStatus,
+                backupPath: result.replacedBackup?.path,
+                restoredFromPath: result.restoredFrom.path
+            )
+            refreshConfigArtifacts()
+        } catch {
+            resourceUpdateStatus = "\(provider.name) 回滚失败：\(error.localizedDescription)"
+            appendLog("error", resourceUpdateStatus)
+            recordProviderUpdate(
+                provider,
+                action: "回滚",
+                succeeded: false,
+                targetPath: provider.path ?? "-",
+                message: error.localizedDescription,
+                restoredFromPath: backupPath
             )
         }
     }
@@ -1246,24 +1310,25 @@ final class AppStore: ObservableObject {
                 for provider in batch {
                     group.addTask {
                         do {
-                            let target = try await AppStore.downloadProviderResource(provider)
-                            return ProviderResourceUpdateResult(provider: provider, target: target, errorMessage: nil)
+                            let result = try await ProviderResourceManager().download(provider)
+                            return ProviderResourceUpdateResult(provider: provider, download: result, errorMessage: nil)
                         } catch {
-                            return ProviderResourceUpdateResult(provider: provider, target: nil, errorMessage: error.localizedDescription)
+                            return ProviderResourceUpdateResult(provider: provider, download: nil, errorMessage: error.localizedDescription)
                         }
                     }
                 }
 
                 for await result in group {
                     completed += 1
-                    if let target = result.target {
+                    if let download = result.download {
                         succeeded += 1
                         recordProviderUpdate(
                             result.provider,
                             action: "批量下载",
                             succeeded: true,
-                            targetPath: target.path,
-                            message: "批量更新成功"
+                            targetPath: download.target.path,
+                            message: download.backup == nil ? "批量更新成功" : "批量更新成功；已备份上一版：\(download.backup?.path ?? "")",
+                            backupPath: download.backup?.path
                         )
                     } else {
                         failed += 1
@@ -2092,69 +2157,6 @@ final class AppStore: ObservableObject {
         return status
     }
 
-    nonisolated private static func downloadProviderResource(_ provider: ProviderItem) async throws -> URL {
-        guard let remote = provider.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines),
-              remote.isEmpty == false,
-              let url = URL(string: remote)
-        else {
-            throw NSError(domain: "ProviderResource", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Provider 没有可下载的 URL。"
-            ])
-        }
-
-        let target = try providerResourceTarget(for: provider)
-        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-        var request = URLRequest(url: url)
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("Mihomo", forHTTPHeaderField: "User-Agent")
-        let (downloaded, response) = try await URLSession.shared.download(for: request)
-        if let http = response as? HTTPURLResponse,
-           (200..<300).contains(http.statusCode) == false {
-            throw NSError(domain: "ProviderResource", code: http.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
-            ])
-        }
-        if FileManager.default.fileExists(atPath: target.path) {
-            try FileManager.default.removeItem(at: target)
-        }
-        try FileManager.default.copyItem(at: downloaded, to: target)
-        return target
-    }
-
-    nonisolated private static func providerResourceTarget(for provider: ProviderItem) throws -> URL {
-        let rawPath = provider.path?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallbackDirectory = provider.kind == "Proxy" ? "proxy_providers" : "rule_providers"
-        let fallbackName = safeResourceFileName(provider.name, pathExtension: "yaml")
-        let value = rawPath?.isEmpty == false ? rawPath! : "\(fallbackDirectory)/\(fallbackName)"
-        if value.hasPrefix("/") {
-            return URL(fileURLWithPath: value)
-        }
-
-        let components = value
-            .replacingOccurrences(of: "\\", with: "/")
-            .split(separator: "/")
-            .map(String.init)
-            .filter { $0.isEmpty == false && $0 != "." }
-        guard components.contains("..") == false else {
-            throw NSError(domain: "ProviderResource", code: 2, userInfo: [
-                NSLocalizedDescriptionKey: "Provider path 不能包含 ..：\(value)"
-            ])
-        }
-
-        return components.reduce(AppPaths.runtimeDirectory) { partial, component in
-            partial.appendingPathComponent(component)
-        }
-    }
-
-    nonisolated private static func safeResourceFileName(_ value: String, pathExtension: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
-        let base = value.unicodeScalars.map { scalar in
-            allowed.contains(scalar) ? Character(scalar).description : "_"
-        }.joined()
-        let normalized = base.trimmingCharacters(in: CharacterSet(charactersIn: "._-")).isEmpty ? "provider" : base
-        return normalized.hasSuffix(".\(pathExtension)") ? normalized : "\(normalized).\(pathExtension)"
-    }
-
     private func syncGeoDataToRuntimeDirectory() throws {
         try AppPaths.ensureBaseDirectories()
         let pairs: [(source: String, targets: [String])] = [
@@ -2771,7 +2773,9 @@ final class AppStore: ObservableObject {
         action: String,
         succeeded: Bool,
         targetPath: String,
-        message: String
+        message: String,
+        backupPath: String? = nil,
+        restoredFromPath: String? = nil
     ) {
         providerUpdateHistory.insert(.init(
             providerName: provider.name,
@@ -2779,10 +2783,41 @@ final class AppStore: ObservableObject {
             action: action,
             succeeded: succeeded,
             targetPath: targetPath,
-            message: message
+            message: message,
+            backupPath: backupPath,
+            restoredFromPath: restoredFromPath
         ), at: 0)
         if providerUpdateHistory.count > 80 {
             providerUpdateHistory.removeLast(providerUpdateHistory.count - 80)
+        }
+        saveProviderUpdateHistory()
+    }
+
+    private func loadProviderUpdateHistory() -> [ProviderUpdateRecord] {
+        guard FileManager.default.fileExists(atPath: AppPaths.providerUpdateHistoryFile.path) else {
+            return []
+        }
+        do {
+            let data = try Data(contentsOf: AppPaths.providerUpdateHistoryFile)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try decoder.decode([ProviderUpdateRecord].self, from: data)
+        } catch {
+            appendLog("warning", "Provider 更新历史读取失败：\(error.localizedDescription)")
+            return []
+        }
+    }
+
+    private func saveProviderUpdateHistory() {
+        do {
+            try AppPaths.ensureBaseDirectories()
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            let data = try encoder.encode(providerUpdateHistory)
+            try data.write(to: AppPaths.providerUpdateHistoryFile, options: .atomic)
+        } catch {
+            appendLog("warning", "Provider 更新历史保存失败：\(error.localizedDescription)")
         }
     }
 
@@ -2849,7 +2884,9 @@ final class AppStore: ObservableObject {
             "- \($0.state.rawValue.uppercased()) \($0.title): \($0.detail)"
         }.joined(separator: "\n")
         let providerSummary = providerUpdateHistory.prefix(30).map {
-            "- \(Formatters.shortDate.string(from: $0.date)) \($0.providerKind) \($0.providerName) \($0.action) \($0.succeeded ? "OK" : "FAIL") path=\($0.targetPath) message=\($0.message)"
+            let backup = $0.backupPath.map { " backup=\($0)" } ?? ""
+            let restored = $0.restoredFromPath.map { " restoredFrom=\($0)" } ?? ""
+            return "- \(Formatters.shortDate.string(from: $0.date)) \($0.providerKind) \($0.providerName) \($0.action) \($0.succeeded ? "OK" : "FAIL") path=\($0.targetPath)\(backup)\(restored) message=\($0.message)"
         }.joined(separator: "\n")
 
         return """
