@@ -323,8 +323,26 @@ final class AppStore: ObservableObject {
     func testProxyDelay(group: String, proxy: String) async {
         let urls = normalizedDelayTestURLs
         let timeout = normalizedDelayTestTimeout
+        let proxyType = proxyNodeType(group: group, proxy: proxy)
         var failures: [String] = []
+
+        if Self.isRejectProxy(type: proxyType, name: proxy) {
+            delayTestStatus = "\(proxy) 不支持延迟测试：REJECT 为主动拒绝出站"
+            delayTestFailureSummary = ""
+            appendLog("info", delayTestStatus)
+            return
+        }
+
         do {
+            if Self.isDirectProxy(type: proxyType, name: proxy) {
+                let delay = try await Self.measureDirectDelay(urls: urls, timeout: timeout)
+                updateDelay(proxy: proxy, delay: delay)
+                delayTestStatus = "\(proxy)：\(delay) ms（直连）"
+                delayTestFailureSummary = ""
+                appendLog("info", "\(proxy) 延迟：\(delay) ms（直连测速）")
+                return
+            }
+
             let client = controllerClient()
             for url in urls {
                 do {
@@ -1953,6 +1971,7 @@ final class AppStore: ObservableObject {
         var completed = 0
         var succeeded = 0
         var failed = 0
+        var skipped = 0
         var failureReasons: [String: Int] = [:]
         delayTestFailureSummary = ""
         delayTestStatus = "\(label) 测速开始，节点 \(targets.count)，并发 \(maxConcurrent)"
@@ -1966,17 +1985,28 @@ final class AppStore: ObservableObject {
                 let urls = normalizedDelayTestURLs
                 let timeout = normalizedDelayTestTimeout
                 runningTasks.append(Task {
+                    if Self.isRejectProxy(type: target.type, name: target.proxy) {
+                        return ProxyDelayResult(proxy: target.proxy, delay: nil, errorMessage: nil, skippedMessage: "REJECT 不可测速")
+                    }
+                    if Self.isDirectProxy(type: target.type, name: target.proxy) {
+                        do {
+                            let delay = try await Self.measureDirectDelay(urls: urls, timeout: timeout)
+                            return ProxyDelayResult(proxy: target.proxy, delay: delay, errorMessage: nil, skippedMessage: nil)
+                        } catch {
+                            return ProxyDelayResult(proxy: target.proxy, delay: nil, errorMessage: error.localizedDescription, skippedMessage: nil)
+                        }
+                    }
                     let client = MihomoControllerClient(host: host, port: port, secret: secret)
                     var failures: [String] = []
                     for url in urls {
                         do {
                             let delay = try await client.proxyDelay(proxy: target.proxy, url: url, timeout: timeout)
-                            return ProxyDelayResult(proxy: target.proxy, delay: delay, errorMessage: nil)
+                            return ProxyDelayResult(proxy: target.proxy, delay: delay, errorMessage: nil, skippedMessage: nil)
                         } catch {
                             failures.append(error.localizedDescription)
                         }
                     }
-                    return ProxyDelayResult(proxy: target.proxy, delay: nil, errorMessage: failures.joined(separator: "，"))
+                    return ProxyDelayResult(proxy: target.proxy, delay: nil, errorMessage: failures.joined(separator: "，"), skippedMessage: nil)
                 })
             }
 
@@ -1986,6 +2016,8 @@ final class AppStore: ObservableObject {
             if let delay = result.delay {
                 succeeded += 1
                 updateDelay(proxy: result.proxy, delay: delay)
+            } else if result.skippedMessage != nil {
+                skipped += 1
             } else {
                 failed += 1
                 let reason = friendlyDelayError(result.errorMessage ?? "未知错误")
@@ -1993,13 +2025,13 @@ final class AppStore: ObservableObject {
             }
             let summary = delayFailureSummary(failureReasons)
             delayTestFailureSummary = summary
-            delayTestStatus = "\(label)：\(completed)/\(targets.count)，成功 \(succeeded)，失败 \(failed)"
+            delayTestStatus = "\(label)：\(completed)/\(targets.count)，成功 \(succeeded)，失败 \(failed)，跳过 \(skipped)"
         }
 
         if failed > 0 {
             appendLog("warning", "\(label) 测速失败原因：\(delayFailureSummary(failureReasons))")
         }
-        appendLog("info", "\(label) 测速完成：成功 \(succeeded)，失败 \(failed)")
+        appendLog("info", "\(label) 测速完成：成功 \(succeeded)，失败 \(failed)，跳过 \(skipped)")
     }
 
     private var normalizedDelayTestURL: String {
@@ -2027,9 +2059,65 @@ final class AppStore: ObservableObject {
         var targets: [ProxyDelayTarget] = []
         for row in rows where seen.contains(row.node.name) == false {
             seen.insert(row.node.name)
-            targets.append(ProxyDelayTarget(proxy: row.node.name))
+            targets.append(ProxyDelayTarget(proxy: row.node.name, type: row.node.type))
         }
         return targets
+    }
+
+    private func proxyNodeType(group: String, proxy: String) -> String {
+        proxyGroups
+            .first { $0.name == group }?
+            .all
+            .first { $0.name == proxy }?
+            .type ?? proxy
+    }
+
+    nonisolated private static func isDirectProxy(type: String, name: String) -> Bool {
+        type.localizedCaseInsensitiveCompare("direct") == .orderedSame
+            || name.localizedCaseInsensitiveCompare("direct") == .orderedSame
+    }
+
+    nonisolated private static func isRejectProxy(type: String, name: String) -> Bool {
+        type.localizedCaseInsensitiveCompare("reject") == .orderedSame
+            || name.localizedCaseInsensitiveCompare("reject") == .orderedSame
+    }
+
+    nonisolated private static func measureDirectDelay(urls: [String], timeout: Int) async throws -> Int {
+        var failures: [String] = []
+        for urlString in urls {
+            guard let url = URL(string: urlString) else {
+                failures.append("测速 URL 无效")
+                continue
+            }
+
+            do {
+                var request = URLRequest(url: url)
+                request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+                request.timeoutInterval = TimeInterval(timeout) / 1000
+
+                let configuration = URLSessionConfiguration.ephemeral
+                configuration.timeoutIntervalForRequest = TimeInterval(timeout) / 1000
+                configuration.timeoutIntervalForResource = TimeInterval(timeout) / 1000
+                configuration.waitsForConnectivity = false
+                configuration.connectionProxyDictionary = [
+                    kCFNetworkProxiesHTTPEnable as String: false,
+                    kCFNetworkProxiesHTTPSEnable as String: false,
+                    kCFNetworkProxiesSOCKSEnable as String: false
+                ]
+
+                let session = URLSession(configuration: configuration)
+                defer { session.finishTasksAndInvalidate() }
+                let startedAt = Date()
+                _ = try await session.data(for: request)
+                return max(1, Int(Date().timeIntervalSince(startedAt) * 1000))
+            } catch {
+                failures.append(error.localizedDescription)
+            }
+        }
+
+        throw NSError(domain: "DirectDelay", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: failures.isEmpty ? "DIRECT 直连测速失败" : failures.joined(separator: "，")
+        ])
     }
 
     private func friendlyDelayError(_ message: String) -> String {
@@ -2124,8 +2212,10 @@ private struct ProxyDelayResult {
     var proxy: String
     var delay: Int?
     var errorMessage: String?
+    var skippedMessage: String?
 }
 
 private struct ProxyDelayTarget {
     var proxy: String
+    var type: String
 }
