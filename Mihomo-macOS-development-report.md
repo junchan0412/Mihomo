@@ -259,3 +259,31 @@ v1.4.0 完成状态：
 | v1.2.0 | 完成配置质量与可维护性：新增规则 schema 校验、配置质量评分、Runtime Config Inspector、Profile/JS/YAML/App overlay 分层 diff 和 settings schema v2 迁移日志。 | 使用 `./script/build_and_run.sh --verify`、`git diff --check`、release package、manifest、签名和线上更新清单校验作为小版本发布门禁。 |
 | v1.3.0 | 完成测试与发版体系：新增 SwiftPM 测试目标、8 个核心 XCTest、Controller/Helper mock 解析测试、release smoke 脚本和第三方清单。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.3.0` 和线上更新清单校验作为小版本发布门禁。 |
 | v1.4.0 | 完成专业工具体验打磨：新增网络接管互斥提示、诊断包导出、Provider 更新历史、连接到规则/资源联动和更多主菜单快捷键。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.0` 和线上更新清单校验作为小版本发布门禁。 |
+| v1.4.1 | 根据稳定性审查完成修缮：连接详情独立窗口化、菜单核心状态实时刷新、日志批量发布、表格差异刷新、配置页纵向滚动、Helper 启动前自修复、系统代理/TUN 互斥和 TUN 关闭前路由恢复。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.1`、manifest、签名和线上更新清单校验作为补丁版本发布门禁。 |
+
+## 11. 稳定性与性能审查记录
+
+本轮审查针对活动详情、菜单状态、滚动性能、应用内更新后的 Helper 通信、核心启动稳定性、系统代理/TUN 互斥和配置页布局进行。
+
+| 类别 | 发现 | 本轮处理 | 后续建议 |
+| --- | --- | --- | --- |
+| UI 架构 | 活动页把连接详情内嵌在右侧，挤压连接列表，也限制后续高级功能承载。 | 连接详情改为独立窗口面板，提供摘要、规则、链路分段，并由活动列表选中/双击打开。 | 后续可继续把 DNS、设备、请求历史、MITM 等高级详情挂入该独立面板。 |
+| 菜单状态 | 菜单栏核心启停文本存在刷新不及时风险。 | 菜单栏内容增加核心状态行，并按核心、系统代理、TUN、模式状态生成稳定刷新标识。 | 如果后续菜单承载更多动态数据，应拆出轻量 MenuBar 状态模型，避免主 Store 高频刷新影响菜单。 |
+| 概览性能 | 日志逐条追加会触发 `AppStore.objectWillChange`，概览滚动时容易随最新日志重绘。 | 日志仍即时落盘，但 UI 改为 350ms 批量发布，并保留日志暂停/缓冲行为。 | 中期应把日志流拆成独立 ObservableObject，避免单一 AppStore 高频通知所有页面。 |
+| 表格滚动 | `AppKitTable.updateNSView` 每次 SwiftUI 更新都 `reloadData()`，策略/规则/活动滚动会被选择、日志、测速状态打断。 | 表格改为基于列和单元格内容签名的差异刷新；策略组列表也改用同一 AppKit 表格。 | 后续大规模连接列表可进一步做增量 row reload 或 Controller WebSocket diff。 |
+| 配置页布局 | 配置页下方质量信息固定在主窗口底部，窗口高度不足时内容被裁切。 | 配置页主内容改为纵向滚动；配置表固定稳定高度；质量区改为自适应网格。 | 后续可把配置质量 Inspector 拆成独立 inspector 面板，支持更长的问题列表和 diff 详情。 |
+| Helper / 更新稳定性 | 应用更新后 privileged Helper 可能仍指向旧 bundle 或旧签名，启动核心时报 `Couldn't communicate with a helper application`。 | 启动核心前先探测 Helper；失败时自动移除旧注册、注册当前 bundle Helper、等待后复查，必要时打开系统设置提示授权。 | 发布 Developer ID 后应把 Helper requirement 升级到 Team ID，并在应用更新完成后的首次启动记录 helper bundle build。 |
+| 核心启动稳定性 | 启动流程在 Helper 不可用时直接失败，用户只能手动修复。 | `startCore()` 前置 Helper 预检与自修复，失败信息明确指向登录项与扩展授权。 | 后续加入核心启动状态机，将配置生成、Helper、geo 数据、进程启动、Controller ready 分阶段展示。 |
+| 系统代理 / TUN | 系统代理和 TUN 同时开启会造成接管边界混乱，关闭 TUN 时还可能因先保存设置而跳过路由恢复。 | 开启 TUN 前自动关闭系统代理；开启系统代理前自动关闭 TUN；关闭 TUN 且核心运行时先恢复 TUN 快照再保存设置/重启。 | 后续网络安全中心应把“接管模式”做成单选：系统代理、TUN、DNS-only、手动。 |
+| 残余风险 | `AppStore` 仍是大型单体状态源，任一 `@Published` 高频更新都会影响多个页面。 | 本轮已降低最高频的日志和表格刷新成本。 | 下一阶段建议拆分 `ConnectionStore`、`LogStore`、`ProfileStoreViewModel`、`NetworkTakeoverStore`，并为滚动列表加入性能基准。 |
+
+v1.4.1 完成状态：
+
+| 修缮项 | 完成状态 | 主要落点 |
+| --- | --- | --- |
+| 独立详情面板 | 已实现 | 活动页不再内嵌右侧详情，选中/双击连接打开独立连接详情窗口，并提供摘要、规则、链路分段。 |
+| 菜单状态实时刷新 | 已实现 | 菜单栏新增核心状态行，并按核心、系统代理、TUN、出站模式生成刷新标识，避免启停状态显示滞后。 |
+| 滚动性能 | 已优化 | 日志 UI 改为批量发布；`AppKitTable` 改为内容签名差异刷新；策略组列表迁移到 AppKit 表格，降低策略/规则滚动重载。 |
+| 配置页布局 | 已修复 | 配置页主体改为纵向滚动，配置表使用稳定高度，质量 Inspector 使用自适应网格，窗口较矮时不再裁切。 |
+| Helper 更新后启动失败 | 已修复路径 | `startCore()` 前先探测 Helper，通信失败时自动移除旧注册并注册当前 bundle Helper，必要时打开系统设置提示授权。 |
+| 系统代理 / TUN 稳定性 | 已修复 | 开启 TUN 前关闭系统代理，开启系统代理前关闭 TUN；关闭 TUN 且核心运行时先恢复 TUN 路由快照再保存设置。 |

@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct ActivityView: View {
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var store: AppStore
     @State private var selectedRowID: String?
     @State private var filterText = ""
@@ -96,35 +97,16 @@ struct ActivityView: View {
                 Spacer()
             }
 
-            connectionContent
+            connectionTable
                 .frame(minHeight: 260, maxHeight: .infinity)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("活动")
-    }
-
-    private var connectionContent: some View {
-        Group {
+        .onChange(of: selectedRowID) {
             if let selectedConnection {
-                HStack(spacing: 0) {
-                    connectionTable
-                        .frame(minWidth: 560, maxWidth: .infinity)
-                    Divider()
-                        .padding(.horizontal, 14)
-                    ConnectionInspectorView(connection: selectedConnection) { connection in
-                        selectedRowID = nil
-                        Task { await store.closeConnection(connection.id) }
-                    } focusRule: { connection in
-                        store.focusRule(for: connection)
-                    } focusResources: {
-                        store.selectedSection = .resources
-                    }
-                    .frame(width: 320)
-                    .frame(maxHeight: .infinity, alignment: .topLeading)
-                }
-            } else {
-                connectionTable
+                store.connectionDetailConnectionID = selectedConnection.id
+                openWindow(id: "connection-detail")
             }
         }
     }
@@ -139,6 +121,12 @@ struct ActivityView: View {
                 .init(title: "规则", width: 180) { $0.ruleText },
                 .init(title: "链路", width: 240) { $0.chainText }
             ],
+            onDoubleClick: { row in
+                if let connection = row.connection {
+                    store.connectionDetailConnectionID = connection.id
+                    openWindow(id: "connection-detail")
+                }
+            },
             hasHorizontalScroller: false
         )
         .overlay {
@@ -151,6 +139,7 @@ struct ActivityView: View {
 
 struct ConnectionDetailPanelView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var tab: ConnectionDetailTab = .summary
 
     private var connection: ConnectionItem? {
         guard let id = store.connectionDetailConnectionID else { return nil }
@@ -158,14 +147,54 @@ struct ConnectionDetailPanelView: View {
     }
 
     var body: some View {
-        ConnectionInspectorView(connection: connection) { connection in
-            Task { await store.closeConnection(connection.id) }
-        } focusRule: { connection in
-            store.focusRule(for: connection)
-        } focusResources: {
-            store.selectedSection = .resources
+        VStack(spacing: 0) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("连接详情")
+                        .font(.title3.bold())
+                    Text(connection?.host ?? "未选择连接")
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Picker("视图", selection: $tab) {
+                    ForEach(ConnectionDetailTab.allCases) { tab in
+                        Text(tab.title).tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 240)
+                .labelsHidden()
+            }
+            .padding(16)
+
+            Divider()
+
+            ConnectionInspectorView(connection: connection, tab: tab) { connection in
+                Task { await store.closeConnection(connection.id) }
+            } focusRule: { connection in
+                store.focusRule(for: connection)
+            } focusResources: {
+                store.selectedSection = .resources
+            }
         }
-        .frame(minWidth: 340, minHeight: 420)
+        .frame(minWidth: 520, minHeight: 520)
+    }
+}
+
+private enum ConnectionDetailTab: String, CaseIterable, Identifiable {
+    case summary
+    case rule
+    case route
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .summary: return "摘要"
+        case .rule: return "规则"
+        case .route: return "链路"
+        }
     }
 }
 
@@ -251,8 +280,9 @@ private struct ConnectionTableRow: Identifiable, Hashable {
     }
 }
 
-struct ConnectionInspectorView: View {
+private struct ConnectionInspectorView: View {
     var connection: ConnectionItem?
+    var tab: ConnectionDetailTab = .summary
     var close: (ConnectionItem) -> Void
     var focusRule: (ConnectionItem) -> Void = { _ in }
     var focusResources: () -> Void = {}
@@ -266,13 +296,22 @@ struct ConnectionInspectorView: View {
                     TrafficValueTile(title: "下载", value: Formatters.bytes(connection.download), systemImage: "arrow.down", color: .blue)
                     TrafficValueTile(title: "上传", value: Formatters.bytes(connection.upload), systemImage: "arrow.up", color: .green)
                 }
-                DetailRow(title: "主机", value: connection.host)
-                DetailRow(title: "进程", value: connection.process)
-                DetailRow(title: "网络", value: connection.network)
-                DetailRow(title: "规则", value: connection.rule)
-                DetailRow(title: "链路", value: connection.chain.isEmpty ? "-" : connection.chain)
-                if let start = connection.start {
-                    DetailRow(title: "开始时间", value: Formatters.shortDate.string(from: start))
+
+                switch tab {
+                case .summary:
+                    DetailRow(title: "主机", value: connection.host)
+                    DetailRow(title: "进程", value: connection.process)
+                    DetailRow(title: "网络", value: connection.network)
+                    if let start = connection.start {
+                        DetailRow(title: "开始时间", value: Formatters.shortDate.string(from: start))
+                    }
+                case .rule:
+                    DetailRow(title: "规则", value: connection.rule)
+                    DetailRow(title: "规则类型", value: connection.ruleType.isEmpty ? "-" : connection.ruleType)
+                    DetailRow(title: "规则内容", value: connection.rulePayload.isEmpty ? "-" : connection.rulePayload)
+                case .route:
+                    DetailRow(title: "链路", value: connection.chain.isEmpty ? "-" : connection.chain)
+                    DetailRow(title: "出站", value: connection.chain.components(separatedBy: " -> ").last ?? "-")
                 }
 
                 Spacer()

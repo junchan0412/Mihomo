@@ -14,15 +14,17 @@ struct ProfilesView: View {
             header
             Divider()
 
-            VStack(alignment: .leading, spacing: 12) {
-                storagePane
-                ProfileRefreshQueueStrip()
-                    .environmentObject(store)
-                profileTablePane
-                detailPane
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    storagePane
+                    ProfileRefreshQueueStrip()
+                        .environmentObject(store)
+                    profileTablePane
+                    detailPane
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .navigationTitle("配置")
         .overlay {
@@ -112,7 +114,7 @@ struct ProfilesView: View {
                     ContentUnavailableView("没有配置", systemImage: "doc.text")
                 }
             }
-            .frame(minHeight: 280, maxHeight: .infinity)
+            .frame(height: 330)
 
             HStack(spacing: 10) {
                 Button {
@@ -174,7 +176,7 @@ struct ProfilesView: View {
                 .disabled(selectedProfile == nil || store.profiles.count <= 1)
             }
         }
-        .frame(maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var detailPane: some View {
@@ -196,7 +198,7 @@ struct ProfilesView: View {
 
             ProfileQualityPane(report: store.profileQualityReport(for: selectedProfile))
         }
-        .frame(minHeight: 330, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var selectedProfile: ProfileItem? {
@@ -444,7 +446,7 @@ private struct ProfileQualityPane: View {
                 Spacer()
             }
 
-            HStack(alignment: .top, spacing: 14) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 14)], alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("问题")
                         .font(.caption)

@@ -75,13 +75,14 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
         context.coordinator.parent = self
         scrollView.hasHorizontalScroller = hasHorizontalScroller
         context.coordinator.configureColumns(on: tableView)
-        tableView.reloadData()
+        context.coordinator.reloadDataIfNeeded(on: tableView)
         context.coordinator.applySelection(on: tableView)
     }
 
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         var parent: AppKitTable
         private var columnSignature: [String] = []
+        private var rowSignature: [String] = []
         private var isApplyingSelection = false
 
         init(_ parent: AppKitTable) {
@@ -154,6 +155,17 @@ struct AppKitTable<Row: Identifiable>: NSViewRepresentable where Row.ID: Hashabl
                 tableView.addTableColumn(tableColumn)
             }
             columnSignature = nextSignature
+            rowSignature = []
+        }
+
+        func reloadDataIfNeeded(on tableView: NSTableView) {
+            let nextSignature = parent.rows.map { row in
+                let values = parent.columns.map { $0.value(row) }.joined(separator: "\u{1f}")
+                return "\(row.id)\u{1e}\(values)"
+            }
+            guard nextSignature != rowSignature else { return }
+            rowSignature = nextSignature
+            tableView.reloadData()
         }
 
         func applySelection(on tableView: NSTableView) {

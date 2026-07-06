@@ -307,13 +307,16 @@ private struct PolicyGroupList: View {
     @Binding var selectedGroupID: String?
 
     var body: some View {
-        List(selection: $selectedGroupID) {
-            ForEach(groups) { group in
-                PolicyGroupRow(group: group, image: iconImages[group.id])
-                    .tag(group.id)
-            }
-        }
-        .listStyle(.inset(alternatesRowBackgrounds: true))
+        AppKitTable(
+            rows: groups,
+            selection: $selectedGroupID,
+            columns: [
+                .init(title: "策略组", width: 170) { $0.name },
+                .init(title: "当前", width: 120) { $0.now.isEmpty ? "-" : $0.now },
+                .init(title: "数", width: 44) { "\($0.all.count)" }
+            ],
+            hasHorizontalScroller: false
+        )
         .overlay {
             if groups.isEmpty {
                 ContentUnavailableView("没有策略组", systemImage: "switch.2")

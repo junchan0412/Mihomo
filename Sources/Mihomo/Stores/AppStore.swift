@@ -86,6 +86,8 @@ final class AppStore: ObservableObject {
     private var shutdownRequested = false
     private var crashRestartCount = 0
     private var bufferedLogs: [LogEntry] = []
+    private var pendingLogEntries: [LogEntry] = []
+    private var logFlushTask: Task<Void, Never>?
     private var lastLogPruneAt: Date?
     private var ruleHitBaselines: [String: Int] = [:]
     private var availableUpdateManifestURL: URL?
@@ -141,7 +143,7 @@ final class AppStore: ObservableObject {
 
     var networkModeAdvisory: String? {
         if settings.tunEnabled && systemProxyEnabled {
-            return "TUN 已接管路由，系统代理同时开启通常是冗余配置；如遇网络异常，优先关闭系统代理或使用诊断页恢复代理快照。"
+            return "TUN 与系统代理被标记为同时开启；下一次切换会自动执行互斥恢复，优先保留最新选择。"
         }
         if settings.tunEnabled && settings.autoSetSystemDNS {
             return "TUN 与系统 DNS 接管同时开启；停止核心时会按设置恢复 DNS/TUN 快照，请确保 Helper 已注册。"
@@ -202,6 +204,8 @@ final class AppStore: ObservableObject {
         }
 
         do {
+            try await ensureHelperReadyForCoreStart()
+
             if isCoreRunning {
                 isExpectedCoreExit = true
                 _ = try? await helperClient.stopCore(restoreDNS: false, restoreTun: false)
@@ -260,6 +264,40 @@ final class AppStore: ObservableObject {
             appendLog("error", "启动失败：\(error.localizedDescription)")
         }
         refreshNetworkTakeoverStates()
+    }
+
+    private func ensureHelperReadyForCoreStart() async throws {
+        do {
+            let result = try await helperClient.version()
+            helperStatus = "\(result.message)，\(helperService.statusDescription)"
+            return
+        } catch {
+            helperStatus = "Helper 通信失败，正在重建注册：\(error.localizedDescription)"
+            appendLog("warning", helperStatus)
+        }
+
+        do {
+            do {
+                try helperService.unregister()
+                appendLog("info", "启动前已移除旧 Helper 注册")
+            } catch {
+                appendLog("warning", "启动前移除旧 Helper 注册跳过：\(error.localizedDescription)")
+            }
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            try helperService.register()
+            helperStatus = helperService.statusDescription
+            if helperService.requiresApproval {
+                helperService.openLoginItemsSettings()
+                throw helperStartupError("Helper 已重新注册，但仍需要在系统设置 > 通用 > 登录项与扩展中允许 Mihomo。")
+            }
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            let result = try await helperClient.version()
+            helperStatus = "\(result.message)，\(helperService.statusDescription)"
+            appendLog("info", "Helper 已恢复通信：\(helperStatus)")
+        } catch {
+            helperService.openLoginItemsSettings()
+            throw helperStartupError("Helper 无法通信，已尝试重建注册：\(error.localizedDescription)")
+        }
     }
 
     func stopCore() async {
@@ -439,6 +477,10 @@ final class AppStore: ObservableObject {
                 recordNetworkOperation(.systemProxy, result: result)
                 appendLog("info", result.message)
             } else {
+                if settings.tunEnabled {
+                    appendLog("warning", "系统代理与 TUN 互斥：开启系统代理前将关闭 TUN。")
+                    await setTunEnabled(false)
+                }
                 let result = try await helperClient.setSystemProxy(host: "127.0.0.1", mixedPort: settings.mixedPort, socksPort: settings.socksPort)
                 systemProxyEnabled = true
                 lastSystemProxySnapshot = systemProxy.loadSnapshot()
@@ -453,6 +495,31 @@ final class AppStore: ObservableObject {
 
     func setTunEnabled(_ enabled: Bool) async {
         guard settings.tunEnabled != enabled else { return }
+        let shouldRestoreTunBeforeDisable = settings.tunEnabled && enabled == false && isCoreRunning && settings.restoreTunOnStop
+        if enabled && systemProxyEnabled {
+            do {
+                appendLog("warning", "TUN 与系统代理互斥：开启 TUN 前将关闭系统代理。")
+                let result = try await helperClient.restoreSystemProxy()
+                systemProxyEnabled = false
+                lastSystemProxySnapshot = systemProxy.loadSnapshot()
+                recordNetworkOperation(.systemProxy, result: result)
+                appendLog("info", result.message)
+            } catch {
+                appendLog("error", "关闭系统代理失败，已取消开启 TUN：\(error.localizedDescription)")
+                refreshNetworkTakeoverStates()
+                return
+            }
+        }
+        if shouldRestoreTunBeforeDisable {
+            do {
+                let result = try await helperClient.restoreTunSnapshot()
+                tunRecoveryStatus = result.message
+                recordNetworkOperation(.tun, result: result)
+                appendLog("info", "关闭 TUN 前已恢复路由快照：\(result.message)")
+            } catch {
+                appendLog("warning", "关闭 TUN 前恢复路由快照失败，将继续重启核心：\(error.localizedDescription)")
+            }
+        }
         var updated = settings
         updated.tunEnabled = enabled
         await saveSettings(updated)
@@ -1654,9 +1721,32 @@ final class AppStore: ObservableObject {
                 bufferedLogs.append(entry)
                 bufferedLogCount = bufferedLogs.count
             } else {
-                logs.append(entry)
+                pendingLogEntries.append(entry)
+                scheduleLogFlush()
             }
         }
+    }
+
+    private func scheduleLogFlush() {
+        guard logFlushTask == nil else { return }
+        logFlushTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            self?.flushPendingLogs()
+        }
+    }
+
+    private func flushPendingLogs() {
+        guard pendingLogEntries.isEmpty == false else {
+            logFlushTask = nil
+            return
+        }
+        logs.append(contentsOf: pendingLogEntries)
+        pendingLogEntries.removeAll()
+        pruneVisibleLogs()
+        logFlushTask = nil
+    }
+
+    private func pruneVisibleLogs() {
         if logs.count > 1_200 {
             logs.removeFirst(logs.count - 1_200)
         }
@@ -1812,12 +1902,11 @@ final class AppStore: ObservableObject {
     }
 
     func setLogsPaused(_ paused: Bool) {
+        flushPendingLogs()
         logsPaused = paused
         if paused == false, bufferedLogs.isEmpty == false {
             logs.append(contentsOf: bufferedLogs)
-            if logs.count > 1_200 {
-                logs.removeFirst(logs.count - 1_200)
-            }
+            pruneVisibleLogs()
             bufferedLogs.removeAll()
             bufferedLogCount = 0
         }
@@ -2481,6 +2570,10 @@ final class AppStore: ObservableObject {
             guidance = "请点击“修复 Helper”重建注册；若系统弹出授权或后台项目提示，请批准后重新运行诊断。"
         }
         return "\(status)：\(errorMessage)\n\(guidance)"
+    }
+
+    private func helperStartupError(_ message: String) -> NSError {
+        NSError(domain: "MihomoHelperStartup", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
     private func upsertDiagnostic(_ result: DiagnosticResult) {

@@ -14,6 +14,9 @@ struct MenuBarView: View {
 
             Divider()
 
+            Label(coreStateTitle, systemImage: store.isCoreRunning ? "play.circle.fill" : "stop.circle")
+                .foregroundStyle(store.isCoreRunning ? .green : .secondary)
+
             Menu("出站模式") {
                 modeButton("规则", mode: "rule")
                 modeButton("全局", mode: "global")
@@ -157,9 +160,23 @@ struct MenuBarView: View {
                 }
             }
         }
+        .id(menuStateIdentity)
         .task {
             await store.preloadPolicyGroupIcons()
         }
+    }
+
+    private var coreStateTitle: String {
+        store.isCoreRunning ? "核心已启动" : "核心已停止"
+    }
+
+    private var menuStateIdentity: String {
+        [
+            store.isCoreRunning ? "core-on" : "core-off",
+            store.systemProxyEnabled ? "proxy-on" : "proxy-off",
+            store.settings.tunEnabled ? "tun-on" : "tun-off",
+            store.currentMode
+        ].joined(separator: "|")
     }
 
     private func policyGroupMenu(_ group: ProxyGroup) -> some View {
