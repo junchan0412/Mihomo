@@ -13,10 +13,11 @@ RELEASE_DIR="$ROOT_DIR/dist/releases"
 ZIP_PATH="$RELEASE_DIR/Mihomo-$VERSION-macOS-arm64.zip"
 MANIFEST_PATH="$RELEASE_DIR/Mihomo-$VERSION-update.json"
 LATEST_PATH="$RELEASE_DIR/mihomo-update.json"
+NOTICES_PATH="$APP_BUNDLE/Contents/Resources/THIRD_PARTY_NOTICES.md"
 EXPECTED_BUNDLE_ID="dev.codex.Mihomo"
 EXPECTED_PUBLIC_KEY="V4ac9RiJwSRBGJG/mD7xM2D40VB5feBCin6gCm8Cu3E="
 
-for path in "$APP_BUNDLE" "$ZIP_PATH" "$MANIFEST_PATH" "$LATEST_PATH"; do
+for path in "$APP_BUNDLE" "$ZIP_PATH" "$MANIFEST_PATH" "$LATEST_PATH" "$NOTICES_PATH"; do
   if [[ ! -e "$path" ]]; then
     echo "missing artifact: $path" >&2
     exit 1
@@ -44,6 +45,10 @@ zip_sha="$(/usr/bin/shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
 [[ "$manifest_algorithm" == "Ed25519" ]] || { echo "signature algorithm mismatch" >&2; exit 1; }
 
 cmp -s "$MANIFEST_PATH" "$LATEST_PATH" || { echo "latest manifest differs from version manifest" >&2; exit 1; }
+/usr/bin/unzip -l "$ZIP_PATH" "Mihomo.app/Contents/Resources/THIRD_PARTY_NOTICES.md" >/dev/null || {
+  echo "third-party notices missing from zip" >&2
+  exit 1
+}
 
 /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE"
 signature_details="$(/usr/bin/codesign -dv --verbose=4 "$APP_BUNDLE" 2>&1 || true)"

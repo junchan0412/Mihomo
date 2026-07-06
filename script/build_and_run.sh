@@ -61,6 +61,10 @@ elif [[ -f "$ROOT_DIR/vendor/mihomo.gz" ]]; then
   chmod +x "$APP_CORE/mihomo"
 fi
 
+if [[ -f "$ROOT_DIR/THIRD_PARTY_NOTICES.md" ]]; then
+  cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$APP_RESOURCES/THIRD_PARTY_NOTICES.md"
+fi
+
 cat >"$HELPER_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
