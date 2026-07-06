@@ -22,7 +22,7 @@ Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repo
 - Policy group add/edit/delete from the Profile UI. When deleting a group used by rules, the app asks whether to replace those rules with another policy or delete the referencing rules.
 - Policy search, sort, proxy selection, configurable single-node/group/all-node concurrent delay testing, and menu bar policy quick switching.
 - Offline policy preview: policy groups and candidates can be browsed from the active local Profile even when the mihomo core or Controller is not running.
-- Connection list filtering, process/rule/chain/network grouping, single-connection close, all-connection close, and a SwiftUI inspector.
+- Connection list filtering, process/rule/chain/network grouping, single-connection close, all-connection close, Controller WebSocket event streams with polling fallback, and a SwiftUI inspector.
 - Surge-style rule table with ID/type/value/policy/usage/note columns, persisted disabled-rule filtering for generated runtime config, profile rule add/edit/delete actions, and live hit counts from Controller connections.
 - Rule Provider and Proxy Provider views with local YAML AST parsing, Controller reads, direct download updates that work without the mihomo core running, concurrent one-click external resource updates, previous-version backup and rollback, persisted update history, item/reference counts, readiness filtering, and hit counts when Controller data exposes enough detail.
 - Advanced DNS and Sniffer settings written into generated mihomo runtime config.
@@ -32,7 +32,7 @@ Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repo
 - Fixed ad-hoc signing identifiers for the app, Helper, and bundled mihomo core, release manifest generation, and a verified in-app updater that checks GitHub Releases for the latest signed manifest before applying Ed25519 manifest signature, SHA-256, bundle id, and signing identifier checks.
 - Optional Age Profile encryption: the Advanced page can install managed `age`/`age-keygen`, generate an Age identity, and transparently encrypt/decrypt full Profile YAML on disk while runtime generation uses decrypted content.
 - Remote HTTP API is local-only by default and only binds remotely when explicitly enabled; Controller requests support Bearer secret.
-- Realtime traffic sampling with a lightweight native graph.
+- Realtime traffic sampling with a lightweight native graph, using Controller WebSocket traffic events when available and polling as fallback.
 - Log filtering, pause/resume, global recent-event overlay, retention days, rolling file size, persistent app log output, and separate core log output under `~/Library/Logs/Mihomo/`.
 - Expanded diagnostics for binary, Helper health, version, runtime dry-run, Controller, TUN status, system proxy snapshots, logs, subscription queues, advanced fragments, managed core, remote API, external UI, Geo data, and refresh failures.
 

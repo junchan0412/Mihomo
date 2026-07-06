@@ -67,6 +67,7 @@ final class AppStore: ObservableObject {
     @Published var settingsMigrationLog: [String] = []
     @Published var diagnosticExportStatus = "尚未导出诊断包"
     @Published var ruleFocusQuery = ""
+    @Published var controllerEventStreamStatus = "轮询"
 
     private let profileStore = ProfileStore()
     private let systemProxy = SystemProxyManager()
@@ -103,6 +104,10 @@ final class AppStore: ObservableObject {
     private var lastNetworkTakeoverRefreshAt = Date.distantPast
     private var profileStatsCache: [UUID: ProfileStatsCacheEntry] = [:]
     private var profileQualityCache: [UUID: ProfileQualityCacheEntry] = [:]
+    private var controllerTrafficStreamTask: Task<Void, Never>?
+    private var controllerLogStreamTask: Task<Void, Never>?
+    private var controllerConnectionStreamTask: Task<Void, Never>?
+    private var controllerEventStreamLastEventAt: Date?
 
     var activeProfile: ProfileItem? {
         profiles.first { $0.id == settings.activeProfileID } ?? profiles.first
@@ -268,6 +273,7 @@ final class AppStore: ObservableObject {
 
             isCoreRunning = true
             coreStatus = "启动中"
+            startControllerEventStreams()
             appendLog("info", "\(result.message)：\(AppPaths.runtimeConfigFile.path)")
             try? await Task.sleep(nanoseconds: 800_000_000)
             await refreshController()
@@ -322,6 +328,7 @@ final class AppStore: ObservableObject {
             )
             isCoreRunning = false
             coreStatus = "已停止"
+            stopControllerEventStreams(status: "轮询")
             lastSystemProxySnapshot = systemProxy.loadSnapshot()
             lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
             if settings.tunEnabled && settings.restoreTunOnStop {
@@ -334,6 +341,7 @@ final class AppStore: ObservableObject {
         } catch {
             isCoreRunning = false
             coreStatus = "停止失败"
+            stopControllerEventStreams(status: "轮询")
             appendLog("error", "Helper 停止核心失败：\(error.localizedDescription)")
         }
         try? await Task.sleep(nanoseconds: 500_000_000)
@@ -2134,6 +2142,7 @@ final class AppStore: ObservableObject {
     func shutdown() async {
         shutdownRequested = true
         profileRefreshTask?.cancel()
+        stopControllerEventStreams(status: "轮询")
         _ = try? await helperClient.stopCore(
             restoreDNS: settings.autoSetSystemDNS || (settings.restoreSystemProxyOnQuit && systemProxyEnabled),
             restoreTun: settings.tunEnabled && settings.restoreTunOnStop
@@ -2351,6 +2360,14 @@ final class AppStore: ObservableObject {
         )
     }
 
+    private func controllerEventStreamClient() -> MihomoControllerEventStream {
+        MihomoControllerEventStream(
+            host: settings.controllerHost,
+            port: settings.controllerPort,
+            secret: settings.controllerSecret
+        )
+    }
+
     private func publishIfChanged<Value: Equatable>(_ keyPath: ReferenceWritableKeyPath<AppStore, Value>, _ value: Value) {
         if self[keyPath: keyPath] != value {
             self[keyPath: keyPath] = value
@@ -2378,6 +2395,7 @@ final class AppStore: ObservableObject {
 
         isCoreRunning = false
         coreStatus = "异常退出 \(status)"
+        stopControllerEventStreams(status: "降级")
         appendLog("warning", "核心异常退出，状态码 \(status)")
 
         guard settings.restartCoreOnCrash else { return }
@@ -2941,12 +2959,106 @@ final class AppStore: ObservableObject {
         }
     }
 
+    private var controllerPollingIntervalNanoseconds: UInt64 {
+        guard let controllerEventStreamLastEventAt,
+              Date().timeIntervalSince(controllerEventStreamLastEventAt) < 8
+        else {
+            return 3_000_000_000
+        }
+        return 8_000_000_000
+    }
+
+    private func startControllerEventStreams() {
+        guard controllerTrafficStreamTask == nil,
+              controllerLogStreamTask == nil,
+              controllerConnectionStreamTask == nil
+        else {
+            return
+        }
+
+        let client = controllerEventStreamClient()
+        let logLevel = settings.logLevel
+        controllerEventStreamLastEventAt = nil
+        controllerEventStreamStatus = "连接中"
+
+        controllerTrafficStreamTask = Task { [weak self] in
+            await self?.runControllerEventStream(label: "流量", makeStream: client.trafficEvents)
+        }
+        controllerLogStreamTask = Task { [weak self] in
+            await self?.runControllerEventStream(label: "日志", makeStream: { client.logEvents(level: logLevel) })
+        }
+        controllerConnectionStreamTask = Task { [weak self] in
+            await self?.runControllerEventStream(label: "连接", makeStream: client.connectionEvents)
+        }
+    }
+
+    private func stopControllerEventStreams(status: String) {
+        controllerTrafficStreamTask?.cancel()
+        controllerLogStreamTask?.cancel()
+        controllerConnectionStreamTask?.cancel()
+        controllerTrafficStreamTask = nil
+        controllerLogStreamTask = nil
+        controllerConnectionStreamTask = nil
+        controllerEventStreamLastEventAt = nil
+        controllerEventStreamStatus = status
+    }
+
+    private func runControllerEventStream(
+        label: String,
+        makeStream: @escaping () -> AsyncThrowingStream<ControllerStreamEvent, Error>
+    ) async {
+        var failureCount = 0
+        while !Task.isCancelled && isCoreRunning {
+            do {
+                for try await event in makeStream() {
+                    failureCount = 0
+                    handleControllerStreamEvent(event)
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                failureCount += 1
+                controllerEventStreamStatus = controllerEventStreamLastEventAt == nil ? "轮询" : "降级"
+                if failureCount == 1 {
+                    appendLog("warning", "\(label) WebSocket 事件流不可用，保留轮询：\(error.localizedDescription)")
+                }
+            }
+
+            guard !Task.isCancelled && isCoreRunning else { return }
+            let backoffSeconds = min(UInt64(max(failureCount, 1) * 2), 12)
+            try? await Task.sleep(nanoseconds: backoffSeconds * 1_000_000_000)
+        }
+    }
+
+    private func handleControllerStreamEvent(_ event: ControllerStreamEvent) {
+        controllerEventStreamLastEventAt = Date()
+        if controllerEventStreamStatus != "实时" {
+            controllerEventStreamStatus = "实时"
+        }
+
+        switch event {
+        case .traffic(let uploadRate, let downloadRate):
+            publishIfChanged(\.uploadRate, uploadRate)
+            publishIfChanged(\.downloadRate, downloadRate)
+            appendTrafficSampleIfNeeded(uploadRate: uploadRate, downloadRate: downloadRate)
+        case .log(let level, let message):
+            appendLog(level, message)
+        case .connections(let items, let uploadTotal, let downloadTotal):
+            let connectionsChanged = connections != items
+            publishIfChanged(\.connections, items)
+            if connectionsChanged {
+                updateRuleProviderHitStatistics()
+            }
+            updateTrafficRates(uploadTotal: uploadTotal, downloadTotal: downloadTotal)
+        }
+    }
+
     private func startPolling() {
         guard pollingTask == nil else { return }
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshController()
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                let interval = self?.controllerPollingIntervalNanoseconds ?? 3_000_000_000
+                try? await Task.sleep(nanoseconds: interval)
             }
         }
     }
