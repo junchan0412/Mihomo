@@ -430,6 +430,7 @@ private struct ProfileMetric: View {
 
 private struct ProfileQualityPane: View {
     var report: ProfileQualityReport
+    @State private var selectedSourceID: String?
 
     private var topIssues: [ProfileQualityIssue] {
         Array(report.issues.prefix(3))
@@ -443,9 +444,13 @@ private struct ProfileQualityPane: View {
         Array(report.diffLayers.prefix(5))
     }
 
+    private var sourceItems: [RuntimeConfigSourceItem] {
+        Array(report.sourceItems.prefix(18))
+    }
+
     private var summaryText: String {
         let changedLayers = report.diffLayers.filter(\.changed).count
-        return "\(report.issues.count) 个问题 · \(report.runtimeItems.count) 个运行项 · \(changedLayers) 层变化"
+        return "\(report.issues.count) 个问题 · \(report.runtimeItems.count) 个运行项 · \(report.sourceItems.count) 个字段来源 · \(changedLayers) 层变化"
     }
 
     var body: some View {
@@ -536,6 +541,33 @@ private struct ProfileQualityPane: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
             }
+
+            if sourceItems.isEmpty == false {
+                Divider()
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        ProfileQualityColumnTitle(title: "字段来源", systemImage: "point.3.connected.trianglepath.dotted")
+                        Spacer()
+                        Text("\(report.sourceItems.filter(\.isAppManaged).count) 个 App 接管字段")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    AppKitTable(
+                        rows: sourceItems,
+                        selection: $selectedSourceID,
+                        columns: [
+                            .init(title: "字段", width: 145, textColor: sourceTextColor) { $0.path },
+                            .init(title: "来源", width: 100, textColor: sourceTextColor) { $0.source },
+                            .init(title: "值", width: 110, textColor: sourceTextColor) { $0.value },
+                            .init(title: "说明", width: 410, textColor: sourceTextColor) { $0.detail }
+                        ],
+                        hasHorizontalScroller: true,
+                        allowsParentScrollPassthrough: true
+                    )
+                    .frame(height: sourceTableHeight)
+                }
+            }
         }
         .padding(12)
         .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
@@ -561,6 +593,15 @@ private struct ProfileQualityPane: View {
         case .warning: return .orange
         case .error: return .red
         }
+    }
+
+    private var sourceTableHeight: CGFloat {
+        let rows = max(sourceItems.count, 1)
+        return min(210, max(92, 30 + CGFloat(rows) * 28))
+    }
+
+    private func sourceTextColor(_ item: RuntimeConfigSourceItem) -> NSColor? {
+        item.isAppManaged ? .systemBlue : nil
     }
 }
 

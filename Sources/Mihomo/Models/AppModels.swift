@@ -656,6 +656,15 @@ struct RuntimeInspectorItem: Identifiable, Hashable {
     var detail: String
 }
 
+struct RuntimeConfigSourceItem: Identifiable, Hashable {
+    var id: String { path }
+    var path: String
+    var source: String
+    var value: String
+    var detail: String
+    var isAppManaged: Bool
+}
+
 struct ConfigDiffLayer: Identifiable, Hashable {
     var id = UUID()
     var name: String
@@ -668,6 +677,7 @@ struct ProfileQualityReport: Hashable {
     var headline: String
     var issues: [ProfileQualityIssue]
     var runtimeItems: [RuntimeInspectorItem]
+    var sourceItems: [RuntimeConfigSourceItem]
     var diffLayers: [ConfigDiffLayer]
     var migrationLog: [String]
     var generatedConfig: String
@@ -679,6 +689,7 @@ extension ProfileQualityReport {
         headline: "未选择配置",
         issues: [],
         runtimeItems: [],
+        sourceItems: [],
         diffLayers: [],
         migrationLog: [],
         generatedConfig: ""
