@@ -606,7 +606,7 @@ struct ProviderItem: Identifiable, Hashable {
     var memberNames: [String] = []
 }
 
-struct ProviderUpdateRecord: Identifiable, Hashable {
+struct ProviderUpdateRecord: Identifiable, Codable, Hashable {
     var id = UUID()
     var date = Date()
     var providerName: String
@@ -615,6 +615,8 @@ struct ProviderUpdateRecord: Identifiable, Hashable {
     var succeeded: Bool
     var targetPath: String
     var message: String
+    var backupPath: String?
+    var restoredFromPath: String?
 }
 
 struct ProfileStats: Hashable {

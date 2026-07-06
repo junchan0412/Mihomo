@@ -24,7 +24,7 @@ Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repo
 - Offline policy preview: policy groups and candidates can be browsed from the active local Profile even when the mihomo core or Controller is not running.
 - Connection list filtering, process/rule/chain/network grouping, single-connection close, all-connection close, and a SwiftUI inspector.
 - Surge-style rule table with ID/type/value/policy/usage/note columns, persisted disabled-rule filtering for generated runtime config, profile rule add/edit/delete actions, and live hit counts from Controller connections.
-- Rule Provider and Proxy Provider views with local YAML AST parsing, Controller reads, direct download updates that work without the mihomo core running, concurrent one-click external resource updates, item/reference counts, readiness filtering, update history, and hit counts when Controller data exposes enough detail.
+- Rule Provider and Proxy Provider views with local YAML AST parsing, Controller reads, direct download updates that work without the mihomo core running, concurrent one-click external resource updates, previous-version backup and rollback, persisted update history, item/reference counts, readiness filtering, and hit counts when Controller data exposes enough detail.
 - Advanced DNS and Sniffer settings written into generated mihomo runtime config.
 - External UI management for zashboard/metacubexd-style zip packages, with generated `external-ui` config.
 - GeoIP/GeoSite download/update workflow, including runtime-directory synchronization before dry-run/start/LaunchDaemon install and retry after Geo data failures.

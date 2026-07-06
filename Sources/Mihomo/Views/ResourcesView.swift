@@ -169,32 +169,46 @@ struct ResourcesView: View {
     @ViewBuilder
     private var selectedResourcePane: some View {
         if let selectedRow {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Label(selectedRow.provider.name, systemImage: selectedRow.provider.kind == "Proxy" ? "point.3.connected.trianglepath.dotted" : "list.bullet.clipboard")
-                    .font(.headline)
-                    .lineLimit(1)
+            let history = store.providerUpdateHistory(for: selectedRow.provider)
+            let rollbackRecord = store.latestProviderRollbackRecord(for: selectedRow.provider)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Label(selectedRow.provider.name, systemImage: selectedRow.provider.kind == "Proxy" ? "point.3.connected.trianglepath.dotted" : "list.bullet.clipboard")
+                        .font(.headline)
+                        .lineLimit(1)
 
-                Text(selectedRow.detailText)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .textSelection(.enabled)
+                    Text(selectedRow.detailText)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
 
-                Spacer()
+                    Spacer()
 
-                Button {
-                    Task { await store.updateProviderResource(selectedRow.provider) }
-                } label: {
-                    Label("下载", systemImage: "arrow.down.circle")
+                    Button {
+                        Task { await store.rollbackProviderResource(selectedRow.provider) }
+                    } label: {
+                        Label("回滚", systemImage: "arrow.uturn.backward.circle")
+                    }
+                    .disabled(rollbackRecord == nil)
+                    .help(rollbackRecord?.backupPath ?? "没有可用备份")
+
+                    Button {
+                        Task { await store.updateProviderResource(selectedRow.provider) }
+                    } label: {
+                        Label("下载", systemImage: "arrow.down.circle")
+                    }
+                    .disabled(selectedRow.canDownload == false)
+
+                    Button {
+                        Task { await store.updateProvider(selectedRow.provider) }
+                    } label: {
+                        Label("Controller", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(store.isCoreRunning == false)
                 }
-                .disabled(selectedRow.canDownload == false)
 
-                Button {
-                    Task { await store.updateProvider(selectedRow.provider) }
-                } label: {
-                    Label("Controller", systemImage: "arrow.clockwise")
-                }
-                .disabled(store.isCoreRunning == false)
+                ProviderHistoryPane(records: Array(history.prefix(6)))
             }
             .font(.callout)
             .padding(.horizontal, 12)
@@ -364,5 +378,82 @@ private struct ResourceCountBadge: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 4)
         .background(.quaternary.opacity(0.35), in: Capsule())
+    }
+}
+
+private struct ProviderHistoryPane: View {
+    var records: [ProviderUpdateRecord]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Label("更新历史", systemImage: "clock.arrow.circlepath")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("\(records.count) 条")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if records.isEmpty {
+                Text("暂无更新记录")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(records.enumerated()), id: \.element.id) { index, record in
+                        ProviderHistoryRow(record: record)
+                        if index < records.count - 1 {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ProviderHistoryRow: View {
+    var record: ProviderUpdateRecord
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: record.succeeded ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                .foregroundStyle(record.succeeded ? .green : .red)
+                .frame(width: 16)
+
+            Text(Formatters.shortDate.string(from: record.date))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 118, alignment: .leading)
+
+            Text(record.action)
+                .font(.caption.weight(.medium))
+                .frame(width: 64, alignment: .leading)
+
+            Text(detailText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        }
+        .padding(.vertical, 5)
+    }
+
+    private var detailText: String {
+        let pathDetail: String
+        if let restored = record.restoredFromPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+           restored.isEmpty == false {
+            pathDetail = "恢复：\(restored)"
+        } else if let backup = record.backupPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  backup.isEmpty == false {
+            pathDetail = "备份：\(backup)"
+        } else {
+            pathDetail = "路径：\(record.targetPath)"
+        }
+        return "\(record.message) · \(pathDetail)"
     }
 }

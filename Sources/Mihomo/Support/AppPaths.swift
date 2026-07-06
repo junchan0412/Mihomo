@@ -30,6 +30,10 @@ enum AppPaths {
         supportDirectory.appendingPathComponent("Backups", isDirectory: true)
     }
 
+    static var providerBackupsDirectory: URL {
+        backupsDirectory.appendingPathComponent("ProviderResources", isDirectory: true)
+    }
+
     static var toolsDirectory: URL {
         supportDirectory.appendingPathComponent("Tools", isDirectory: true)
     }
@@ -54,6 +58,10 @@ enum AppPaths {
 
     static var disabledRulesFile: URL {
         supportDirectory.appendingPathComponent("disabled-rules.json")
+    }
+
+    static var providerUpdateHistoryFile: URL {
+        supportDirectory.appendingPathComponent("provider-update-history.json")
     }
 
     static var secretVaultFile: URL {
@@ -108,7 +116,7 @@ enum AppPaths {
 
     static func ensureBaseDirectories() throws {
         let manager = FileManager.default
-        for directory in [supportDirectory, profilesDirectory, runtimeDirectory, coreDirectory, externalUIDirectory, geoDirectory, backupsDirectory, toolsDirectory, logsDirectory] {
+        for directory in [supportDirectory, profilesDirectory, runtimeDirectory, coreDirectory, externalUIDirectory, geoDirectory, backupsDirectory, providerBackupsDirectory, toolsDirectory, logsDirectory] {
             try manager.createDirectory(at: directory, withIntermediateDirectories: true)
         }
     }

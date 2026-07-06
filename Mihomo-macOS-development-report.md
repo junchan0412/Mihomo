@@ -1,13 +1,13 @@
 # Mihomo macOS 原生客户端开发报告（第三版）
 
 生成日期：2026-07-07
-报告定位：基于当前仓库状态，对第二版开发报告进行更新。第三版重点跟进 v1.4.2 之后的阶段推进：M1 网络安全中心，以及 M2 配置 Inspector 字段来源、DNS/TUN/Provider/Sniffer schema 风险检查。
+报告定位：基于当前仓库状态，对第二版开发报告进行更新。第三版重点跟进 v1.4.2 之后的阶段推进：M1 网络安全中心、M2 配置 Inspector 字段来源、DNS/TUN/Provider/Sniffer schema 风险检查，以及 v1.6.0 Provider 更新备份与回滚。
 
 ## 1. 当前结论
 
-当前项目已经从早期规划推进到 v1.5.0 / M2 发布候选阶段。主 App 使用 SwiftUI 为主、AppKit 为辅的架构，已经形成概览、网络安全、活动、策略、配置、规则、资源、高级、日志、诊断、设置等完整工作台；特权操作已从主 App 收口到 XPC Helper；配置生成、资源更新、Profile 编辑、备份同步、应用内更新等高级能力也已落地。
+当前项目已经从早期规划推进到 v1.6.0 Provider 回滚发布候选阶段。主 App 使用 SwiftUI 为主、AppKit 为辅的架构，已经形成概览、网络安全、活动、策略、配置、规则、资源、高级、日志、诊断、设置等完整工作台；特权操作已从主 App 收口到 XPC Helper；配置生成、资源更新、Profile 编辑、备份同步、应用内更新等高级能力也已落地。
 
-本轮修复后，项目的日常可用性更接近成熟网络工具：日志入口不再绑定单一页面，策略页在核心未启动时也能读取本地配置结构，资源页改为高密度表格并支持 Provider 并发下载，网络安全中心集中展示系统代理、系统 DNS、TUN、快照边界和修复动作，配置 Inspector 能解释 runtime 字段来自 Profile、JS Transform、YAML 片段还是 App overlay。但当前项目还不应直接定义为“稳定公开发行版”。它更接近“可长期自用和小范围测试的 Beta 前状态”。核心原因不是功能不足，而是以下几个系统性硬化点仍需要继续收敛：
+本轮修复后，项目的日常可用性更接近成熟网络工具：日志入口不再绑定单一页面，策略页在核心未启动时也能读取本地配置结构，资源页改为高密度表格并支持 Provider 并发下载、上一版本备份和手动回滚，网络安全中心集中展示系统代理、系统 DNS、TUN、快照边界和修复动作，配置 Inspector 能解释 runtime 字段来自 Profile、JS Transform、YAML 片段还是 App overlay。但当前项目还不应直接定义为“稳定公开发行版”。它更接近“可长期自用和小范围测试的 Beta 前状态”。核心原因不是功能不足，而是以下几个系统性硬化点仍需要继续收敛：
 
 - 网络接管状态机和快照边界已集中到网络安全中心，但还需要更多真实系统场景回归。
 - Helper 已承担高权限操作，但授权校验、操作审计、失败回滚还需要面向真实分发继续硬化。
@@ -100,6 +100,7 @@
 | Provider 直接下载更新 | 已实现 | 不依赖 core 运行，可按本地配置 URL 下载到 runtime provider path。 |
 | 一键更新外部资源 | 已实现 | 同时更新 Provider 和 Geo 数据。 |
 | Provider 并发更新 | 本轮已实现 | 批量下载 Provider 时按设置并发数限流执行，避免多资源场景串行等待。 |
+| Provider 更新备份与回滚 | v1.6.0 已实现 | 下载前自动备份现有 Provider 文件，资源页展示持久化历史，并提供上一版本手动回滚入口。 |
 | 外部资源表格化 | 本轮已实现 | 资源页改为“类型、最后更新、路径、状态”高密度表格，并提供未就绪过滤、全部更新和完成入口。 |
 | GeoIP/GeoSite 更新与同步 | 已实现 | 启动、dry-run、LaunchDaemon 安装前同步到 runtime，并在 Geo 失败后重试。 |
 | External UI 管理 | 已实现 | 支持下载 zashboard/metacubexd 类 zip，并写入 runtime config。 |
@@ -219,6 +220,7 @@ v1.4.0 完成状态：
 | TUN / 系统代理 / 系统 DNS 解释与互斥提示 | 已实现 | 概览页在 TUN、系统代理、系统 DNS 同时启用时显示冗余/恢复提示；诊断包也记录 advisory。 |
 | 诊断包导出 | 已实现 | 诊断页新增导出入口，生成脱敏摘要、runtime 配置、App 日志尾部、core 日志和 Provider 历史 zip，并在 Finder 中定位。 |
 | Provider 更新历史 | 已实现 | 资源页展示最近 Provider Controller 更新、下载、批量下载的时间、结果、目标路径和错误信息。 |
+| Provider 回滚 | v1.6.0 已实现 | Provider 直接下载和批量下载覆盖前备份上一版本；资源页选中 Provider 后可从最近可用备份手动回滚。 |
 | 连接与规则联动 | 已实现 | 活动页连接详情新增“查看规则”和“Provider”跳转；规则页接收连接命中规则并自动过滤/选中。 |
 | 快捷键 | 已增强 | 主菜单新增 TUN、系统 DNS 接管、导出诊断包快捷入口，并保留主窗口、核心启停、系统代理、订阅刷新、检查更新、诊断等快捷键。 |
 
@@ -252,7 +254,7 @@ v1.5.0 / M2 发布候选完成状态：
 | 网络安全中心 | 把系统代理、系统 DNS、TUN、路由、快照、修复动作集中管理 | v1.4.3 已完成 |
 | 配置 Inspector | 让用户知道最终 runtime config 从哪里来、哪些字段被 App 接管 | v1.5.0 已完成 |
 | 诊断包导出 | 大幅降低远程排障成本 | v1.4.0 已完成 |
-| Provider 更新历史和回滚 | 资源更新失败时能回到上一份可用文件 | P1 |
+| Provider 更新历史和回滚 | 资源更新失败时能回到上一份可用文件 | v1.6.0 已完成 |
 | Controller WebSocket 事件流 | 减少轮询，提高连接、日志、流量实时性 | P1 |
 | Profile 健康评分 | 帮用户提前发现订阅、规则、Provider、DNS 问题 | v1.2.0 已完成，v1.5.0 扩展 schema 风险 |
 | 发布通道管理 | Stable/Beta/Canary 三通道配合签名 manifest | P2 |
@@ -265,16 +267,16 @@ v1.5.0 / M2 发布候选完成状态：
 | M1 硬化网络接管 | 解决代理、DNS、TUN 快照边界和状态解释问题 | v1.4.3 已完成：独立快照、状态机、网络安全中心、网络修复中心、回归用例 |
 | M2 配置质量提升 | 减少 Profile 和覆写造成的启动失败 | v1.5.0 已完成：schema 校验、字段来源 Inspector、分层 diff、健康评分 |
 | M3 测试与发版体系 | 支撑可持续迭代 | 单元测试、mock 集成测试、release smoke test、许可证清单 |
-| M4 专业体验打磨 | 提升长期使用效率 | 诊断包导出、Provider 历史、连接规则联动、快捷键 |
+| M4 专业体验打磨 | 提升长期使用效率 | 诊断包导出、Provider 历史与回滚、连接规则联动、快捷键 |
 | M5 高级生态扩展 | 仅在主链路稳定后推进 | Sub-Store、发布通道、更多同步后端 |
 
 ## 9. 当前推荐的下一步
 
-最建议下一轮围绕 Provider 回滚和 Controller WebSocket 做 M4 专业体验补齐，不继续横向堆功能，而是优先完成三件事：
+最建议下一轮围绕 Controller WebSocket 做实时体验补齐，不继续横向堆功能，而是优先完成三件事：
 
-1. 为 Provider 直接下载增加上一版本文件备份和失败/手动回滚入口。
-2. 引入 Controller WebSocket 事件流，优先覆盖连接、日志和流量，减少轮询刷新。
-3. 为资源回滚、WebSocket 解析和降级到轮询的路径补回归测试。
+1. 引入 Controller WebSocket 事件流，优先覆盖连接、日志和流量，减少轮询刷新。
+2. 为 WebSocket 解析、断线重连和降级到轮询的路径补回归测试。
+3. 将活动页连接详情与事件流联动，减少手动刷新和表格重载。
 
 完成这三件事后，项目会从“功能很多的 MVP”进入“可以持续发布和长期维护的 Beta”状态。
 
@@ -291,6 +293,7 @@ v1.5.0 / M2 发布候选完成状态：
 | v1.4.2 | 完成 UI 性能全量审查与修复：Controller 轮询改为差异发布，网络接管系统命令改为节流刷新，配置统计/质量分析加入指纹缓存，日志和 AppKit 表格避免重复渲染，同时纳入策略无启动空态、配置页滚动和主窗口尺寸稳定性修复。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.2`、manifest、签名和线上更新清单校验作为补丁版本发布门禁。 |
 | v1.4.3 | 完成 M1 网络安全中心，并纳入全局日志浮层、离线策略预览、配置质量区压缩、外部资源表格化和 Provider 并发更新。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.3`、manifest、签名和线上更新清单校验作为阶段版本发布门禁。 |
 | v1.5.0 | 完成 M2 配置质量提升：字段来源 Inspector、App 接管字段解释、DNS/TUN/Provider/Sniffer schema 风险检查和配置质量回归测试。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.5.0`、manifest、签名和线上更新清单校验作为阶段版本发布门禁。 |
+| v1.6.0 | 完成 Provider 更新备份与回滚：直接下载和批量下载会在覆盖前备份上一版本，资源页展示持久化更新历史，并提供手动回滚入口；诊断包同步记录备份与恢复来源。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.6.0`、manifest、签名和线上更新清单校验作为阶段版本发布门禁。 |
 
 ## 11. 稳定性与性能审查记录
 
