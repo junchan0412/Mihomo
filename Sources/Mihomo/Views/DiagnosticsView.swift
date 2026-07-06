@@ -22,6 +22,10 @@ struct DiagnosticsView: View {
                     Task { await store.repairSystemProxy() }
                 }
 
+                Button("恢复 DNS") {
+                    Task { await store.restoreSystemDNS() }
+                }
+
                 Button("修复 Helper") {
                     Task { await store.repairHelperRegistration() }
                 }
@@ -34,6 +38,8 @@ struct DiagnosticsView: View {
                     Task { await store.restoreTunRecovery() }
                 }
             }
+
+            NetworkRepairCenterView()
 
             List(store.diagnostics) { item in
                 HStack(alignment: .top, spacing: 12) {
@@ -92,6 +98,106 @@ struct DiagnosticsView: View {
         case .ok: return .green
         case .warning: return .orange
         case .failed: return .red
+        }
+    }
+}
+
+private struct NetworkRepairCenterView: View {
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("网络修复中心", systemImage: "wrench.and.screwdriver")
+                    .font(.headline)
+                Spacer()
+                Button {
+                    store.refreshNetworkTakeoverStates()
+                } label: {
+                    Label("刷新状态", systemImage: "arrow.clockwise")
+                }
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 10)], spacing: 10) {
+                ForEach(store.networkTakeoverStates) { state in
+                    NetworkRepairStateCard(state: state)
+                }
+            }
+
+            HStack(spacing: 8) {
+                Button {
+                    Task { await store.repairSystemProxy() }
+                } label: {
+                    Label("恢复代理", systemImage: "network.badge.shield.half.filled")
+                }
+
+                Button {
+                    Task { await store.restoreSystemDNS() }
+                } label: {
+                    Label("恢复 DNS", systemImage: "globe.badge.chevron.backward")
+                }
+
+                Button {
+                    Task { await store.restoreTunRecovery() }
+                } label: {
+                    Label("恢复 TUN 路由", systemImage: "arrow.triangle.2.circlepath")
+                }
+
+                Button(role: .destructive) {
+                    store.clearNetworkRecoverySnapshots()
+                } label: {
+                    Label("清理快照", systemImage: "trash")
+                }
+
+                Spacer()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding(12)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct NetworkRepairStateCard: View {
+    var state: NetworkTakeoverState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: state.kind.systemImage)
+                    .foregroundStyle(color)
+                    .frame(width: 18)
+                Text(state.kind.title)
+                    .font(.callout.weight(.semibold))
+                Spacer()
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+            }
+
+            Text(state.desiredState)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Text(state.actualState)
+                .font(.caption.weight(.medium))
+                .lineLimit(2)
+            Text(state.recoveryAction)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
+        .background(.background.opacity(0.42), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var color: Color {
+        switch state.health {
+        case .ok: return .green
+        case .warning: return .orange
+        case .failed: return .red
+        case .inactive: return .secondary
         }
     }
 }

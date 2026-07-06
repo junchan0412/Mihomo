@@ -58,8 +58,22 @@ final class SystemProxyManager {
     }
 
     func loadSnapshot() -> SystemProxySnapshot? {
-        guard let data = try? Data(contentsOf: AppPaths.systemProxySnapshotFile) else { return nil }
+        loadSnapshot(at: AppPaths.systemProxySnapshotFile)
+    }
+
+    func loadDNSSnapshot() -> SystemProxySnapshot? {
+        loadSnapshot(at: AppPaths.systemDNSSnapshotFile)
+    }
+
+    func loadSnapshot(at url: URL) -> SystemProxySnapshot? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
         return try? decoder.decode(SystemProxySnapshot.self, from: data)
+    }
+
+    func removeSnapshot(at url: URL) throws {
+        if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
     }
 
     func captureSnapshot() throws -> SystemProxySnapshot {

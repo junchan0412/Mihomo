@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 import MihomoShared
+import Security
 
 private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
     private let service = HelperService()
@@ -20,7 +21,8 @@ private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
               executablePath.hasSuffix("/Contents/MacOS/Mihomo"),
               let appURL = appBundleURL(forExecutablePath: executablePath),
               bundleIdentifier(appURL: appURL) == MihomoHelperConstants.appBundleIdentifier,
-              codeSignatureIdentifier(appURL: appURL) == MihomoHelperConstants.appBundleIdentifier
+              codeSignatureIdentifier(appURL: appURL) == MihomoHelperConstants.appBundleIdentifier,
+              appSatisfiesCodeRequirement(appURL: appURL)
         else {
             return false
         }
@@ -69,6 +71,21 @@ private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
             return String(line.dropFirst("Identifier=".count))
         }
         return nil
+    }
+
+    private func appSatisfiesCodeRequirement(appURL: URL) -> Bool {
+        var code: SecStaticCode?
+        guard SecStaticCodeCreateWithPath(appURL as CFURL, [], &code) == errSecSuccess,
+              let code
+        else { return false }
+
+        var requirement: SecRequirement?
+        let requirementText = #"identifier "\#(MihomoHelperConstants.appBundleIdentifier)""# as CFString
+        guard SecRequirementCreateWithString(requirementText, [], &requirement) == errSecSuccess,
+              let requirement
+        else { return false }
+
+        return SecStaticCodeCheckValidity(code, [], requirement) == errSecSuccess
     }
 }
 

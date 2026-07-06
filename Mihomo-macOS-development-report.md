@@ -50,11 +50,13 @@
 | --- | --- | --- |
 | XPC Helper | 已实现 | 主 App 通过 `dev.codex.Mihomo.Helper` 调用高权限能力。 |
 | Helper 注册、卸载、修复 | 已实现 | 高级页和诊断页提供注册、审计、修复入口。 |
-| Helper 授权检查 | 已实现基础版 | Helper 校验调用方来自 Mihomo App bundle，并检查签名 identifier。 |
+| Helper 授权检查 | 已增强 | Helper 校验调用方来自 Mihomo App bundle，检查签名 identifier，并通过 SecStaticCode requirement 绑定当前 ad-hoc bundle identifier；未来 Developer ID 可扩展 Team ID / designated requirement。 |
 | 系统代理设置与恢复 | 已实现 | Helper 通过 `networksetup` 设置 HTTP/HTTPS/SOCKS 代理并恢复快照。 |
 | 系统 DNS 临时设置 | 已实现 | 核心启动时可临时写入系统 DNS，停止或退出时恢复。 |
 | TUN 快照与回滚 | 已实现 | 捕获网络服务 DNS 基线、IPv4/IPv6 路由、默认路由，支持停止或手动回滚；当前回滚路径只恢复 DNS 与路由，不恢复系统代理开关。 |
 | Helper 审计 | 已实现 | 检查 bundle 布局、plist、签名 identifier、SMAppService 状态、公证说明、root 可达性。 |
+| 网络接管状态机 | v1.1 已实现 | 概览和诊断页显示系统代理、系统 DNS、TUN 的用户期望、系统实际、最近 Helper 操作和恢复动作。 |
+| 网络修复中心 | v1.1 已实现 | 诊断页集中提供恢复代理、恢复 DNS、恢复 TUN 路由和清理快照。 |
 
 ### 3.3 Profile 与配置维护
 
@@ -138,6 +140,15 @@
 | P1 | Helper 授权升级 | 使用 audit token / SecCode 校验调用方，准备 Developer ID requirement 路径。 |
 | P1 | 网络修复中心 | 诊断页集中提供恢复代理、恢复 DNS、恢复 TUN 路由、清理快照四个明确动作。 |
 
+v1.1.0 完成状态：
+
+| 优化项 | 完成状态 | 主要落点 |
+| --- | --- | --- |
+| 网络接管状态机 | 已实现 | `NetworkTakeoverState` 覆盖系统代理、系统 DNS、TUN；`AppStore.refreshNetworkTakeoverStates()` 读取系统实际代理/DNS、快照和 TUN 路由差异；概览卡片和诊断结果展示“用户期望、系统实际、最近 Helper 操作、恢复动作”。 |
+| Helper 操作事务 | 已实现基础事务 | Helper 的核心启停、代理、DNS、TUN 操作返回 `transactionSteps` 和 `rollbackSuggestion`；App 记录最近 Helper 操作并展示到网络接管状态。 |
+| Helper 授权升级 | 已增强 | Helper listener 保留 bundle 路径与 signing identifier 检查，并新增 `SecStaticCode` requirement 校验；当前无 Developer ID，requirement 绑定 ad-hoc bundle identifier，后续可扩展 Team ID。 |
+| 网络修复中心 | 已实现 | 诊断页新增网络修复中心，集中执行恢复代理、恢复 DNS、恢复 TUN 路由、清理快照，并可刷新三类接管状态。 |
+
 ### 6.2 v1.2 配置质量与可维护性
 
 目标：降低订阅质量、覆写片段和结构化编辑带来的配置失败概率。
@@ -214,3 +225,4 @@
 | 版本 | 变更 | 验证 |
 | --- | --- | --- |
 | v1.0.4 | 修复 DIRECT 延迟无法测出的问题：DIRECT 不再直接依赖 mihomo Controller `/delay` 对内置出站的支持，而是由 App 使用禁用系统代理的直连 `URLSession` 对配置的测速 URL 进行兜底测速；REJECT 明确标记为不可测速并从失败统计中跳过。 | 使用 `./script/build_and_run.sh --verify`、release package、manifest、签名和线上更新清单校验作为小版本发布门禁。 |
+| v1.1.0 | 完成网络接管与 Helper 硬化：新增三类网络接管状态机、诊断页网络修复中心、独立 DNS 恢复入口、Helper 事务步骤/回滚建议、SecStaticCode requirement 校验。 | 使用 `./script/build_and_run.sh --verify`、概览截图检查、release package、manifest、签名和线上更新清单校验作为小版本发布门禁。 |

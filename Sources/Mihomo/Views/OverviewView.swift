@@ -43,7 +43,7 @@ struct OverviewView: View {
                 TakeoverCard(
                     title: "系统代理",
                     subtitle: "将 HTTP / SOCKS 流量交给 mihomo mixed-port。",
-                    status: store.systemProxyEnabled ? "已启用" : "未启用",
+                    state: store.networkTakeoverState(for: .systemProxy),
                     systemImage: "network",
                     tint: .blue,
                     isOn: systemProxyBinding
@@ -52,7 +52,7 @@ struct OverviewView: View {
                 TakeoverCard(
                     title: "TUN 模式",
                     subtitle: "写入运行配置并通过 Helper 捕获 DNS 与路由回滚快照。",
-                    status: store.settings.tunEnabled ? tunStatusText : "未启用",
+                    state: store.networkTakeoverState(for: .tun),
                     systemImage: "lock.shield",
                     tint: .purple,
                     isOn: tunBinding
@@ -61,7 +61,7 @@ struct OverviewView: View {
                 TakeoverCard(
                     title: "系统 DNS",
                     subtitle: "核心启动时临时设置 DNS，停止或退出时恢复。",
-                    status: store.settings.autoSetSystemDNS ? "随核心启用" : "未启用",
+                    state: store.networkTakeoverState(for: .systemDNS),
                     systemImage: "globe",
                     tint: .green,
                     isOn: autoDNSBinding
@@ -110,10 +110,6 @@ struct OverviewView: View {
         }
     }
 
-    private var tunStatusText: String {
-        store.isCoreRunning ? "已启用，运行中" : "已启用，下次启动生效"
-    }
-
     private var systemProxyBinding: Binding<Bool> {
         Binding(
             get: { store.systemProxyEnabled },
@@ -151,13 +147,13 @@ struct OverviewView: View {
 private struct TakeoverCard: View {
     var title: String
     var subtitle: String
-    var status: String
+    var state: NetworkTakeoverState
     var systemImage: String
     var tint: Color
     @Binding var isOn: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 Image(systemName: systemImage)
                     .font(.title3)
@@ -183,17 +179,48 @@ private struct TakeoverCard: View {
 
             HStack(spacing: 6) {
                 Circle()
-                    .fill(isOn ? Color.green : Color.orange)
+                    .fill(healthColor)
                     .frame(width: 8, height: 8)
-                Text(status)
+                Text(state.actualState)
                     .font(.callout.weight(.medium))
-                    .foregroundStyle(isOn ? .primary : .secondary)
+                    .foregroundStyle(state.health == .inactive ? .secondary : .primary)
                 Spacer()
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 5) {
+                takeoverLine("期望", state.desiredState)
+                takeoverLine("最近", state.lastOperation)
+                takeoverLine("恢复", state.recoveryAction)
             }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 132, alignment: .topLeading)
+        .frame(maxWidth: .infinity, minHeight: 188, alignment: .topLeading)
         .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var healthColor: Color {
+        switch state.health {
+        case .ok: return .green
+        case .warning: return .orange
+        case .failed: return .red
+        case .inactive: return .secondary
+        }
+    }
+
+    private func takeoverLine(_ title: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

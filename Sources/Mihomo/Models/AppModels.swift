@@ -74,6 +74,47 @@ enum CoreSource: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 }
 
+enum NetworkTakeoverKind: String, CaseIterable, Identifiable, Hashable {
+    case systemProxy
+    case systemDNS
+    case tun
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .systemProxy: return "系统代理"
+        case .systemDNS: return "系统 DNS"
+        case .tun: return "TUN / 路由"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .systemProxy: return "network"
+        case .systemDNS: return "globe"
+        case .tun: return "lock.shield"
+        }
+    }
+}
+
+enum NetworkTakeoverHealth: String, Hashable {
+    case ok
+    case warning
+    case inactive
+    case failed
+}
+
+struct NetworkTakeoverState: Identifiable, Hashable {
+    var id: NetworkTakeoverKind { kind }
+    var kind: NetworkTakeoverKind
+    var desiredState: String
+    var actualState: String
+    var lastOperation: String
+    var recoveryAction: String
+    var health: NetworkTakeoverHealth
+}
+
 struct ProfileItem: Identifiable, Codable, Hashable {
     var id: UUID
     var name: String

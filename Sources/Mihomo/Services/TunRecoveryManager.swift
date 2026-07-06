@@ -56,6 +56,18 @@ final class TunRecoveryManager {
         return try? decoder.decode(TunRecoverySnapshot.self, from: data)
     }
 
+    func currentAddedTunRouteCount() -> Int {
+        guard let snapshot = loadSnapshot() else { return 0 }
+        return rollbackCandidates(
+            current: routes(family: "inet") + routes(family: "inet6"),
+            baseline: snapshot.ipv4Routes + snapshot.ipv6Routes
+        ).count
+    }
+
+    func clearSnapshot() throws {
+        try removeSnapshot()
+    }
+
     func restore(systemProxy: SystemProxyManager) throws -> TunRecoveryRestoreResult {
         throw NSError(domain: "TunRecovery", code: 9, userInfo: [
             NSLocalizedDescriptionKey: "TUN 回滚操作已迁移到 XPC Helper"

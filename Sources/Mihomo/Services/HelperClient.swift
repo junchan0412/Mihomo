@@ -176,6 +176,15 @@ final class MihomoHelperClient {
         }
     }
 
+    func restoreSystemDNS() async throws -> HelperOperationResult {
+        try await call { proxy, reply in
+            proxy.restoreSystemDNS(
+                dnsSnapshotPath: AppPaths.systemDNSSnapshotFile.path as NSString,
+                withReply: reply
+            )
+        }
+    }
+
     func captureTunSnapshot() async throws -> HelperOperationResult {
         try await call { proxy, reply in
             proxy.captureTunSnapshot(

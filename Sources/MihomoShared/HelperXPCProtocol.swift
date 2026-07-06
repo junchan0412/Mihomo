@@ -77,6 +77,11 @@ public protocol MihomoHelperXPCProtocol {
         withReply reply: @escaping (NSDictionary) -> Void
     )
 
+    func restoreSystemDNS(
+        dnsSnapshotPath: NSString,
+        withReply reply: @escaping (NSDictionary) -> Void
+    )
+
     func captureTunSnapshot(
         proxySnapshotPath: NSString,
         tunSnapshotPath: NSString,

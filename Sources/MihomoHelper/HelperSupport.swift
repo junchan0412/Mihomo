@@ -43,10 +43,24 @@ enum HelperReply {
         return result as NSDictionary
     }
 
-    static func error(_ error: Error) -> NSDictionary {
+    static func transactionOK(
+        _ message: String,
+        steps: [String],
+        rollbackSuggestion: String,
+        payload: [String: Any] = [:]
+    ) -> NSDictionary {
+        var result = payload
+        result["transactionSteps"] = steps.joined(separator: "\n")
+        result["rollbackSuggestion"] = rollbackSuggestion
+        return ok(message, payload: result)
+    }
+
+    static func error(_ error: Error, steps: [String] = [], rollbackSuggestion: String = "") -> NSDictionary {
         [
             "ok": false,
-            "message": error.localizedDescription
+            "message": error.localizedDescription,
+            "transactionSteps": steps.joined(separator: "\n"),
+            "rollbackSuggestion": rollbackSuggestion
         ] as NSDictionary
     }
 
