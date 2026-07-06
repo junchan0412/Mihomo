@@ -104,6 +104,14 @@ struct PoliciesView: View {
             Spacer()
 
             Button {
+                Task { await store.testAllProxyDelays() }
+            } label: {
+                Label("测速全部", systemImage: "speedometer")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(store.proxyGroups.isEmpty)
+
+            Button {
                 Task { await store.refreshController() }
             } label: {
                 Label("刷新", systemImage: "arrow.clockwise")
@@ -144,12 +152,6 @@ struct PoliciesView: View {
             }
             .disabled(selectedGroup == nil)
 
-            Button {
-                Task { await store.testAllProxyDelays() }
-            } label: {
-                Label("测速全部", systemImage: "gauge.with.dots.needle.67percent")
-            }
-            .disabled(store.proxyGroups.isEmpty)
         }
     }
 
@@ -339,13 +341,34 @@ private struct PolicyGroupRow: View {
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
-                Text(group.now.isEmpty ? "-" : group.now)
-                    .font(.caption)
-                    .foregroundStyle(group.now.isEmpty ? Color.secondary : Color.green)
-                    .lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(group.now.isEmpty ? "-" : group.now)
+                        .font(.caption)
+                        .foregroundStyle(group.now.isEmpty ? Color.secondary : Color.green)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 0)
+
+                    Text(currentDelayText)
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(currentDelayColor)
+                        .lineLimit(1)
+                }
             }
         }
         .padding(.vertical, 3)
+    }
+
+    private var currentDelayText: String {
+        guard let node = group.all.first(where: { $0.name == group.now }),
+              let delay = node.delay,
+              delay > 0
+        else { return "-" }
+        return "\(delay) ms"
+    }
+
+    private var currentDelayColor: Color {
+        currentDelayText == "-" ? .secondary : .green
     }
 }
 

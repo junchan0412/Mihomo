@@ -22,6 +22,10 @@ struct DiagnosticsView: View {
                     Task { await store.repairSystemProxy() }
                 }
 
+                Button("修复 Helper") {
+                    Task { await store.repairHelperRegistration() }
+                }
+
                 Button("验证 TUN 权限") {
                     Task { await store.verifyTunPrivileges() }
                 }
@@ -47,6 +51,15 @@ struct DiagnosticsView: View {
                                 Task { await store.repairSystemProxy() }
                             } label: {
                                 Label("恢复代理快照", systemImage: "wrench.and.screwdriver")
+                            }
+                            .buttonStyle(.bordered)
+                            .padding(.top, 4)
+                        }
+                        if item.title == "XPC Helper", item.state != .ok {
+                            Button {
+                                Task { await store.repairHelperRegistration() }
+                            } label: {
+                                Label("重建 Helper 注册", systemImage: "hammer")
                             }
                             .buttonStyle(.bordered)
                             .padding(.top, 4)

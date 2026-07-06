@@ -31,6 +31,7 @@ struct MenuBarView: View {
             Button(store.systemProxyEnabled ? "关闭系统代理" : "开启系统代理") {
                 Task { await store.toggleSystemProxy() }
             }
+            .keyboardShortcut("s", modifiers: [.command])
 
             Button(store.settings.tunEnabled ? "关闭 TUN" : "开启 TUN") {
                 Task { await store.setTunEnabled(!store.settings.tunEnabled) }
@@ -55,15 +56,6 @@ struct MenuBarView: View {
             Text("-")
 
             Divider()
-
-            Button("设置为系统代理") {
-                Task {
-                    if store.systemProxyEnabled == false {
-                        await store.toggleSystemProxy()
-                    }
-                }
-            }
-            .keyboardShortcut("s", modifiers: [.command])
 
             Button("更新资源") {
                 Task { await store.updateAllExternalResources() }
@@ -165,6 +157,9 @@ struct MenuBarView: View {
                 }
             }
         }
+        .task {
+            await store.preloadPolicyGroupIcons()
+        }
     }
 
     private func policyGroupMenu(_ group: ProxyGroup) -> some View {
@@ -176,18 +171,34 @@ struct MenuBarView: View {
                     Task { await store.selectProxy(group: group.name, proxy: node.name) }
                 } label: {
                     if node.name == group.now {
-                        Label(Formatters.trimmedMenuText(node.name, limit: 30), systemImage: "checkmark")
+                        Label(nodeMenuTitle(node), systemImage: "checkmark")
                     } else {
-                        Text(Formatters.trimmedMenuText(node.name, limit: 30))
+                        Text(nodeMenuTitle(node))
                     }
                 }
             }
         } label: {
-            Label(
-                "\(Formatters.trimmedMenuText(group.name, limit: 18))  \(Formatters.trimmedMenuText(group.now, limit: 14))",
-                systemImage: iconName(for: group)
+            PolicyGroupMenuLabel(
+                group: group,
+                image: store.policyGroupIconImages[group.id],
+                delayText: currentDelayText(for: group)
             )
         }
+    }
+
+    private func nodeMenuTitle(_ node: ProxyNode) -> String {
+        guard let delay = node.delay, delay > 0 else {
+            return Formatters.trimmedMenuText(node.name, limit: 30)
+        }
+        return "\(Formatters.trimmedMenuText(node.name, limit: 22))  \(delay) ms"
+    }
+
+    private func currentDelayText(for group: ProxyGroup) -> String {
+        guard let node = group.all.first(where: { $0.name == group.now }),
+              let delay = node.delay,
+              delay > 0
+        else { return "-" }
+        return "\(delay) ms"
     }
 
     private func modeButton(_ title: String, mode: String) -> some View {
@@ -213,7 +224,35 @@ struct MenuBarView: View {
         MainWindowPresenter.present(openWindow: openWindow)
     }
 
-    private func iconName(for group: ProxyGroup) -> String {
+}
+
+private struct PolicyGroupMenuLabel: View {
+    var group: ProxyGroup
+    var image: NSImage?
+    var delayText: String
+
+    var body: some View {
+        Label {
+            Text(title)
+        } icon: {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 16, height: 16)
+            } else {
+                Image(systemName: iconName)
+            }
+        }
+    }
+
+    private var title: String {
+        let groupName = Formatters.trimmedMenuText(group.name, limit: 16)
+        let current = Formatters.trimmedMenuText(group.now.isEmpty ? "-" : group.now, limit: 12)
+        return "\(groupName)  \(current)  \(delayText)"
+    }
+
+    private var iconName: String {
         let type = group.type.lowercased()
         if type.contains("url") { return "speedometer" }
         if type.contains("fallback") { return "arrow.triangle.2.circlepath" }

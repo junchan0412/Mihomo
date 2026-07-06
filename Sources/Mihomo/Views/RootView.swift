@@ -34,23 +34,69 @@ struct RootView: View {
                     Text("直连").tag("direct")
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 220)
+                .frame(width: 184)
 
-                Button {
-                    Task { await store.toggleSystemProxy() }
-                } label: {
-                    Label(store.systemProxyEnabled ? "代理开启" : "代理关闭", systemImage: "network")
-                }
-
-                Button {
-                    Task { await store.toggleCore() }
-                } label: {
-                    Label(store.isCoreRunning ? "停止" : "启动", systemImage: store.isCoreRunning ? "stop.fill" : "play.fill")
-                }
-                .buttonStyle(.borderedProminent)
+                GlobalQuickControlsView()
             }
         }
         .background(WindowIdentifierView(identifier: AppWindowIdentifier.main))
+    }
+}
+
+private struct GlobalQuickControlsView: View {
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ToolbarStateButton(
+                title: "核心",
+                systemImage: store.isCoreRunning ? "stop.fill" : "play.fill",
+                isOn: store.isCoreRunning
+            ) {
+                Task { await store.toggleCore() }
+            }
+
+            ToolbarStateButton(
+                title: "代理",
+                systemImage: "network",
+                isOn: store.systemProxyEnabled
+            ) {
+                Task { await store.toggleSystemProxy() }
+            }
+
+            ToolbarStateButton(
+                title: "TUN",
+                systemImage: "lock.shield",
+                isOn: store.settings.tunEnabled
+            ) {
+                Task { await store.setTunEnabled(!store.settings.tunEnabled) }
+            }
+        }
+    }
+}
+
+private struct ToolbarStateButton: View {
+    var title: String
+    var systemImage: String
+    var isOn: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .imageScale(.small)
+                Circle()
+                    .fill(isOn ? Color.green : Color.secondary.opacity(0.55))
+                    .frame(width: 6, height: 6)
+                Text(title)
+            }
+            .font(.callout.weight(.medium))
+            .frame(minWidth: 58)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .help("\(title)\(isOn ? "已启用" : "未启用")")
     }
 }
 

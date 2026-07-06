@@ -817,7 +817,7 @@ final class AppStore: ObservableObject {
             let privilege = try await helperClient.verifyPrivileges()
             results.append(.init(title: "Helper 授权", detail: privilege.message, state: .ok))
         } catch {
-            helperStatus = "\(helperService.statusDescription)：\(error.localizedDescription)"
+            helperStatus = helperTroubleshootingDetail(error.localizedDescription)
             results.append(.init(title: "XPC Helper", detail: helperStatus, state: .failed))
         }
 
@@ -1159,7 +1159,7 @@ final class AppStore: ObservableObject {
             let privilege = try await helperClient.verifyPrivileges()
             results.append(.init(title: "Helper 授权", detail: privilege.message, state: .ok))
         } catch {
-            helperStatus = "\(helperService.statusDescription)：\(error.localizedDescription)"
+            helperStatus = helperTroubleshootingDetail(error.localizedDescription)
             results.append(.init(title: "XPC Helper", detail: helperStatus, state: .failed))
         }
         diagnostics = results
@@ -1191,17 +1191,33 @@ final class AppStore: ObservableObject {
     }
 
     func repairHelperRegistration() async {
+        helperStatus = "正在重建 Helper 注册"
+        appendLog("info", helperStatus)
+
         do {
-            helperStatus = "正在重建 Helper 注册"
-            try? helperService.unregister()
+            do {
+                try helperService.unregister()
+                appendLog("info", "XPC Helper 旧注册已移除")
+            } catch {
+                appendLog("warning", "XPC Helper 取消注册跳过：\(error.localizedDescription)")
+            }
             try? await Task.sleep(nanoseconds: 400_000_000)
             try helperService.register()
-            appendLog("info", "XPC Helper 注册已重建")
+            helperStatus = helperService.statusDescription
+            appendLog("info", "XPC Helper 注册已重建：\(helperStatus)")
+            if helperService.requiresApproval {
+                helperService.openLoginItemsSettings()
+                helperStatus = "\(helperStatus)。请在系统设置 > 通用 > 登录项与扩展中允许 Mihomo 后重新运行诊断。"
+                appendLog("warning", helperStatus)
+            }
             try? await Task.sleep(nanoseconds: 800_000_000)
             await auditHelper()
         } catch {
-            helperStatus = "XPC Helper 修复失败：\(error.localizedDescription)"
+            helperService.openLoginItemsSettings()
+            helperStatus = helperTroubleshootingDetail(error.localizedDescription)
             appendLog("error", helperStatus)
+            upsertDiagnostic(.init(title: "XPC Helper", detail: helperStatus, state: .failed))
+            selectedSection = .diagnostics
         }
     }
 
@@ -2048,6 +2064,25 @@ final class AppStore: ObservableObject {
             .prefix(3)
             .map { "\($0.key) x\($0.value)" }
             .joined(separator: "，")
+    }
+
+    private func helperTroubleshootingDetail(_ errorMessage: String) -> String {
+        let status = helperService.statusDescription
+        let guidance: String
+        if helperService.requiresApproval {
+            guidance = "请在系统设置 > 通用 > 登录项与扩展中允许 Mihomo 的后台项目，然后重新运行诊断。"
+        } else {
+            guidance = "请点击“修复 Helper”重建注册；若系统弹出授权或后台项目提示，请批准后重新运行诊断。"
+        }
+        return "\(status)：\(errorMessage)\n\(guidance)"
+    }
+
+    private func upsertDiagnostic(_ result: DiagnosticResult) {
+        if let index = diagnostics.firstIndex(where: { $0.title == result.title }) {
+            diagnostics[index] = result
+        } else {
+            diagnostics.append(result)
+        }
     }
 
     private func markRefreshJob(

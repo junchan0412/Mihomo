@@ -8,7 +8,6 @@ struct OverviewView: View {
             VStack(alignment: .leading, spacing: 18) {
                 header
                 networkTakeoverSection
-                quickOperationsSection
                 runtimeSection
                 recentLogsSection
             }
@@ -100,51 +99,6 @@ struct OverviewView: View {
                 Label("运行诊断", systemImage: "stethoscope")
             }
         }
-    }
-
-    private var quickOperationsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("快速操作")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 10) {
-                Button {
-                    Task { await store.toggleCore() }
-                } label: {
-                    Label(store.isCoreRunning ? "停止核心" : "启动核心", systemImage: store.isCoreRunning ? "stop.fill" : "play.fill")
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button {
-                    Task { await store.restartCore() }
-                } label: {
-                    Label("重启核心", systemImage: "arrow.clockwise")
-                }
-
-                Button {
-                    Task { await store.toggleSystemProxy() }
-                } label: {
-                    Label(store.systemProxyEnabled ? "关闭系统代理" : "开启系统代理", systemImage: "network")
-                }
-
-                Button {
-                    Task { await store.setTunEnabled(!store.settings.tunEnabled) }
-                } label: {
-                    Label(store.settings.tunEnabled ? "关闭 TUN" : "开启 TUN", systemImage: "lock.shield")
-                }
-
-                Button {
-                    store.enterLightweightMode()
-                } label: {
-                    Label("轻量模式", systemImage: "menubar.rectangle")
-                }
-            }
-            .buttonStyle(.bordered)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var recentLogsSection: some View {

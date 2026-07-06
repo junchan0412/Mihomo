@@ -41,12 +41,20 @@ final class HelperServiceManager {
         }
     }
 
+    var requiresApproval: Bool {
+        service.status == .requiresApproval
+    }
+
     func register() throws {
         try service.register()
     }
 
     func unregister() throws {
         try service.unregister()
+    }
+
+    func openLoginItemsSettings() {
+        SMAppService.openSystemSettingsLoginItems()
     }
 }
 
