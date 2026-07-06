@@ -18,6 +18,10 @@ struct DiagnosticsView: View {
                 }
                 .buttonStyle(.borderedProminent)
 
+                Button("导出诊断包") {
+                    store.exportDiagnosticBundle()
+                }
+
                 Button("修复系统代理") {
                     Task { await store.repairSystemProxy() }
                 }
@@ -40,6 +44,11 @@ struct DiagnosticsView: View {
             }
 
             NetworkRepairCenterView()
+
+            Text(store.diagnosticExportStatus)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
 
             List(store.diagnostics) { item in
                 HStack(alignment: .top, spacing: 12) {

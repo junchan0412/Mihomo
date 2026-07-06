@@ -52,6 +52,10 @@ struct ResourcesView: View {
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
 
+            if store.providerUpdateHistory.isEmpty == false {
+                ProviderUpdateHistoryStrip(records: Array(store.providerUpdateHistory.prefix(5)))
+            }
+
             List(visibleProviders) { provider in
                 HStack(spacing: 14) {
                     Image(systemName: provider.kind == "Proxy" ? "point.3.connected.trianglepath.dotted" : "list.bullet.clipboard")
@@ -108,5 +112,38 @@ struct ResourcesView: View {
         .onAppear {
             store.refreshConfigArtifacts()
         }
+    }
+}
+
+private struct ProviderUpdateHistoryStrip: View {
+    var records: [ProviderUpdateRecord]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("更新历史")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            ForEach(records) { record in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: record.succeeded ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                        .foregroundStyle(record.succeeded ? .green : .red)
+                    Text(record.providerName)
+                        .font(.callout.weight(.medium))
+                    Text("\(record.providerKind) · \(record.action)")
+                        .foregroundStyle(.secondary)
+                    Text(record.targetPath)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Text(Formatters.shortDate.string(from: record.date))
+                        .foregroundStyle(.secondary)
+                }
+                .font(.caption)
+            }
+        }
+        .padding(10)
+        .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
     }
 }

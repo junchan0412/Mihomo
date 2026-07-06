@@ -205,6 +205,16 @@ v1.3.0 完成状态：
 | P1 | 连接与规则联动 | 从连接详情跳转到命中的规则、策略组和 Provider。 |
 | P2 | 快捷键 | 提供打开主窗口、启停核心、切换系统代理、切换模式等可配置快捷键。 |
 
+v1.4.0 完成状态：
+
+| 优化项 | 完成状态 | 主要落点 |
+| --- | --- | --- |
+| TUN / 系统代理 / 系统 DNS 解释与互斥提示 | 已实现 | 概览页在 TUN、系统代理、系统 DNS 同时启用时显示冗余/恢复提示；诊断包也记录 advisory。 |
+| 诊断包导出 | 已实现 | 诊断页新增导出入口，生成脱敏摘要、runtime 配置、App 日志尾部、core 日志和 Provider 历史 zip，并在 Finder 中定位。 |
+| Provider 更新历史 | 已实现 | 资源页展示最近 Provider Controller 更新、下载、批量下载的时间、结果、目标路径和错误信息。 |
+| 连接与规则联动 | 已实现 | 活动页连接详情新增“查看规则”和“Provider”跳转；规则页接收连接命中规则并自动过滤/选中。 |
+| 快捷键 | 已增强 | 主菜单新增 TUN、系统 DNS 接管、导出诊断包快捷入口，并保留主窗口、核心启停、系统代理、订阅刷新、检查更新、诊断等快捷键。 |
+
 ## 7. 建议新增功能池
 
 这些不是为了立刻扩张功能面，而是围绕当前项目的长期可维护性和专业体验补短板。
@@ -248,3 +258,4 @@ v1.3.0 完成状态：
 | v1.1.0 | 完成网络接管与 Helper 硬化：新增三类网络接管状态机、诊断页网络修复中心、独立 DNS 恢复入口、Helper 事务步骤/回滚建议、SecStaticCode requirement 校验。 | 使用 `./script/build_and_run.sh --verify`、概览截图检查、release package、manifest、签名和线上更新清单校验作为小版本发布门禁。 |
 | v1.2.0 | 完成配置质量与可维护性：新增规则 schema 校验、配置质量评分、Runtime Config Inspector、Profile/JS/YAML/App overlay 分层 diff 和 settings schema v2 迁移日志。 | 使用 `./script/build_and_run.sh --verify`、`git diff --check`、release package、manifest、签名和线上更新清单校验作为小版本发布门禁。 |
 | v1.3.0 | 完成测试与发版体系：新增 SwiftPM 测试目标、8 个核心 XCTest、Controller/Helper mock 解析测试、release smoke 脚本和第三方清单。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.3.0` 和线上更新清单校验作为小版本发布门禁。 |
+| v1.4.0 | 完成专业工具体验打磨：新增网络接管互斥提示、诊断包导出、Provider 更新历史、连接到规则/资源联动和更多主菜单快捷键。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.0` 和线上更新清单校验作为小版本发布门禁。 |

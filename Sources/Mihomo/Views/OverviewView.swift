@@ -39,6 +39,15 @@ struct OverviewView: View {
                 .font(.headline)
                 .foregroundStyle(.secondary)
 
+            if let advisory = store.networkModeAdvisory {
+                Label(advisory, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+            }
+
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 12)], spacing: 12) {
                 TakeoverCard(
                     title: "系统代理",

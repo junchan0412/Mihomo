@@ -62,6 +62,18 @@ struct MihomoApp: App {
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
 
+                Button(store.settings.tunEnabled ? "关闭 TUN" : "开启 TUN") {
+                    Task { await store.setTunEnabled(!store.settings.tunEnabled) }
+                }
+                .keyboardShortcut("t", modifiers: [.command, .option])
+
+                Button(store.settings.autoSetSystemDNS ? "关闭系统 DNS 接管" : "开启系统 DNS 接管") {
+                    var updated = store.settings
+                    updated.autoSetSystemDNS.toggle()
+                    Task { await store.saveSettings(updated) }
+                }
+                .keyboardShortcut("n", modifiers: [.command, .option])
+
                 Button("刷新所有订阅") {
                     Task { await store.refreshAllRemoteProfiles() }
                 }
@@ -93,6 +105,11 @@ struct MihomoApp: App {
                     Task { await store.runDiagnostics() }
                 }
                 .keyboardShortcut("d", modifiers: [.command])
+
+                Button("导出诊断包") {
+                    store.exportDiagnosticBundle()
+                }
+                .keyboardShortcut("d", modifiers: [.command, .option])
 
                 Button("进入轻量模式") {
                     store.enterLightweightMode()

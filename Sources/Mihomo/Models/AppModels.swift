@@ -565,6 +565,17 @@ struct ProviderItem: Identifiable, Hashable {
     var memberNames: [String] = []
 }
 
+struct ProviderUpdateRecord: Identifiable, Hashable {
+    var id = UUID()
+    var date = Date()
+    var providerName: String
+    var providerKind: String
+    var action: String
+    var succeeded: Bool
+    var targetPath: String
+    var message: String
+}
+
 struct ProfileStats: Hashable {
     var lineCount: Int = 0
     var fileSize: Int = 0

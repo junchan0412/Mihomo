@@ -115,6 +115,10 @@ struct ActivityView: View {
                     ConnectionInspectorView(connection: selectedConnection) { connection in
                         selectedRowID = nil
                         Task { await store.closeConnection(connection.id) }
+                    } focusRule: { connection in
+                        store.focusRule(for: connection)
+                    } focusResources: {
+                        store.selectedSection = .resources
                     }
                     .frame(width: 320)
                     .frame(maxHeight: .infinity, alignment: .topLeading)
@@ -156,6 +160,10 @@ struct ConnectionDetailPanelView: View {
     var body: some View {
         ConnectionInspectorView(connection: connection) { connection in
             Task { await store.closeConnection(connection.id) }
+        } focusRule: { connection in
+            store.focusRule(for: connection)
+        } focusResources: {
+            store.selectedSection = .resources
         }
         .frame(minWidth: 340, minHeight: 420)
     }
@@ -246,6 +254,8 @@ private struct ConnectionTableRow: Identifiable, Hashable {
 struct ConnectionInspectorView: View {
     var connection: ConnectionItem?
     var close: (ConnectionItem) -> Void
+    var focusRule: (ConnectionItem) -> Void = { _ in }
+    var focusResources: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -266,6 +276,21 @@ struct ConnectionInspectorView: View {
                 }
 
                 Spacer()
+
+                HStack(spacing: 8) {
+                    Button {
+                        focusRule(connection)
+                    } label: {
+                        Label("查看规则", systemImage: "list.bullet.rectangle")
+                    }
+                    .disabled(connection.ruleType.isEmpty && connection.rule.isEmpty)
+
+                    Button {
+                        focusResources()
+                    } label: {
+                        Label("Provider", systemImage: "shippingbox")
+                    }
+                }
 
                 Button("关闭此连接") {
                     close(connection)

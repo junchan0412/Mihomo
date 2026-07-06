@@ -54,6 +54,10 @@ struct RulesView: View {
         .navigationTitle("规则")
         .onAppear {
             store.refreshConfigArtifacts()
+            applyRuleFocusQuery()
+        }
+        .onChange(of: store.ruleFocusQuery) {
+            applyRuleFocusQuery()
         }
         .onChange(of: store.rules) {
             guard let selectedRuleIndex else { return }
@@ -118,6 +122,13 @@ struct RulesView: View {
         .padding(.vertical, 6)
         .frame(width: 260)
         .background(.quaternary.opacity(0.8), in: RoundedRectangle(cornerRadius: 7))
+    }
+
+    private func applyRuleFocusQuery() {
+        let query = store.ruleFocusQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else { return }
+        searchText = query
+        selectedRuleIndex = entries.first { $0.searchText.localizedCaseInsensitiveContains(query) }?.rule.index
     }
 
     private var ruleTable: some View {

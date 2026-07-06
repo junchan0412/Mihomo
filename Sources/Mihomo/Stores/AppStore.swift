@@ -40,6 +40,7 @@ final class AppStore: ObservableObject {
     @Published var providers: [ProviderItem] = []
     @Published var configPreview = ""
     @Published var configDiff = ""
+    @Published var providerUpdateHistory: [ProviderUpdateRecord] = []
     @Published var advancedStatus = "高级功能待命"
     @Published var managedCoreStatus = "未托管"
     @Published var externalUIStatus = "未安装"
@@ -56,6 +57,8 @@ final class AppStore: ObservableObject {
     @Published var policyGroupIconImages: [String: NSImage] = [:]
     @Published var networkTakeoverStates: [NetworkTakeoverState] = []
     @Published var settingsMigrationLog: [String] = []
+    @Published var diagnosticExportStatus = "尚未导出诊断包"
+    @Published var ruleFocusQuery = ""
 
     private let profileStore = ProfileStore()
     private let systemProxy = SystemProxyManager()
@@ -134,6 +137,19 @@ final class AppStore: ObservableObject {
 
     var profileStorageDirectory: URL {
         profileStore.profileStorageDirectory(settings: settings)
+    }
+
+    var networkModeAdvisory: String? {
+        if settings.tunEnabled && systemProxyEnabled {
+            return "TUN 已接管路由，系统代理同时开启通常是冗余配置；如遇网络异常，优先关闭系统代理或使用诊断页恢复代理快照。"
+        }
+        if settings.tunEnabled && settings.autoSetSystemDNS {
+            return "TUN 与系统 DNS 接管同时开启；停止核心时会按设置恢复 DNS/TUN 快照，请确保 Helper 已注册。"
+        }
+        if systemProxyEnabled && settings.autoSetSystemDNS {
+            return "系统代理与系统 DNS 接管同时开启；适合需要 DNS 统一出口的场景，退出前会尝试恢复快照。"
+        }
+        return nil
     }
 
     func bootstrap() async {
@@ -962,6 +978,18 @@ final class AppStore: ObservableObject {
         selectedSection = .diagnostics
     }
 
+    func exportDiagnosticBundle() {
+        do {
+            let archive = try makeDiagnosticBundle()
+            diagnosticExportStatus = "诊断包已导出：\(archive.path)"
+            NSWorkspace.shared.activateFileViewerSelecting([archive])
+            appendLog("info", diagnosticExportStatus)
+        } catch {
+            diagnosticExportStatus = "诊断包导出失败：\(error.localizedDescription)"
+            appendLog("error", diagnosticExportStatus)
+        }
+    }
+
     func refreshConfigArtifacts() {
         guard let activeProfile else {
             rules = []
@@ -1010,9 +1038,23 @@ final class AppStore: ObservableObject {
         do {
             try await controllerClient().updateProvider(provider)
             appendLog("info", "已请求更新 \(provider.kind) Provider：\(provider.name)")
+            recordProviderUpdate(
+                provider,
+                action: "Controller",
+                succeeded: true,
+                targetPath: "-",
+                message: "Controller 已接受更新请求"
+            )
             await refreshProvidersFromController()
         } catch {
             appendLog("error", "Provider 更新失败：\(error.localizedDescription)")
+            recordProviderUpdate(
+                provider,
+                action: "Controller",
+                succeeded: false,
+                targetPath: "-",
+                message: error.localizedDescription
+            )
         }
     }
 
@@ -1021,10 +1063,24 @@ final class AppStore: ObservableObject {
             let target = try await downloadProviderResource(provider)
             resourceUpdateStatus = "\(provider.name) 已更新：\(target.path)"
             appendLog("info", resourceUpdateStatus)
+            recordProviderUpdate(
+                provider,
+                action: "下载",
+                succeeded: true,
+                targetPath: target.path,
+                message: resourceUpdateStatus
+            )
             refreshConfigArtifacts()
         } catch {
             resourceUpdateStatus = "\(provider.name) 更新失败：\(error.localizedDescription)"
             appendLog("error", resourceUpdateStatus)
+            recordProviderUpdate(
+                provider,
+                action: "下载",
+                succeeded: false,
+                targetPath: provider.path ?? "-",
+                message: error.localizedDescription
+            )
         }
     }
 
@@ -1039,11 +1095,25 @@ final class AppStore: ObservableObject {
         resourceUpdateStatus = "正在更新 \(providerItems.count) 个 Provider 与 Geo 数据..."
         for provider in providerItems {
             do {
-                _ = try await downloadProviderResource(provider)
+                let target = try await downloadProviderResource(provider)
                 succeeded += 1
+                recordProviderUpdate(
+                    provider,
+                    action: "批量下载",
+                    succeeded: true,
+                    targetPath: target.path,
+                    message: "批量更新成功"
+                )
             } catch {
                 failed += 1
                 appendLog("error", "\(provider.name) 更新失败：\(error.localizedDescription)")
+                recordProviderUpdate(
+                    provider,
+                    action: "批量下载",
+                    succeeded: false,
+                    targetPath: provider.path ?? "-",
+                    message: error.localizedDescription
+                )
             }
         }
 
@@ -1056,6 +1126,13 @@ final class AppStore: ObservableObject {
         }
         refreshConfigArtifacts()
         appendLog(failed == 0 ? "info" : "warning", resourceUpdateStatus)
+    }
+
+    func focusRule(for connection: ConnectionItem) {
+        let query = ruleHitKey(type: connection.ruleType, payload: connection.rulePayload)
+        ruleFocusQuery = query.isEmpty ? connection.rule : query
+        selectedSection = .rules
+        appendLog("info", "从连接跳转到规则：\(ruleFocusQuery)")
     }
 
     func toggleRuleDisabled(_ rule: RuleItem) {
@@ -2430,6 +2507,114 @@ final class AppStore: ObservableObject {
         if let finishedAt {
             profileRefreshQueue[index].finishedAt = finishedAt
         }
+    }
+
+    private func recordProviderUpdate(
+        _ provider: ProviderItem,
+        action: String,
+        succeeded: Bool,
+        targetPath: String,
+        message: String
+    ) {
+        providerUpdateHistory.insert(.init(
+            providerName: provider.name,
+            providerKind: provider.kind,
+            action: action,
+            succeeded: succeeded,
+            targetPath: targetPath,
+            message: message
+        ), at: 0)
+        if providerUpdateHistory.count > 80 {
+            providerUpdateHistory.removeLast(providerUpdateHistory.count - 80)
+        }
+    }
+
+    private func makeDiagnosticBundle() throws -> URL {
+        try AppPaths.ensureBaseDirectories()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let stamp = formatter.string(from: Date())
+        let root = AppPaths.backupsDirectory.appendingPathComponent("Diagnostics-\(stamp)", isDirectory: true)
+        let archive = AppPaths.backupsDirectory.appendingPathComponent("Mihomo-Diagnostics-\(stamp).zip")
+        let manager = FileManager.default
+        if manager.fileExists(atPath: root.path) {
+            try manager.removeItem(at: root)
+        }
+        try manager.createDirectory(at: root, withIntermediateDirectories: true)
+
+        let summary = diagnosticSummaryText()
+        try summary.write(to: root.appendingPathComponent("summary.txt"), atomically: true, encoding: .utf8)
+
+        if manager.fileExists(atPath: AppPaths.runtimeConfigFile.path) {
+            try manager.copyItem(at: AppPaths.runtimeConfigFile, to: root.appendingPathComponent("runtime-config.yaml"))
+        } else if configPreview.isEmpty == false {
+            try configPreview.write(to: root.appendingPathComponent("runtime-config-preview.yaml"), atomically: true, encoding: .utf8)
+        }
+
+        let recentLogs = logs.suffix(300)
+            .map { "[\(Formatters.shortDate.string(from: $0.date))] \($0.level.uppercased()) \($0.message)" }
+            .joined(separator: "\n")
+        try recentLogs.write(to: root.appendingPathComponent("app-log-tail.txt"), atomically: true, encoding: .utf8)
+
+        if manager.fileExists(atPath: AppPaths.coreLogFile.path) {
+            try? manager.copyItem(at: AppPaths.coreLogFile, to: root.appendingPathComponent("core.log"))
+        }
+
+        if manager.fileExists(atPath: archive.path) {
+            try manager.removeItem(at: archive)
+        }
+        let result = try Shell.run("/usr/bin/zip", ["-r", "-X", archive.path, root.lastPathComponent], workDirectory: root.deletingLastPathComponent())
+        guard result.status == 0 else {
+            throw NSError(domain: "DiagnosticExport", code: Int(result.status), userInfo: [
+                NSLocalizedDescriptionKey: result.stderr.isEmpty ? result.stdout : result.stderr
+            ])
+        }
+        try? manager.removeItem(at: root)
+        return archive
+    }
+
+    private func diagnosticSummaryText() -> String {
+        let redactedSettings = settings.redactedSecretsForDisk
+        let settingsSummary = """
+        coreSource: \(redactedSettings.coreSource.rawValue)
+        mixedPort: \(redactedSettings.mixedPort)
+        socksPort: \(redactedSettings.socksPort)
+        tunEnabled: \(redactedSettings.tunEnabled)
+        systemProxyEnabled: \(systemProxyEnabled)
+        autoSetSystemDNS: \(redactedSettings.autoSetSystemDNS)
+        dnsEnhancedMode: \(redactedSettings.dnsEnhancedMode)
+        profileStoragePath: \(profileStorageDirectory.path)
+        """
+        let networkSummary = networkTakeoverStates.map {
+            "- \($0.kind.title): desired=\($0.desiredState); actual=\($0.actualState); health=\($0.health.rawValue); recovery=\($0.recoveryAction)"
+        }.joined(separator: "\n")
+        let diagnosticSummary = diagnostics.map {
+            "- \($0.state.rawValue.uppercased()) \($0.title): \($0.detail)"
+        }.joined(separator: "\n")
+        let providerSummary = providerUpdateHistory.prefix(30).map {
+            "- \(Formatters.shortDate.string(from: $0.date)) \($0.providerKind) \($0.providerName) \($0.action) \($0.succeeded ? "OK" : "FAIL") path=\($0.targetPath) message=\($0.message)"
+        }.joined(separator: "\n")
+
+        return """
+        Mihomo Diagnostic Bundle
+        Generated: \(Formatters.shortDate.string(from: Date()))
+        App: \(currentAppVersion) (\(currentAppBuild))
+        Core: \(coreVersion)
+        Core status: \(coreStatus)
+        Advisory: \(networkModeAdvisory ?? "None")
+
+        Settings
+        \(settingsSummary)
+
+        Network Takeover
+        \(networkSummary.isEmpty ? "No network takeover states." : networkSummary)
+
+        Diagnostics
+        \(diagnosticSummary.isEmpty ? "No diagnostics have been run." : diagnosticSummary)
+
+        Provider Update History
+        \(providerSummary.isEmpty ? "No provider update history." : providerSummary)
+        """
     }
 
     private func migrateSettingsIfNeeded() throws {
