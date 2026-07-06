@@ -67,7 +67,7 @@ Useful modes:
 ./script/package_release.sh 1.0.0
 ```
 
-This downloads a release mihomo core into `vendor/mihomo` when needed, stages it inside `Mihomo.app/Contents/Resources/Core/`, stages `MihomoHelper` under `Contents/Library/LaunchServices/`, includes the Helper daemon plist under `Contents/Library/LaunchDaemons/`, signs nested code with fixed ad-hoc identifiers, creates a zip artifact under `dist/releases/`, and writes Ed25519-signed `Mihomo-<version>-update.json` plus `mihomo-update.json`.
+This downloads a release mihomo core into `vendor/mihomo` when needed, stages it inside `Mihomo.app/Contents/Resources/Core/`, stages `THIRD_PARTY_NOTICES.md` under `Contents/Resources/`, stages `MihomoHelper` under `Contents/Library/LaunchServices/`, includes the Helper daemon plist under `Contents/Library/LaunchDaemons/`, signs nested code with fixed ad-hoc identifiers, creates a zip artifact under `dist/releases/`, and writes Ed25519-signed `Mihomo-<version>-update.json` plus `mihomo-update.json`.
 
 The update signing private key is read from `MIHOMO_UPDATE_PRIVATE_KEY` or `~/.mihomo-update-signing/ed25519.private`. The matching public key is compiled into the app; changing release keys requires shipping an app build that trusts the new public key before using it.
 
