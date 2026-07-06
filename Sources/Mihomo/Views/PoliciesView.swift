@@ -8,10 +8,18 @@ struct PoliciesView: View {
     @State private var searchText = ""
     @State private var pendingAutomaticOverride: PolicyNodeRow?
 
+    private var displayGroups: [ProxyGroup] {
+        store.proxyGroups.isEmpty ? store.offlineProxyGroups : store.proxyGroups
+    }
+
+    private var isOfflinePolicyMode: Bool {
+        store.proxyGroups.isEmpty && store.offlineProxyGroups.isEmpty == false
+    }
+
     private var visibleGroups: [ProxyGroup] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.isEmpty == false else { return store.proxyGroups }
-        return store.proxyGroups.filter { group in
+        guard query.isEmpty == false else { return displayGroups }
+        return displayGroups.filter { group in
             group.name.localizedCaseInsensitiveContains(query)
                 || group.now.localizedCaseInsensitiveContains(query)
                 || group.type.localizedCaseInsensitiveContains(query)
@@ -43,14 +51,15 @@ struct PoliciesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if store.proxyGroups.isEmpty == false {
+            if displayGroups.isEmpty == false {
                 toolbar
                 PolicyStatusStrip(
-                    groupCount: store.proxyGroups.count,
-                    nodeCount: store.proxyGroups.reduce(0) { $0 + $1.all.count },
+                    groupCount: displayGroups.count,
+                    nodeCount: displayGroups.reduce(0) { $0 + $1.all.count },
                     selectedGroup: selectedGroup,
                     delayStatus: store.delayTestStatus,
-                    failureSummary: store.delayTestFailureSummary
+                    failureSummary: store.delayTestFailureSummary,
+                    isOffline: isOfflinePolicyMode
                 )
             }
             mainContent
@@ -59,12 +68,18 @@ struct PoliciesView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("策略")
         .onAppear {
+            if store.offlineProxyGroups.isEmpty {
+                store.refreshConfigArtifacts()
+            }
             ensureSelection()
             Task { await store.preloadPolicyGroupIcons() }
         }
         .onChange(of: store.proxyGroups) {
             ensureSelection()
             Task { await store.preloadPolicyGroupIcons() }
+        }
+        .onChange(of: store.offlineProxyGroups) {
+            ensureSelection()
         }
         .onChange(of: searchText) {
             ensureSelection()
@@ -95,7 +110,7 @@ struct PoliciesView: View {
 
     @ViewBuilder
     private var mainContent: some View {
-        if store.proxyGroups.isEmpty {
+        if displayGroups.isEmpty {
             PolicyStartupEmptyState(
                 isCoreRunning: store.isCoreRunning,
                 coreStatus: store.coreStatus,
@@ -134,7 +149,7 @@ struct PoliciesView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("策略")
                     .font(.largeTitle.bold())
-                Text(selectedGroup.map { "\($0.name) · 当前 \($0.now)" } ?? "启动 mihomo 并刷新 Controller")
+                Text(headerSubtitle)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -158,6 +173,13 @@ struct PoliciesView: View {
         }
     }
 
+    private var headerSubtitle: String {
+        if isOfflinePolicyMode {
+            return selectedGroup.map { "\($0.name) · 离线配置预览" } ?? "离线配置预览"
+        }
+        return selectedGroup.map { "\($0.name) · 当前 \($0.now)" } ?? "启动 mihomo 并刷新 Controller"
+    }
+
     private var toolbar: some View {
         HStack(spacing: 10) {
             TextField("搜索策略组、当前节点或代理", text: $searchText)
@@ -171,7 +193,7 @@ struct PoliciesView: View {
             } label: {
                 Label("使用节点", systemImage: "checkmark.circle")
             }
-            .disabled(canApplySelectedNode == false)
+            .disabled(isOfflinePolicyMode || canApplySelectedNode == false)
 
             Button {
                 if let selectedGroup, let selectedNodeRow {
@@ -180,7 +202,7 @@ struct PoliciesView: View {
             } label: {
                 Label("测速节点", systemImage: "speedometer")
             }
-            .disabled(selectedGroup == nil || selectedNodeRow == nil)
+            .disabled(isOfflinePolicyMode || selectedGroup == nil || selectedNodeRow == nil)
 
             Button {
                 if let selectedGroup {
@@ -189,7 +211,7 @@ struct PoliciesView: View {
             } label: {
                 Label("测速此组", systemImage: "timer")
             }
-            .disabled(selectedGroup == nil)
+            .disabled(isOfflinePolicyMode || selectedGroup == nil)
 
         }
     }
@@ -246,7 +268,7 @@ struct PoliciesView: View {
         .frame(minHeight: 420, maxHeight: .infinity)
         .overlay {
             if visibleGroups.isEmpty {
-                ContentUnavailableView("没有策略组", systemImage: "switch.2", description: Text("启动 mihomo 并刷新 Controller。"))
+                ContentUnavailableView("没有策略组", systemImage: "switch.2", description: Text("当前配置没有可显示的策略组。"))
             }
         }
     }
@@ -303,6 +325,7 @@ struct PoliciesView: View {
     }
 
     private func handleNodeDoubleClick(_ row: PolicyNodeRow) {
+        guard isOfflinePolicyMode == false else { return }
         if row.isCurrent { return }
         if row.group.isAutomaticURLTestGroup {
             pendingAutomaticOverride = row
@@ -453,6 +476,7 @@ private struct PolicyStatusStrip: View {
     var selectedGroup: ProxyGroup?
     var delayStatus: String
     var failureSummary: String
+    var isOffline: Bool
 
     var body: some View {
         HStack(spacing: 16) {
@@ -466,11 +490,17 @@ private struct PolicyStatusStrip: View {
 
             Spacer()
 
-            Text(delayStatus)
-                .lineLimit(1)
-                .foregroundStyle(.secondary)
+            if isOffline {
+                Label("离线配置预览，启动核心后可切换节点与测速", systemImage: "eye")
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            } else {
+                Text(delayStatus)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+            }
 
-            if failureSummary.isEmpty == false {
+            if isOffline == false && failureSummary.isEmpty == false {
                 Label(failureSummary, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
                     .lineLimit(1)

@@ -3,6 +3,12 @@ import Combine
 import Foundation
 import MihomoShared
 
+private struct ProviderResourceUpdateResult {
+    var provider: ProviderItem
+    var target: URL?
+    var errorMessage: String?
+}
+
 @MainActor
 final class AppStore: ObservableObject {
     @Published var selectedSection: AppSection = .overview
@@ -25,6 +31,7 @@ final class AppStore: ObservableObject {
     @Published var profileAutoRefreshStatus = "未启用"
     @Published var lastRuntimeValidation = ""
     @Published var lastSystemProxySnapshot: SystemProxySnapshot?
+    @Published var lastSystemDNSSnapshot: SystemProxySnapshot?
     @Published var lastTunRecoverySnapshot: TunRecoverySnapshot?
     @Published var tunRecoveryStatus = "未捕获 TUN 回滚快照"
     @Published var loginItemStatus = "未检查"
@@ -34,6 +41,7 @@ final class AppStore: ObservableObject {
     @Published var delayTestFailureSummary = ""
     @Published var logsPaused = false
     @Published var bufferedLogCount = 0
+    @Published var offlineProxyGroups: [ProxyGroup] = []
     @Published var configFragments: [ConfigFragment] = []
     @Published var disabledRules: Set<String> = []
     @Published var rules: [RuleItem] = []
@@ -170,6 +178,7 @@ final class AppStore: ObservableObject {
                 try profileStore.saveSettings(settings)
             }
             lastSystemProxySnapshot = systemProxy.loadSnapshot()
+            lastSystemDNSSnapshot = systemProxy.loadDNSSnapshot()
             lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
             tunRecoveryStatus = lastTunRecoverySnapshot == nil ? "未捕获 TUN 回滚快照" : "已有 TUN 回滚快照"
             refreshNetworkTakeoverStates(force: true)
@@ -605,6 +614,7 @@ final class AppStore: ObservableObject {
             try systemProxy.removeSnapshot(at: AppPaths.systemDNSSnapshotFile)
             try tunRecovery.clearSnapshot()
             lastSystemProxySnapshot = nil
+            lastSystemDNSSnapshot = nil
             lastTunRecoverySnapshot = nil
             tunRecoveryStatus = "已清理 TUN 回滚快照"
             lastNetworkOperations[.systemProxy] = "已清理代理快照"
@@ -905,6 +915,24 @@ final class AppStore: ObservableObject {
         )
     }
 
+    private func makeOfflineProxyGroups(from snapshot: ProfileStructureSnapshot) -> [ProxyGroup] {
+        snapshot.groups.map { group in
+            let proxyNodes = group.proxies.map { proxy in
+                ProxyNode(name: proxy, type: snapshot.proxyNames.contains(proxy) ? "proxy" : "built-in", delay: nil)
+            }
+            let providerNodes = group.uses.map { provider in
+                ProxyNode(name: provider, type: "provider", delay: nil)
+            }
+            return ProxyGroup(
+                name: group.name,
+                type: group.type,
+                now: "",
+                all: proxyNodes + providerNodes,
+                icon: nil
+            )
+        }
+    }
+
     func saveSettings(_ settings: AppSettings) async {
         do {
             var normalized = settings
@@ -1104,6 +1132,7 @@ final class AppStore: ObservableObject {
         guard let activeProfile else {
             publishIfChanged(\.rules, [])
             publishIfChanged(\.providers, [])
+            publishIfChanged(\.offlineProxyGroups, [])
             publishIfChanged(\.configPreview, "")
             publishIfChanged(\.configDiff, "")
             return
@@ -1111,8 +1140,10 @@ final class AppStore: ObservableObject {
 
         do {
             let original = try profileStore.loadProfileContent(activeProfile, settings: settings)
+            let snapshot = try ProfileYAMLStructureEditor().snapshot(content: original)
             publishIfChanged(\.rules, configFragmentStore.parseRules(profileContent: original, disabledRules: disabledRules))
             publishIfChanged(\.providers, configFragmentStore.parseProviders(profileContent: original))
+            publishIfChanged(\.offlineProxyGroups, makeOfflineProxyGroups(from: snapshot))
             let candidate = try profileStore.generateRuntimeConfigCandidate(
                 profile: activeProfile,
                 settings: settings,
@@ -1171,7 +1202,7 @@ final class AppStore: ObservableObject {
 
     func updateProviderResource(_ provider: ProviderItem) async {
         do {
-            let target = try await downloadProviderResource(provider)
+            let target = try await Self.downloadProviderResource(provider)
             resourceUpdateStatus = "\(provider.name) 已更新：\(target.path)"
             appendLog("info", resourceUpdateStatus)
             recordProviderUpdate(
@@ -1200,32 +1231,58 @@ final class AppStore: ObservableObject {
         let providerItems = providers.filter {
             $0.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         }
+        let maxConcurrent = max(1, min(settings.profileRefreshMaxConcurrent, 8))
         var succeeded = 0
         var failed = 0
+        var completed = 0
 
-        resourceUpdateStatus = "正在更新 \(providerItems.count) 个 Provider 与 Geo 数据..."
-        for provider in providerItems {
-            do {
-                let target = try await downloadProviderResource(provider)
-                succeeded += 1
-                recordProviderUpdate(
-                    provider,
-                    action: "批量下载",
-                    succeeded: true,
-                    targetPath: target.path,
-                    message: "批量更新成功"
-                )
-            } catch {
-                failed += 1
-                appendLog("error", "\(provider.name) 更新失败：\(error.localizedDescription)")
-                recordProviderUpdate(
-                    provider,
-                    action: "批量下载",
-                    succeeded: false,
-                    targetPath: provider.path ?? "-",
-                    message: error.localizedDescription
-                )
+        resourceUpdateStatus = "正在并发更新 \(providerItems.count) 个 Provider（并发 \(maxConcurrent)）与 Geo 数据..."
+        for batchStart in stride(from: 0, to: providerItems.count, by: maxConcurrent) {
+            let batchEnd = min(batchStart + maxConcurrent, providerItems.count)
+            let batch = Array(providerItems[batchStart..<batchEnd])
+
+            await withTaskGroup(of: ProviderResourceUpdateResult.self) { group in
+                for provider in batch {
+                    group.addTask {
+                        do {
+                            let target = try await AppStore.downloadProviderResource(provider)
+                            return ProviderResourceUpdateResult(provider: provider, target: target, errorMessage: nil)
+                        } catch {
+                            return ProviderResourceUpdateResult(provider: provider, target: nil, errorMessage: error.localizedDescription)
+                        }
+                    }
+                }
+
+                for await result in group {
+                    completed += 1
+                    if let target = result.target {
+                        succeeded += 1
+                        recordProviderUpdate(
+                            result.provider,
+                            action: "批量下载",
+                            succeeded: true,
+                            targetPath: target.path,
+                            message: "批量更新成功"
+                        )
+                    } else {
+                        failed += 1
+                        let message = result.errorMessage ?? "未知错误"
+                        appendLog("error", "\(result.provider.name) 更新失败：\(message)")
+                        recordProviderUpdate(
+                            result.provider,
+                            action: "批量下载",
+                            succeeded: false,
+                            targetPath: result.provider.path ?? "-",
+                            message: message
+                        )
+                    }
+                    resourceUpdateStatus = "Provider 更新 \(completed)/\(providerItems.count)，成功 \(succeeded)，失败 \(failed)..."
+                }
             }
+        }
+
+        if providerItems.isEmpty {
+            resourceUpdateStatus = "没有需要下载的 Provider，正在更新 Geo 数据..."
         }
 
         do {
@@ -1807,6 +1864,23 @@ final class AppStore: ObservableObject {
         )
     }
 
+    var networkSecuritySnapshotItems: [NetworkSecuritySnapshotItem] {
+        NetworkSecurityCenter.snapshotItems(
+            proxySnapshot: lastSystemProxySnapshot,
+            dnsSnapshot: lastSystemDNSSnapshot,
+            tunSnapshot: lastTunRecoverySnapshot,
+            paths: .init(
+                systemProxy: AppPaths.systemProxySnapshotFile.path,
+                systemDNS: AppPaths.systemDNSSnapshotFile.path,
+                tunRecovery: AppPaths.tunRecoverySnapshotFile.path
+            )
+        )
+    }
+
+    var networkSecurityOverallHealth: NetworkTakeoverHealth {
+        NetworkSecurityCenter.overallHealth(for: networkTakeoverStates)
+    }
+
     func refreshNetworkTakeoverStates(force: Bool = false) {
         let now = Date()
         if force == false,
@@ -1818,6 +1892,7 @@ final class AppStore: ObservableObject {
 
         let current = try? systemProxy.captureSnapshot()
         publishIfChanged(\.lastSystemProxySnapshot, systemProxy.loadSnapshot())
+        publishIfChanged(\.lastSystemDNSSnapshot, systemProxy.loadDNSSnapshot())
         publishIfChanged(\.lastTunRecoverySnapshot, tunRecovery.loadSnapshot())
 
         publishIfChanged(\.networkTakeoverStates, [
@@ -1969,6 +2044,13 @@ final class AppStore: ObservableObject {
         setLogsPaused(!logsPaused)
     }
 
+    func clearVisibleLogs() {
+        logs.removeAll()
+        pendingLogEntries.removeAll()
+        bufferedLogs.removeAll()
+        bufferedLogCount = 0
+    }
+
     func enterLightweightMode() {
         NSApp.hide(nil)
         appendLog("info", "已进入轻量模式，主窗口隐藏，菜单栏保留。")
@@ -2009,7 +2091,7 @@ final class AppStore: ObservableObject {
         return status
     }
 
-    private func downloadProviderResource(_ provider: ProviderItem) async throws -> URL {
+    nonisolated private static func downloadProviderResource(_ provider: ProviderItem) async throws -> URL {
         guard let remote = provider.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines),
               remote.isEmpty == false,
               let url = URL(string: remote)
@@ -2038,7 +2120,7 @@ final class AppStore: ObservableObject {
         return target
     }
 
-    private func providerResourceTarget(for provider: ProviderItem) throws -> URL {
+    nonisolated private static func providerResourceTarget(for provider: ProviderItem) throws -> URL {
         let rawPath = provider.path?.trimmingCharacters(in: .whitespacesAndNewlines)
         let fallbackDirectory = provider.kind == "Proxy" ? "proxy_providers" : "rule_providers"
         let fallbackName = safeResourceFileName(provider.name, pathExtension: "yaml")
@@ -2063,7 +2145,7 @@ final class AppStore: ObservableObject {
         }
     }
 
-    private func safeResourceFileName(_ value: String, pathExtension: String) -> String {
+    nonisolated private static func safeResourceFileName(_ value: String, pathExtension: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
         let base = value.unicodeScalars.map { scalar in
             allowed.contains(scalar) ? Character(scalar).description : "_"

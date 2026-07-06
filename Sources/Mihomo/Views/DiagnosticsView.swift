@@ -111,7 +111,7 @@ struct DiagnosticsView: View {
     }
 }
 
-private struct NetworkRepairCenterView: View {
+struct NetworkRepairCenterView: View {
     @EnvironmentObject private var store: AppStore
 
     var body: some View {
@@ -167,7 +167,7 @@ private struct NetworkRepairCenterView: View {
     }
 }
 
-private struct NetworkRepairStateCard: View {
+struct NetworkRepairStateCard: View {
     var state: NetworkTakeoverState
 
     var body: some View {

@@ -1,18 +1,18 @@
-# Mihomo macOS 原生客户端开发报告（第二版）
+# Mihomo macOS 原生客户端开发报告（第三版）
 
-生成日期：2026-07-06
-报告定位：基于当前仓库状态，对第一版开发报告进行更新。第二版重点不再是单纯功能候选，而是梳理当前已实现能力、新增功能项、仍需硬化的系统边界，以及后续可持续优化路线。
+生成日期：2026-07-07
+报告定位：基于当前仓库状态，对第二版开发报告进行更新。第三版重点跟进 v1.4.2 之后的下一阶段：全局日志入口、离线策略预览、配置质量区压缩、外部资源表格化、Provider 并发更新，以及 M1 网络安全中心。
 
 ## 1. 当前结论
 
-当前项目已经从早期规划推进到接近 1.0 MVP 的 macOS 原生 mihomo 客户端。主 App 使用 SwiftUI 为主、AppKit 为辅的架构，已经形成概览、活动、策略、配置、规则、资源、高级、日志、诊断、设置等完整工作台；特权操作已从主 App 收口到 XPC Helper；配置生成、资源更新、Profile 编辑、备份同步、应用内更新等高级能力也已落地。
+当前项目已经从早期规划推进到 v1.4.3 / M1 发布候选阶段。主 App 使用 SwiftUI 为主、AppKit 为辅的架构，已经形成概览、网络安全、活动、策略、配置、规则、资源、高级、日志、诊断、设置等完整工作台；特权操作已从主 App 收口到 XPC Helper；配置生成、资源更新、Profile 编辑、备份同步、应用内更新等高级能力也已落地。
 
-但当前项目还不应直接定义为“稳定公开发行版”。它更接近“可长期自用和小范围测试的 Beta 前状态”。核心原因不是功能不足，而是以下几个系统性硬化点仍需要继续收敛：
+本轮修复后，项目的日常可用性更接近成熟网络工具：日志入口不再绑定单一页面，策略页在核心未启动时也能读取本地配置结构，资源页改为高密度表格并支持 Provider 并发下载，网络安全中心集中展示系统代理、系统 DNS、TUN、快照边界和修复动作。但当前项目还不应直接定义为“稳定公开发行版”。它更接近“可长期自用和小范围测试的 Beta 前状态”。核心原因不是功能不足，而是以下几个系统性硬化点仍需要继续收敛：
 
-- 网络接管状态仍需要更严格的状态机，尤其是系统代理、系统 DNS、TUN 快照之间的边界。
+- 网络接管状态机和快照边界已集中到网络安全中心，但还需要更多真实系统场景回归。
 - Helper 已承担高权限操作，但授权校验、操作审计、失败回滚还需要面向真实分发继续硬化。
 - 项目功能面已经较宽，后续重点应从“继续横向加功能”转向测试、可观测性、迁移兼容、发布流程和用户可理解性。
-- 当前未看到独立测试目录，核心配置合并、更新校验、备份恢复、Helper 客户端协议等模块需要补充自动化验证。
+- 当前已有 SwiftPM XCTest 基础覆盖，但 UI、Helper 高权限事务、备份恢复和真实更新安装仍需要继续补充自动化验证。
 
 ## 2. 当前工程状态
 
@@ -21,14 +21,14 @@
 | 工程组织 | SwiftPM 工程，包含主 App、Helper、Shared 协议三个 target | `Package.swift` |
 | 平台要求 | macOS 14+，Swift 5.9+ | `Package.swift`、`README.md` |
 | UI 技术 | SwiftUI 主体，AppKit 承接高密度表格、日志文本视图、窗口细节 | `Sources/Mihomo/Views` |
-| 主界面 | Sidebar 分区覆盖概览、活动、策略、配置、规则、资源、高级、日志、诊断、设置 | `AppSection`、`RootView` |
+| 主界面 | Sidebar 分区覆盖概览、网络安全、活动、策略、配置、规则、资源、高级、日志、诊断、设置 | `AppSection`、`RootView` |
 | Controller 能力 | 封装版本、模式、策略组、连接、流量、Provider、延迟测试等 API | `MihomoControllerClient.swift`、`AppStore.swift` |
 | 特权能力 | XPC Helper 执行 core 启停、配置校验、系统代理、系统 DNS、TUN 快照、LaunchDaemon 管理 | `MihomoHelper`、`HelperClient.swift` |
 | 配置生成 | 使用 Yams 结构化合并 YAML，清理 App 管理键，支持 YAML/JS 覆写、禁用规则、候选配置与回滚 | `RuntimeConfigBuilder.swift`、`ProfileStore.swift` |
 | 发布链路 | release 脚本、固定 ad-hoc identifier、Ed25519 manifest 签名、GitHub Latest Release 更新入口 | `script/*`、`SoftwareUpdateManager.swift` |
 | 本地数据 | App Support 保存设置、Profile、runtime、Core、Geo、External UI、Backups、Tools；日志进入 `~/Library/Logs/Mihomo` | `AppPaths.swift` |
 
-## 3. 第二版识别的新增功能项
+## 3. 已实现与新增功能项
 
 以下功能已经在当前代码中具备入口或主要实现，属于第一版规划后继续补齐的新能力。
 
@@ -57,6 +57,7 @@
 | Helper 审计 | 已实现 | 检查 bundle 布局、plist、签名 identifier、SMAppService 状态、公证说明、root 可达性。 |
 | 网络接管状态机 | v1.1 已实现 | 概览和诊断页显示系统代理、系统 DNS、TUN 的用户期望、系统实际、最近 Helper 操作和恢复动作。 |
 | 网络修复中心 | v1.1 已实现 | 诊断页集中提供恢复代理、恢复 DNS、恢复 TUN 路由和清理快照。 |
+| 网络安全中心 | v1.4.3 已实现 | 独立页面集中管理接管开关、接管状态、代理/DNS/TUN 快照边界、修复动作和诊断导出。 |
 
 ### 3.3 Profile 与配置维护
 
@@ -81,10 +82,12 @@
 | 禁用规则持久化 | 已实现 | 禁用规则在 runtime config 生成时被过滤。 |
 | 规则命中统计 | 已实现基础版 | 通过 Controller 连接信息回填命中数据。 |
 | 策略组与节点表格 | 已实现 | 支持搜索、排序、节点选择、状态展示。 |
+| 离线策略预览 | 本轮已实现 | 核心未启动或 Controller 未返回策略组时，从当前激活 Profile 解析 `proxy-groups` 并展示组、候选节点和 Provider 引用。 |
 | 延迟测试 | 已实现并修复内置出站 | 支持单节点、单组、全部节点，并可配置并发和测试 URL；v1.0.4 起 DIRECT 使用 App 侧直连 URLSession 兜底测速，REJECT 作为不可测速出站跳过，不再污染失败统计。 |
 | 连接列表与 Inspector | 已实现 | 支持连接过滤、分组、关闭单连接、关闭全部连接和详情窗口。 |
 | 实时流量采样 | 已实现 | 概览和活动页可显示上下行速率与图表。 |
 | 日志过滤、暂停、落盘与轮转 | 已实现 | 支持暂停、缓冲、保留天数、单文件大小和 App/Core 分离日志。 |
+| 全局日志浮层 | 本轮已实现 | 任意主界面顶部显示最近事件胶囊，点击展开最近日志面板，点击背景收起。 |
 
 ### 3.5 资源、备份、更新与分发
 
@@ -94,6 +97,8 @@
 | Controller Provider 更新 | 已实现 | core 运行时可通过 Controller 请求更新 Provider。 |
 | Provider 直接下载更新 | 已实现 | 不依赖 core 运行，可按本地配置 URL 下载到 runtime provider path。 |
 | 一键更新外部资源 | 已实现 | 同时更新 Provider 和 Geo 数据。 |
+| Provider 并发更新 | 本轮已实现 | 批量下载 Provider 时按设置并发数限流执行，避免多资源场景串行等待。 |
+| 外部资源表格化 | 本轮已实现 | 资源页改为“类型、最后更新、路径、状态”高密度表格，并提供未就绪过滤、全部更新和完成入口。 |
 | GeoIP/GeoSite 更新与同步 | 已实现 | 启动、dry-run、LaunchDaemon 安装前同步到 runtime，并在 Geo 失败后重试。 |
 | External UI 管理 | 已实现 | 支持下载 zashboard/metacubexd 类 zip，并写入 runtime config。 |
 | 本地 zip 备份恢复 | 已实现 | 可备份设置、Profile、片段、禁用规则等状态。 |
@@ -112,14 +117,14 @@
 | P2 高级项 | 中高 | 证书 pinning、Age 加密、WebDAV/Gist、外部 UI、自动系统 DNS、远程 API 已实现；仍需安全和体验硬化。 |
 | P3 后置项 | 低到中 | JS 覆写已提前实现；Sub-Store、浮动窗口、快捷键、复杂主题、自定义托盘图标仍后置。 |
 | 分发与更新 | 中 | 已有无 Developer ID 的固定 ad-hoc 分发路径和签名 manifest，但未公证，仍需真实 release 验证。 |
-| 自动化测试 | 低 | 当前仓库未见独立 Tests 目录，核心逻辑主要依赖手动验证和运行时诊断。 |
+| 自动化测试 | 中 | 已有 `Tests/MihomoTests` 覆盖配置生成、YAML 编辑、更新校验、Secret vault、Controller/Helper mock 解析；UI、Helper 高权限事务和真实安装流程仍需扩展。 |
 
 ## 5. 当前主要风险与不一致点
 
 | 风险 | 影响 | 建议处理 |
 | --- | --- | --- |
-| 网络接管快照已开始拆分，但状态机还不够清晰 | 代码已有独立 `system-proxy-snapshot.json`、`system-dns-snapshot.json`、`tun-recovery-snapshot.json`，但 UI 仍主要显示用户侧开关，不一定能解释系统实际状态 | 继续把代理、DNS、TUN 的捕获、恢复、清理动作做成显式状态机和可审计事务。 |
-| TUN、系统 DNS、系统代理的用户心智仍易混淆 | 用户同时开启 TUN 和系统代理时，仍可能误解“为什么恢复 DNS/路由会影响网络状态” | 在概览和诊断页增加互斥提示、实际系统状态检测和恢复动作说明。 |
+| 网络接管真实系统回归仍不足 | v1.4.3 已集中代理、DNS、TUN 状态和快照边界，但真实网络服务名称变化、无快照恢复、默认路由异常等场景仍依赖手动验证 | 为 Helper 网络事务增加更多 mock 和受控命令输出测试，并沉淀真实系统 smoke checklist。 |
+| TUN、系统 DNS、系统代理的用户心智仍需继续压实 | 网络安全中心已明确代理快照、DNS 快照、TUN 快照互不混用，但长期使用中仍可能需要更强的单选接管模式 | 下一阶段可把“接管模式”升级为系统代理、TUN、DNS-only、手动的显式单选模型。 |
 | Helper 授权仍是本地分发友好版 | ad-hoc 场景下可用，但不是最终公开发行强度 | 引入 audit token / SecCode requirement 校验；Developer ID 后增加 Team ID 和 designated requirement。 |
 | JS 覆写安全边界偏弱 | JavaScriptCore 可修改配置文本，但沙盒和资源限制不充分 | 默认继续关闭；增加执行超时、内存限制、API 白名单和明显风险提示。 |
 | 更新安装脚本仍需真实回滚验证 | 应用替换涉及退出、移动、签名校验、失败恢复 | 建立 release smoke test，覆盖损坏 zip、签名不匹配、版本不匹配、回滚失败。 |
@@ -215,13 +220,25 @@ v1.4.0 完成状态：
 | 连接与规则联动 | 已实现 | 活动页连接详情新增“查看规则”和“Provider”跳转；规则页接收连接命中规则并自动过滤/选中。 |
 | 快捷键 | 已增强 | 主菜单新增 TUN、系统 DNS 接管、导出诊断包快捷入口，并保留主窗口、核心启停、系统代理、订阅刷新、检查更新、诊断等快捷键。 |
 
+v1.4.3 / M1 发布候选完成状态：
+
+| 修缮项 | 完成状态 | 主要落点 |
+| --- | --- | --- |
+| 全局日志入口 | 已实现 | `RootView` 增加全局日志胶囊和展开面板，任何主界面都能查看最近事件，展开后点击背景收起。 |
+| 离线策略组展示 | 已实现 | `AppStore.refreshConfigArtifacts()` 从激活 Profile 生成 `offlineProxyGroups`；`PoliciesView` 在 Controller 无数据时自动切换为离线预览，并禁用测速/切换动作。 |
+| 配置质量 UI 压缩 | 已实现 | `ProfileQualityPane` 改为评分头、问题、Runtime Inspector、分层 Diff 三列密集布局，降低配置页纵向占用。 |
+| 外部资源表格 | 已实现 | `ResourcesView` 参考 Surge 式表格重做，展示名称、类型、最后更新、路径、状态，并提供未就绪过滤和底部操作栏。 |
+| Provider 更新速度 | 已优化 | `updateAllExternalResources()` 改为按 `profileRefreshMaxConcurrent` 限流的并发下载，完成后统一刷新配置和 Geo 状态。 |
+| 网络安全中心 | 已实现 | 新增 `NetworkSecurityView`，集中展示接管开关、接管状态表、快照边界表、修复中心和诊断导出。 |
+| 网络快照回归测试 | 已实现 | 新增 `NetworkSecurityCenterTests`，验证代理、DNS、TUN 快照说明互不混用，并验证整体健康状态优先级。 |
+
 ## 7. 建议新增功能池
 
 这些不是为了立刻扩张功能面，而是围绕当前项目的长期可维护性和专业体验补短板。
 
 | 功能 | 价值 | 建议优先级 |
 | --- | --- | --- |
-| 网络安全中心 | 把系统代理、系统 DNS、TUN、路由、快照、修复动作集中管理 | P0 |
+| 网络安全中心 | 把系统代理、系统 DNS、TUN、路由、快照、修复动作集中管理 | v1.4.3 已完成 |
 | 配置 Inspector | 让用户知道最终 runtime config 从哪里来、哪些字段被 App 接管 | P0 |
 | 诊断包导出 | 大幅降低远程排障成本 | P1 |
 | Provider 更新历史和回滚 | 资源更新失败时能回到上一份可用文件 | P1 |
@@ -230,11 +247,11 @@ v1.4.0 完成状态：
 | 发布通道管理 | Stable/Beta/Canary 三通道配合签名 manifest | P2 |
 | Sub-Store 集成 | 订阅转换能力很强，但维护成本高，建议主体验稳定后再做 | P3 |
 
-## 8. 第二版里程碑建议
+## 8. 里程碑建议
 
 | 阶段 | 目标 | 关键产出 |
 | --- | --- | --- |
-| M1 硬化网络接管 | 解决代理、DNS、TUN 快照边界和状态解释问题 | 独立快照、状态机、网络修复中心、回归用例 |
+| M1 硬化网络接管 | 解决代理、DNS、TUN 快照边界和状态解释问题 | v1.4.3 已完成：独立快照、状态机、网络安全中心、网络修复中心、回归用例 |
 | M2 配置质量提升 | 减少 Profile 和覆写造成的启动失败 | schema 校验、配置 Inspector、分层 diff |
 | M3 测试与发版体系 | 支撑可持续迭代 | 单元测试、mock 集成测试、release smoke test、许可证清单 |
 | M4 专业体验打磨 | 提升长期使用效率 | 诊断包导出、Provider 历史、连接规则联动、快捷键 |
@@ -242,11 +259,11 @@ v1.4.0 完成状态：
 
 ## 9. 当前推荐的下一步
 
-最建议下一轮不要继续大规模增加功能，而是优先完成三件事：
+最建议下一轮按 M2 推进配置质量，不继续横向堆功能，而是优先完成三件事：
 
-1. 完善网络接管快照边界和状态机，解决系统代理、系统 DNS、TUN 状态解释不清的问题。
-2. 为配置生成、结构化编辑、更新校验、Secret vault 补测试，先覆盖最容易造成用户网络中断或数据丢失的路径。
-3. 做一次真实 release 演练，从打包、上传 GitHub Release、应用内检查、验签、替换、回滚完整跑通。
+1. 将配置 Inspector 从配置质量摘要升级为可展开的字段来源视图，明确哪些 runtime 字段来自 Profile、覆写片段、JS Transform 或 App overlay。
+2. 扩展 schema 校验到 DNS、TUN、Provider 和 sniffer 字段，继续覆盖最容易造成核心启动失败的路径。
+3. 为 Provider 下载失败、备份恢复和 Helper 高权限事务补更多回归测试。
 
 完成这三件事后，项目会从“功能很多的 MVP”进入“可以持续发布和长期维护的 Beta”状态。
 
@@ -261,6 +278,7 @@ v1.4.0 完成状态：
 | v1.4.0 | 完成专业工具体验打磨：新增网络接管互斥提示、诊断包导出、Provider 更新历史、连接到规则/资源联动和更多主菜单快捷键。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.0` 和线上更新清单校验作为小版本发布门禁。 |
 | v1.4.1 | 根据稳定性审查完成修缮：连接详情独立窗口化、菜单核心状态实时刷新、日志批量发布、表格差异刷新、配置页纵向滚动、Helper 启动前自修复、系统代理/TUN 互斥和 TUN 关闭前路由恢复。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.1`、manifest、签名和线上更新清单校验作为补丁版本发布门禁。 |
 | v1.4.2 | 完成 UI 性能全量审查与修复：Controller 轮询改为差异发布，网络接管系统命令改为节流刷新，配置统计/质量分析加入指纹缓存，日志和 AppKit 表格避免重复渲染，同时纳入策略无启动空态、配置页滚动和主窗口尺寸稳定性修复。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.2`、manifest、签名和线上更新清单校验作为补丁版本发布门禁。 |
+| v1.4.3 | 完成 M1 网络安全中心，并纳入全局日志浮层、离线策略预览、配置质量区压缩、外部资源表格化和 Provider 并发更新。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.4.3`、manifest、签名和线上更新清单校验作为阶段版本发布门禁。 |
 
 ## 11. 稳定性与性能审查记录
 

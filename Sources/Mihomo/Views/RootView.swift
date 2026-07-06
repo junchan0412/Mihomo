@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var isLogOverlayPresented = false
 
     var body: some View {
         NavigationSplitView {
@@ -21,7 +22,29 @@ struct RootView: View {
             .navigationTitle("Mihomo")
             .listStyle(.sidebar)
         } detail: {
-            DetailSwitchView(section: store.selectedSection)
+            ZStack(alignment: .topLeading) {
+                DetailSwitchView(section: store.selectedSection)
+
+                if isLogOverlayPresented {
+                    Color.black.opacity(0.001)
+                        .contentShape(Rectangle())
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            isLogOverlayPresented = false
+                        }
+                        .zIndex(1)
+                }
+
+                GlobalLogOverlay(
+                    isPresented: $isLogOverlayPresented,
+                    latestLog: store.logs.last,
+                    logs: Array(store.logs.suffix(8)),
+                    clearLogs: store.clearVisibleLogs
+                )
+                .padding(.leading, 20)
+                .padding(.top, 10)
+                .zIndex(2)
+            }
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -40,6 +63,138 @@ struct RootView: View {
             }
         }
         .background(WindowIdentifierView(identifier: AppWindowIdentifier.main))
+    }
+}
+
+private struct GlobalLogOverlay: View {
+    @Binding var isPresented: Bool
+    var latestLog: LogEntry?
+    var logs: [LogEntry]
+    var clearLogs: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if isPresented {
+                expandedPanel
+                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
+            } else {
+                collapsedPill
+                    .transition(.opacity)
+            }
+        }
+        .animation(.snappy(duration: 0.18), value: isPresented)
+    }
+
+    private var collapsedPill: some View {
+        Button {
+            isPresented = true
+        } label: {
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(levelColor(latestLog?.level))
+                    .frame(width: 8, height: 8)
+
+                Text(levelTitle(latestLog?.level))
+                    .fontWeight(.semibold)
+                    .foregroundStyle(levelColor(latestLog?.level))
+
+                Text(latestLog?.message ?? "暂无事件")
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .font(.callout)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .frame(maxWidth: 420, alignment: .leading)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(.quaternary, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+        .help("显示最近日志")
+    }
+
+    private var expandedPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("事件")
+                    .font(.headline)
+                Spacer()
+                Button("全部清除") {
+                    clearLogs()
+                    isPresented = false
+                }
+                .disabled(logs.isEmpty)
+
+                Button {
+                    isPresented = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .symbolRenderingMode(.hierarchical)
+                }
+                .buttonStyle(.plain)
+                .help("关闭事件")
+            }
+
+            if logs.isEmpty {
+                ContentUnavailableView("暂无事件", systemImage: "checkmark.circle")
+                    .frame(width: 520, height: 160)
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(logs.reversed()) { entry in
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(levelColor(entry.level))
+                                    .frame(width: 7, height: 7)
+                                Text(levelTitle(entry.level))
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(levelColor(entry.level))
+                                Text(Formatters.shortDate.string(from: entry.date))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(entry.message)
+                                .lineLimit(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+                .frame(width: 560, alignment: .leading)
+            }
+        }
+        .font(.callout)
+        .padding(16)
+        .frame(maxWidth: 620, alignment: .leading)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(.quaternary, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 8)
+    }
+
+    private func levelTitle(_ level: String?) -> String {
+        switch level?.lowercased() {
+        case "error": return "错误"
+        case "warning", "warn": return "警告"
+        case "debug": return "调试"
+        case "info": return "信息"
+        default: return "状态"
+        }
+    }
+
+    private func levelColor(_ level: String?) -> Color {
+        switch level?.lowercased() {
+        case "error": return .red
+        case "warning", "warn": return .orange
+        case "debug": return .secondary
+        case "info": return .green
+        default: return .secondary
+        }
     }
 }
 
@@ -107,6 +262,8 @@ struct DetailSwitchView: View {
         switch section {
         case .overview:
             OverviewView()
+        case .networkSecurity:
+            NetworkSecurityView()
         case .activity:
             ActivityView()
         case .policies:

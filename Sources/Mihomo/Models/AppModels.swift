@@ -2,6 +2,7 @@ import Foundation
 
 enum AppSection: String, CaseIterable, Identifiable {
     case overview
+    case networkSecurity
     case activity
     case policies
     case profiles
@@ -17,6 +18,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .overview: return "概览"
+        case .networkSecurity: return "网络安全"
         case .activity: return "活动"
         case .policies: return "策略"
         case .profiles: return "配置"
@@ -32,6 +34,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     var systemImage: String {
         switch self {
         case .overview: return "gauge.with.dots.needle.67percent"
+        case .networkSecurity: return "shield.lefthalf.filled"
         case .activity: return "waveform.path.ecg"
         case .policies: return "switch.2"
         case .profiles: return "doc.text"
@@ -113,6 +116,44 @@ struct NetworkTakeoverState: Identifiable, Hashable {
     var lastOperation: String
     var recoveryAction: String
     var health: NetworkTakeoverHealth
+}
+
+enum NetworkSecuritySnapshotKind: String, Hashable {
+    case systemProxy
+    case systemDNS
+    case tunRecovery
+
+    var title: String {
+        switch self {
+        case .systemProxy: return "系统代理快照"
+        case .systemDNS: return "系统 DNS 快照"
+        case .tunRecovery: return "TUN 回滚快照"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .systemProxy: return "network"
+        case .systemDNS: return "globe"
+        case .tunRecovery: return "lock.shield"
+        }
+    }
+}
+
+struct NetworkSecuritySnapshotItem: Identifiable, Hashable {
+    var id: NetworkSecuritySnapshotKind { kind }
+    var kind: NetworkSecuritySnapshotKind
+    var path: String
+    var createdAt: Date?
+    var status: String
+    var detail: String
+    var health: NetworkTakeoverHealth
+}
+
+struct NetworkSecuritySnapshotPaths: Hashable {
+    var systemProxy: String
+    var systemDNS: String
+    var tunRecovery: String
 }
 
 struct ProfileItem: Identifiable, Codable, Hashable {
