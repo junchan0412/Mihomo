@@ -187,6 +187,7 @@ struct ProfileItem: Identifiable, Codable, Hashable {
 }
 
 struct AppSettings: Codable, Hashable {
+    var settingsSchemaVersion: Int
     var mihomoPath: String
     var coreSource: CoreSource
     var activeProfileID: UUID?
@@ -252,6 +253,7 @@ struct AppSettings: Codable, Hashable {
     static let `default` = AppSettings()
 
     init(
+        settingsSchemaVersion: Int = 2,
         mihomoPath: String = "",
         coreSource: CoreSource = .managed,
         activeProfileID: UUID? = nil,
@@ -314,6 +316,7 @@ struct AppSettings: Codable, Hashable {
         ageRecipient: String = "",
         ageDownloadURL: String = "https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-darwin-arm64.tar.gz"
     ) {
+        self.settingsSchemaVersion = settingsSchemaVersion
         self.mihomoPath = mihomoPath
         self.coreSource = coreSource
         self.activeProfileID = activeProfileID
@@ -378,6 +381,7 @@ struct AppSettings: Codable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
+        case settingsSchemaVersion
         case mihomoPath
         case coreSource
         case activeProfileID
@@ -444,6 +448,7 @@ struct AppSettings: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let fallback = AppSettings.default
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        settingsSchemaVersion = try container.decodeIfPresent(Int.self, forKey: .settingsSchemaVersion) ?? 1
         mihomoPath = try container.decodeIfPresent(String.self, forKey: .mihomoPath) ?? fallback.mihomoPath
         let legacyManagedCoreEnabled = try container.decodeIfPresent(Bool.self, forKey: .managedCoreEnabled)
         coreSource = try container.decodeIfPresent(CoreSource.self, forKey: .coreSource)
@@ -569,6 +574,63 @@ struct ProfileStats: Hashable {
     var proxyProviderCount: Int = 0
     var ruleProviderCount: Int = 0
     var errorMessage: String?
+}
+
+enum ProfileQualitySeverity: String, Hashable {
+    case info
+    case warning
+    case error
+
+    var title: String {
+        switch self {
+        case .info: return "提示"
+        case .warning: return "警告"
+        case .error: return "错误"
+        }
+    }
+}
+
+struct ProfileQualityIssue: Identifiable, Hashable {
+    var id = UUID()
+    var severity: ProfileQualitySeverity
+    var title: String
+    var detail: String
+}
+
+struct RuntimeInspectorItem: Identifiable, Hashable {
+    var id = UUID()
+    var title: String
+    var value: String
+    var detail: String
+}
+
+struct ConfigDiffLayer: Identifiable, Hashable {
+    var id = UUID()
+    var name: String
+    var changed: Bool
+    var summary: String
+}
+
+struct ProfileQualityReport: Hashable {
+    var score: Int
+    var headline: String
+    var issues: [ProfileQualityIssue]
+    var runtimeItems: [RuntimeInspectorItem]
+    var diffLayers: [ConfigDiffLayer]
+    var migrationLog: [String]
+    var generatedConfig: String
+}
+
+extension ProfileQualityReport {
+    static let empty = ProfileQualityReport(
+        score: 0,
+        headline: "未选择配置",
+        issues: [],
+        runtimeItems: [],
+        diffLayers: [],
+        migrationLog: [],
+        generatedConfig: ""
+    )
 }
 
 struct EditablePolicyGroup: Identifiable, Hashable {

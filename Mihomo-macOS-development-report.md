@@ -161,6 +161,16 @@ v1.1.0 完成状态：
 | P1 | 配置迁移器 | 设置结构变更时有版本号、迁移日志和失败回滚。 |
 | P2 | Profile 健康评分 | 对订阅过期、Provider URL 不可达、规则引用缺失、节点为空给出警告。 |
 
+v1.2.0 完成状态：
+
+| 优化项 | 完成状态 | 主要落点 |
+| --- | --- | --- |
+| mihomo rule schema 校验 | 已实现 | 结构化规则编辑保存前检查类型、payload、目标策略、RULE-SET Provider 引用和 CIDR 前缀；错误阻断保存，警告保存后提示。 |
+| Runtime Config Inspector | 已实现 | 配置页新增质量 Inspector，展示最终 mixed/socks/controller、DNS、TUN、Provider、规则和策略组数量及来源说明。 |
+| 覆写片段 diff 分层 | 已实现 | `ProfileQualityAnalyzer` 区分 Profile 原文、JS Transform、YAML 片段、App overlay 四层变化摘要。 |
+| 配置迁移器 | 已实现基础版本 | `AppSettings.settingsSchemaVersion` 升级到 v2；启动时迁移旧设置，保存迁移日志，失败回滚内存设置。 |
+| Profile 健康评分 | 已实现 | 对订阅过期、URL 无效、节点为空、规则为空、Provider 来源缺失、本地 Provider 文件不存在、规则引用缺失给出扣分和告警。 |
+
 ### 6.3 v1.3 发布、测试与回归体系
 
 目标：让项目从“能打包”变成“可持续发版”。
@@ -226,3 +236,4 @@ v1.1.0 完成状态：
 | --- | --- | --- |
 | v1.0.4 | 修复 DIRECT 延迟无法测出的问题：DIRECT 不再直接依赖 mihomo Controller `/delay` 对内置出站的支持，而是由 App 使用禁用系统代理的直连 `URLSession` 对配置的测速 URL 进行兜底测速；REJECT 明确标记为不可测速并从失败统计中跳过。 | 使用 `./script/build_and_run.sh --verify`、release package、manifest、签名和线上更新清单校验作为小版本发布门禁。 |
 | v1.1.0 | 完成网络接管与 Helper 硬化：新增三类网络接管状态机、诊断页网络修复中心、独立 DNS 恢复入口、Helper 事务步骤/回滚建议、SecStaticCode requirement 校验。 | 使用 `./script/build_and_run.sh --verify`、概览截图检查、release package、manifest、签名和线上更新清单校验作为小版本发布门禁。 |
+| v1.2.0 | 完成配置质量与可维护性：新增规则 schema 校验、配置质量评分、Runtime Config Inspector、Profile/JS/YAML/App overlay 分层 diff 和 settings schema v2 迁移日志。 | 使用 `./script/build_and_run.sh --verify`、`git diff --check`、release package、manifest、签名和线上更新清单校验作为小版本发布门禁。 |

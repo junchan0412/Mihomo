@@ -55,6 +55,7 @@ final class AppStore: ObservableObject {
     @Published var connectionDetailConnectionID: String?
     @Published var policyGroupIconImages: [String: NSImage] = [:]
     @Published var networkTakeoverStates: [NetworkTakeoverState] = []
+    @Published var settingsMigrationLog: [String] = []
 
     private let profileStore = ProfileStore()
     private let systemProxy = SystemProxyManager()
@@ -71,6 +72,7 @@ final class AppStore: ObservableObject {
     private let helperService = HelperServiceManager()
     private let helperAuditService = HelperAuditService()
     private let softwareUpdateManager = SoftwareUpdateManager()
+    private let profileQualityAnalyzer = ProfileQualityAnalyzer()
     private var pollingTask: Task<Void, Never>?
     private var profileRefreshTask: Task<Void, Never>?
     private var profileRefreshQueueRunning = false
@@ -138,6 +140,7 @@ final class AppStore: ObservableObject {
         do {
             try AppPaths.ensureBaseDirectories()
             settings = try profileStore.loadSettings()
+            try migrateSettingsIfNeeded()
             profiles = try profileStore.loadProfiles(settings: settings)
             configFragments = try configFragmentStore.loadFragments()
             disabledRules = try configFragmentStore.loadDisabledRules()
@@ -742,6 +745,37 @@ final class AppStore: ObservableObject {
             )
         } catch {
             return ProfileStats(errorMessage: error.localizedDescription)
+        }
+    }
+
+    func profileQualityReport(for profile: ProfileItem?) -> ProfileQualityReport {
+        guard let profile else { return .empty }
+        do {
+            let content = try profileStore.loadProfileContent(profile, settings: settings)
+            return profileQualityAnalyzer.analyze(
+                profile: profile,
+                profileContent: content,
+                settings: settings,
+                fragments: configFragments,
+                disabledRules: disabledRules,
+                migrationLog: settingsMigrationLog
+            )
+        } catch {
+            return ProfileQualityReport(
+                score: 0,
+                headline: "配置无法读取",
+                issues: [
+                    .init(
+                        severity: .error,
+                        title: "Profile 读取失败",
+                        detail: error.localizedDescription
+                    )
+                ],
+                runtimeItems: [],
+                diffLayers: [],
+                migrationLog: settingsMigrationLog,
+                generatedConfig: ""
+            )
         }
     }
 
@@ -2395,6 +2429,36 @@ final class AppStore: ObservableObject {
         }
         if let finishedAt {
             profileRefreshQueue[index].finishedAt = finishedAt
+        }
+    }
+
+    private func migrateSettingsIfNeeded() throws {
+        let currentVersion = settings.settingsSchemaVersion
+        guard currentVersion < AppSettings.default.settingsSchemaVersion else {
+            settingsMigrationLog = ["设置结构 v\(currentVersion) 已是最新。"]
+            return
+        }
+
+        let backup = settings
+        var migrated = settings
+        var log: [String] = []
+        log.append("发现设置结构 v\(currentVersion)，准备迁移到 v\(AppSettings.default.settingsSchemaVersion)。")
+
+        if currentVersion < 2 {
+            migrated.managedCoreEnabled = migrated.coreSource == .managed
+            migrated.settingsSchemaVersion = 2
+            log.append("v2：写入 settingsSchemaVersion，并同步 coreSource 与 managedCoreEnabled。")
+        }
+
+        do {
+            settings = migrated
+            try profileStore.saveSettings(migrated)
+            settingsMigrationLog = log + ["迁移完成，已保存设置。"]
+            appendLog("info", settingsMigrationLog.joined(separator: " "))
+        } catch {
+            settings = backup
+            settingsMigrationLog = log + ["迁移失败，已回滚内存设置：\(error.localizedDescription)"]
+            throw error
         }
     }
 

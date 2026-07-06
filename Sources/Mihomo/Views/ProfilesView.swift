@@ -178,21 +178,25 @@ struct ProfilesView: View {
     }
 
     private var detailPane: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ProfileSummaryPane(
-                profile: selectedProfile,
-                stats: selectedProfile.map { store.profileStats(for: $0) },
-                editProfile: openProfileEditor
-            )
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                ProfileSummaryPane(
+                    profile: selectedProfile,
+                    stats: selectedProfile.map { store.profileStats(for: $0) },
+                    editProfile: openProfileEditor
+                )
+                .frame(maxWidth: .infinity, alignment: .topLeading)
 
-            ConfigFragmentsSummaryView {
-                openWindow(id: "fragments-editor")
+                ConfigFragmentsSummaryView {
+                    openWindow(id: "fragments-editor")
+                }
+                .environmentObject(store)
+                .frame(width: 340, alignment: .topLeading)
             }
-            .environmentObject(store)
-            .frame(width: 340, alignment: .topLeading)
+
+            ProfileQualityPane(report: store.profileQualityReport(for: selectedProfile))
         }
-        .frame(minHeight: 150, maxHeight: 190)
+        .frame(minHeight: 330, alignment: .topLeading)
     }
 
     private var selectedProfile: ProfileItem? {
@@ -417,6 +421,145 @@ private struct ProfileMetric: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 6)
+    }
+}
+
+private struct ProfileQualityPane: View {
+    var report: ProfileQualityReport
+
+    private var topIssues: [ProfileQualityIssue] {
+        Array(report.issues.prefix(4))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text("配置质量")
+                    .font(.headline)
+                Text("\(report.score)")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(scoreColor)
+                Text(report.headline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("问题")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if topIssues.isEmpty {
+                        Label("未发现阻断项", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        ForEach(topIssues) { issue in
+                            HStack(alignment: .top, spacing: 6) {
+                                Image(systemName: icon(for: issue.severity))
+                                    .foregroundStyle(color(for: issue.severity))
+                                    .frame(width: 14)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(issue.title)
+                                        .lineLimit(1)
+                                    Text(issue.detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(2)
+                                }
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Runtime Inspector")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                        ForEach(report.runtimeItems.prefix(8)) { item in
+                            RuntimeInspectorCell(item: item)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("分层 Diff")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(report.diffLayers) { layer in
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(layer.changed ? Color.accentColor : Color.secondary.opacity(0.35))
+                                .frame(width: 7, height: 7)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(layer.name)
+                                    .lineLimit(1)
+                                Text(layer.summary.isEmpty ? "-" : layer.summary)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    if let migration = report.migrationLog.last {
+                        Divider()
+                        Text(migration)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+        }
+        .padding(12)
+        .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var scoreColor: Color {
+        if report.score >= 90 { return .green }
+        if report.score >= 70 { return .orange }
+        return .red
+    }
+
+    private func icon(for severity: ProfileQualitySeverity) -> String {
+        switch severity {
+        case .info: return "info.circle"
+        case .warning: return "exclamationmark.triangle.fill"
+        case .error: return "xmark.octagon.fill"
+        }
+    }
+
+    private func color(for severity: ProfileQualitySeverity) -> Color {
+        switch severity {
+        case .info: return .secondary
+        case .warning: return .orange
+        case .error: return .red
+        }
+    }
+}
+
+private struct RuntimeInspectorCell: View {
+    var item: RuntimeInspectorItem
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(item.title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Text(item.value)
+                .font(.callout.weight(.medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            Text(item.detail)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

@@ -19,6 +19,8 @@ struct ProfileStructureEditorView: View {
     @State private var errorMessage = ""
 
     private let editor = ProfileYAMLStructureEditor()
+    private let qualityAnalyzer = ProfileQualityAnalyzer()
+    private let fragmentStore = ConfigFragmentStore()
     private let ruleTypes = ["DOMAIN-SUFFIX", "DOMAIN", "DOMAIN-KEYWORD", "IP-CIDR", "IP-CIDR6", "GEOIP", "GEOSITE", "RULE-SET", "PROCESS-NAME", "MATCH"]
     private let groupTypes = ["select", "url-test", "fallback", "load-balance", "relay"]
 
@@ -350,19 +352,29 @@ struct ProfileStructureEditorView: View {
             errorMessage = "规则策略不能为空。"
             return
         }
+        let rule = EditableProfileRule(
+            index: selectedRuleIndex ?? snapshot.rules.count + 1,
+            type: ruleType,
+            payload: ruleType == "MATCH" ? "" : rulePayload.trimmingCharacters(in: .whitespacesAndNewlines),
+            target: normalizedTarget,
+            options: parseList(ruleOptions)
+        )
+        let providers = fragmentStore.parseProviders(profileContent: content)
+        let issues = qualityAnalyzer.validateRule(rule, snapshot: snapshot, providers: providers)
+        if let blockingIssue = issues.first(where: { $0.severity == .error }) {
+            errorMessage = "\(blockingIssue.title)：\(blockingIssue.detail)"
+            return
+        }
         do {
             content = try editor.upsertRule(
                 content: content,
                 originalIndex: selectedRuleIndex,
-                rule: EditableProfileRule(
-                    index: selectedRuleIndex ?? snapshot.rules.count + 1,
-                    type: ruleType,
-                    payload: ruleType == "MATCH" ? "" : rulePayload.trimmingCharacters(in: .whitespacesAndNewlines),
-                    target: normalizedTarget,
-                    options: parseList(ruleOptions)
-                )
+                rule: rule
             )
             reload()
+            if let warning = issues.first {
+                errorMessage = "\(warning.title)：\(warning.detail)"
+            }
         } catch {
             errorMessage = error.localizedDescription
         }
