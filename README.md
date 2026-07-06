@@ -7,7 +7,7 @@ Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repo
 - SwiftUI-first macOS app with a native sidebar, toolbar, Settings scene, and Menu Bar Extra.
 - AppKit-backed `NSTableView` and `NSTextView` bridges for dense connection/policy/profile tables and high-volume log scrolling.
 - Simplified Chinese UI across the main window, Settings, diagnostics, logs, profile workflows, and menu bar actions.
-- Runtime config dry-run with `mihomo -t`, candidate config promotion, previous config rollback, Yams-backed YAML structure merge/cleanup, YAML fragments, JavaScript transform fragments, preview, and line diff.
+- Runtime config dry-run with `mihomo -t`, candidate config promotion, previous config rollback, Yams-backed YAML structure merge/cleanup, YAML fragments, JavaScript transform fragments, preview, line diff, field-source Inspector, and schema risk checks for DNS/TUN/Provider/Sniffer.
 - XPC Helper architecture: the main app handles UI/state and calls `dev.codex.Mihomo.Helper`; the helper performs privileged runtime validation, core start/stop, DNS/proxy changes, TUN snapshots/restores, permission checks, and LaunchDaemon management. The Helper now rejects XPC clients outside the signed `dev.codex.Mihomo` app bundle.
 - Helper audit and repair diagnostics for bundle layout, plist contents, ad-hoc signing identifiers, SMAppService status, notarization/Gatekeeper state, and root privilege reachability.
 - Core start, stop, restart, and crash recovery routed through the Helper API with configurable retry limits.

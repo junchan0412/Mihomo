@@ -887,6 +887,7 @@ final class AppStore: ObservableObject {
                     )
                 ],
                 runtimeItems: [],
+                sourceItems: [],
                 diffLayers: [],
                 migrationLog: settingsMigrationLog,
                 generatedConfig: ""
