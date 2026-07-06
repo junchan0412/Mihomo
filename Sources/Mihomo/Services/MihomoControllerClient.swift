@@ -25,8 +25,11 @@ struct MihomoControllerClient {
 
     func proxyGroups() async throws -> [ProxyGroup] {
         let json = try await getJSON("/proxies")
-        guard let proxies = json["proxies"] as? [String: [String: Any]] else { return [] }
+        return Self.parseProxyGroups(from: json)
+    }
 
+    static func parseProxyGroups(from json: [String: Any]) -> [ProxyGroup] {
+        guard let proxies = json["proxies"] as? [String: [String: Any]] else { return [] }
         return proxies.compactMap { name, detail in
             guard let allNames = detail["all"] as? [String], !allNames.isEmpty else { return nil }
             let nodes = allNames.map { proxyName in
@@ -63,7 +66,7 @@ struct MihomoControllerClient {
         let query = "?url=\(url.urlQueryEscaped)&timeout=\(timeout)"
         let json = try await getJSON(path + query)
         if let delay = json["delay"] {
-            return Int(number(delay))
+            return Int(Self.number(delay))
         }
         if let message = json["message"] as? String, message.isEmpty == false {
             throw controllerError(message)
@@ -81,8 +84,12 @@ struct MihomoControllerClient {
 
     func connections() async throws -> ([ConnectionItem], Int64, Int64) {
         let json = try await getJSON("/connections")
-        let uploadTotal = number(json["uploadTotal"])
-        let downloadTotal = number(json["downloadTotal"])
+        return Self.parseConnections(from: json)
+    }
+
+    static func parseConnections(from json: [String: Any]) -> ([ConnectionItem], Int64, Int64) {
+        let uploadTotal = Self.number(json["uploadTotal"])
+        let downloadTotal = Self.number(json["downloadTotal"])
         guard let rows = json["connections"] as? [[String: Any]] else {
             return ([], uploadTotal, downloadTotal)
         }
@@ -110,8 +117,8 @@ struct MihomoControllerClient {
                 ruleType: ruleType,
                 rulePayload: rulePayload,
                 chain: chains.joined(separator: " -> "),
-                upload: number(row["upload"]),
-                download: number(row["download"]),
+                upload: Self.number(row["upload"]),
+                download: Self.number(row["download"]),
                 start: nil
             )
         }
@@ -133,6 +140,10 @@ struct MihomoControllerClient {
 
     private func providerItems(path: String, kind: String) async throws -> [ProviderItem] {
         let json = try await getJSON(path)
+        return Self.parseProviderItems(from: json, kind: kind)
+    }
+
+    static func parseProviderItems(from json: [String: Any], kind: String) -> [ProviderItem] {
         guard let providers = json["providers"] as? [String: [String: Any]] else { return [] }
         return providers.map { name, detail in
             let count = providerEntryCount(kind: kind, detail: detail)
@@ -155,7 +166,7 @@ struct MihomoControllerClient {
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    private func providerEntryCount(kind: String, detail: [String: Any]) -> Int {
+    private static func providerEntryCount(kind: String, detail: [String: Any]) -> Int {
         if kind == "Proxy" {
             if let proxies = detail["proxies"] as? [Any] { return proxies.count }
         } else {
@@ -165,7 +176,7 @@ struct MihomoControllerClient {
         return 0
     }
 
-    private func providerMemberNames(kind: String, detail: [String: Any]) -> [String] {
+    private static func providerMemberNames(kind: String, detail: [String: Any]) -> [String] {
         let entries: [Any]
         if kind == "Proxy" {
             entries = detail["proxies"] as? [Any] ?? []
@@ -242,7 +253,7 @@ struct MihomoControllerClient {
         NSError(domain: "MihomoController", code: code, userInfo: [NSLocalizedDescriptionKey: message])
     }
 
-    private func number(_ value: Any?) -> Int64 {
+    private static func number(_ value: Any?) -> Int64 {
         if let value = value as? Int64 { return value }
         if let value = value as? Int { return Int64(value) }
         if let value = value as? Double { return Int64(value) }

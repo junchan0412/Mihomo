@@ -30,6 +30,15 @@ let package = Package(
             name: "MihomoHelper",
             dependencies: ["MihomoShared"],
             path: "Sources/MihomoHelper"
+        ),
+        .testTarget(
+            name: "MihomoTests",
+            dependencies: [
+                "Mihomo",
+                "MihomoShared",
+                .product(name: "Yams", package: "Yams")
+            ],
+            path: "Tests/MihomoTests"
         )
     ]
 )

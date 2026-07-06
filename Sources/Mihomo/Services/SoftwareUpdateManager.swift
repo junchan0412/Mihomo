@@ -59,7 +59,7 @@ final class SoftwareUpdateManager {
         return AppUpdateCheckResult(
             manifest: manifest,
             manifestURL: manifestURL,
-            isNewer: isNewer(manifest: manifest),
+            isNewer: isManifestNewer(manifest),
             currentVersion: currentVersion,
             currentBuild: currentBuild
         )
@@ -275,8 +275,12 @@ final class SoftwareUpdateManager {
         return .orderedSame
     }
 
-    private func isNewer(manifest: AppUpdateManifest) -> Bool {
-        let versionComparison = compareVersions(manifest.version, currentVersion)
+    func isManifestNewer(
+        _ manifest: AppUpdateManifest,
+        currentVersion: String? = nil,
+        currentBuild: String? = nil
+    ) -> Bool {
+        let versionComparison = compareVersions(manifest.version, currentVersion ?? self.currentVersion)
         if versionComparison == .orderedDescending {
             return true
         }
@@ -286,7 +290,7 @@ final class SoftwareUpdateManager {
         else {
             return false
         }
-        let current = currentBuild.trimmingCharacters(in: .whitespacesAndNewlines)
+        let current = (currentBuild ?? self.currentBuild).trimmingCharacters(in: .whitespacesAndNewlines)
         return current.isEmpty || current != manifestBuild
     }
 

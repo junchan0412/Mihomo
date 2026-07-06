@@ -183,6 +183,16 @@ v1.2.0 完成状态：
 | P1 | release smoke test | 自动验证 zip、manifest、Ed25519 签名、SHA-256、bundle id、signing identifier。 |
 | P2 | 许可证与 SBOM | 对内置 mihomo、Yams、age、外部 UI 等产物生成许可证清单。 |
 
+v1.3.0 完成状态：
+
+| 优化项 | 完成状态 | 主要落点 |
+| --- | --- | --- |
+| 单元测试 | 已实现 | 新增 `MihomoTests`，覆盖 `RuntimeConfigBuilder`、`ProfileYAMLStructureEditor`、`SoftwareUpdateManager`、`LocalSecretVault`。 |
+| Mock Controller 集成测试 | 已实现 | `MihomoControllerClient` 抽出 JSON 解析函数，测试代理组、连接、Provider 响应映射，无需真实 core。 |
+| Mock Helper 集成测试 | 已实现 | 测试 `HelperOperationResult` 对成功 payload、事务步骤、回滚建议和失败错误的解析。 |
+| release smoke test | 已实现 | 新增 `script/release_smoke_test.sh`，验证 app codesign、bundle id、manifest、latest manifest、Ed25519 元数据和 zip SHA-256。 |
+| 许可证与 SBOM | 已实现基础清单 | 新增 `THIRD_PARTY_NOTICES.md`，记录 mihomo、Yams、CryptoKit、age、zashboard、meta-rules-dat 等来源和授权注意事项。 |
+
 ### 6.4 v1.4 体验与专业工具打磨
 
 目标：在不继续堆叠复杂功能的前提下，让日常使用更接近成熟网络工具。
@@ -237,3 +247,4 @@ v1.2.0 完成状态：
 | v1.0.4 | 修复 DIRECT 延迟无法测出的问题：DIRECT 不再直接依赖 mihomo Controller `/delay` 对内置出站的支持，而是由 App 使用禁用系统代理的直连 `URLSession` 对配置的测速 URL 进行兜底测速；REJECT 明确标记为不可测速并从失败统计中跳过。 | 使用 `./script/build_and_run.sh --verify`、release package、manifest、签名和线上更新清单校验作为小版本发布门禁。 |
 | v1.1.0 | 完成网络接管与 Helper 硬化：新增三类网络接管状态机、诊断页网络修复中心、独立 DNS 恢复入口、Helper 事务步骤/回滚建议、SecStaticCode requirement 校验。 | 使用 `./script/build_and_run.sh --verify`、概览截图检查、release package、manifest、签名和线上更新清单校验作为小版本发布门禁。 |
 | v1.2.0 | 完成配置质量与可维护性：新增规则 schema 校验、配置质量评分、Runtime Config Inspector、Profile/JS/YAML/App overlay 分层 diff 和 settings schema v2 迁移日志。 | 使用 `./script/build_and_run.sh --verify`、`git diff --check`、release package、manifest、签名和线上更新清单校验作为小版本发布门禁。 |
+| v1.3.0 | 完成测试与发版体系：新增 SwiftPM 测试目标、8 个核心 XCTest、Controller/Helper mock 解析测试、release smoke 脚本和第三方清单。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.3.0` 和线上更新清单校验作为小版本发布门禁。 |
