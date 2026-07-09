@@ -50,7 +50,7 @@
 | --- | --- | --- |
 | XPC Helper | 已实现 | 主 App 通过 `dev.codex.Mihomo.Helper` 调用高权限能力。 |
 | Helper 注册、卸载、修复 | 已实现 | 高级页和诊断页提供注册、审计、修复入口。 |
-| Helper 授权检查 | 已增强 | Helper 校验调用方来自 Mihomo App bundle，检查签名 identifier，并通过 SecStaticCode requirement 绑定当前 ad-hoc bundle identifier；未来 Developer ID 可扩展 Team ID / designated requirement。 |
+| Helper 授权检查 | 已增强 | Helper 校验调用方来自 Mihomo App bundle，检查签名 identifier，通过 SecStaticCode requirement 绑定当前 ad-hoc bundle identifier，并要求调用方 app 与 Helper 所属 app bundle 一致；未来 Developer ID 可扩展 Team ID / designated requirement。 |
 | 系统代理设置与恢复 | 已实现 | Helper 通过 `networksetup` 设置 HTTP/HTTPS/SOCKS 代理并恢复快照。 |
 | 系统 DNS 临时设置 | 已实现 | 核心启动时可临时写入系统 DNS，停止或退出时恢复。 |
 | TUN 快照与回滚 | 已实现 | 捕获网络服务 DNS 基线、IPv4/IPv6 路由、默认路由，支持停止或手动回滚；当前回滚路径只恢复 DNS 与路由，不恢复系统代理开关。 |
@@ -129,7 +129,7 @@
 | --- | --- | --- |
 | 网络接管真实系统回归仍不足 | v1.4.3 已集中代理、DNS、TUN 状态和快照边界，但真实网络服务名称变化、无快照恢复、默认路由异常等场景仍依赖手动验证 | 为 Helper 网络事务增加更多 mock 和受控命令输出测试，并沉淀真实系统 smoke checklist。 |
 | TUN、系统 DNS、系统代理的用户心智仍需继续压实 | 网络安全中心已明确代理快照、DNS 快照、TUN 快照互不混用，但长期使用中仍可能需要更强的单选接管模式 | 下一阶段可把“接管模式”升级为系统代理、TUN、DNS-only、手动的显式单选模型。 |
-| Helper 授权仍是本地分发友好版 | ad-hoc 场景下可用，但不是最终公开发行强度 | 引入 audit token / SecCode requirement 校验；Developer ID 后增加 Team ID 和 designated requirement。 |
+| Helper 授权仍是本地分发友好版 | v1.8.2 已增加同 bundle 绑定和 user-home 路径 allowlist，但 ad-hoc 场景仍没有 Developer ID / Team ID 级身份强度 | Developer ID 后增加 Team ID、designated requirement，并保留 Helper 路径 allowlist。 |
 | JS 覆写安全边界偏弱 | JavaScriptCore 可修改配置文本，但沙盒和资源限制不充分 | 默认继续关闭；增加执行超时、内存限制、API 白名单和明显风险提示。 |
 | 更新安装脚本仍需真实回滚验证 | 应用替换涉及退出、移动、签名校验、失败恢复 | 建立 release smoke test，覆盖损坏 zip、签名不匹配、版本不匹配、回滚失败。 |
 | Secret vault 可用性与可迁移性冲突 | 当前本机派生密钥适合本机使用，但跨机器恢复 secret 不方便 | 备份恢复时提供 secret 不同步、手动输入、用户口令二次加密三种模式。 |
@@ -155,7 +155,7 @@ v1.1.0 完成状态：
 | --- | --- | --- |
 | 网络接管状态机 | 已实现 | `NetworkTakeoverState` 覆盖系统代理、系统 DNS、TUN；`AppStore.refreshNetworkTakeoverStates()` 读取系统实际代理/DNS、快照和 TUN 路由差异；概览卡片和诊断结果展示“用户期望、系统实际、最近 Helper 操作、恢复动作”。 |
 | Helper 操作事务 | 已实现基础事务 | Helper 的核心启停、代理、DNS、TUN 操作返回 `transactionSteps` 和 `rollbackSuggestion`；App 记录最近 Helper 操作并展示到网络接管状态。 |
-| Helper 授权升级 | 已增强 | Helper listener 保留 bundle 路径与 signing identifier 检查，并新增 `SecStaticCode` requirement 校验；当前无 Developer ID，requirement 绑定 ad-hoc bundle identifier，后续可扩展 Team ID。 |
+| Helper 授权升级 | 已增强 | Helper listener 保留 bundle 路径与 signing identifier 检查，使用 `SecStaticCode` requirement 校验，并在 v1.8.2 增加调用方 app 与 Helper 所属 app bundle 一致性校验；当前无 Developer ID，requirement 仍绑定 ad-hoc bundle identifier，后续可扩展 Team ID。 |
 | 网络修复中心 | 已实现 | 诊断页新增网络修复中心，集中执行恢复代理、恢复 DNS、恢复 TUN 路由、清理快照，并可刷新三类接管状态。 |
 
 ### 6.2 v1.2 配置质量与可维护性
@@ -298,6 +298,7 @@ v1.5.0 / M2 发布候选完成状态：
 | v1.7.0 | 完成 Controller WebSocket 事件流：新增 traffic/logs/connections 实时通道，活动页展示事件流状态，断线或 endpoint 不支持时自动降级到轮询，并补充事件解析回归测试。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.7.0`、manifest、签名和线上更新清单校验作为阶段版本发布门禁。 |
 | v1.8.0 | 完成许可证清单打包门禁：`THIRD_PARTY_NOTICES.md` 随 App bundle 打入 Resources，release smoke test 校验 bundle 与 zip 内均存在清单。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.8.0`、manifest、签名和线上更新清单校验作为阶段版本发布门禁。 |
 | v1.8.1 | 完成审计整改第一批：Provider 直接下载拒绝绝对路径和 symlink 逃逸；本地/WebDAV zip 恢复改为 entry 预扫描、symlink 拒绝、临时目录解压和 allowlist copy；诊断包导出的 runtime config、app log、core log 统一脱敏并写入 redaction manifest。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test` 验证 25 个 XCTest，通过 `git diff --check`、`./script/build_and_run.sh --verify`、`./script/package_release.sh 1.8.1` 和 `./script/release_smoke_test.sh 1.8.1`。 |
+| v1.8.2 | 完成 Helper 高权限路径硬化：XPC 连接通过后按调用方 UID 绑定 user home，Helper 只接受该用户 `~/Library/Application Support/Mihomo/Runtime` 下的 runtime config/snapshot、`~/Library/Logs/Mihomo/mihomo-core.log`，core 仅允许来自该用户 App Support/Core 或同一 app bundle Resources/Core；同时要求调用方 app 与 Helper 所属 app bundle 一致。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test` 验证 31 个 XCTest，通过 `git diff --check`、`./script/build_and_run.sh --verify`、`./script/package_release.sh 1.8.2` 和 `./script/release_smoke_test.sh 1.8.2`。 |
 
 ## 11. 稳定性与性能审查记录
 
