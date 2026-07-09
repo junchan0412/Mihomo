@@ -21,6 +21,52 @@ final class ProviderResourceManagerTests: XCTestCase {
         }
     }
 
+    func testTargetURLRejectsAbsolutePath() throws {
+        let root = temporaryDirectory()
+        let manager = ProviderResourceManager(
+            runtimeDirectory: root.appendingPathComponent("Runtime", isDirectory: true),
+            backupsDirectory: root.appendingPathComponent("Backups", isDirectory: true)
+        )
+        let provider = ProviderItem(
+            kind: "Rule",
+            name: "remote",
+            detail: "",
+            remoteURL: "https://example.com/rules.yaml",
+            path: "/tmp/escape.yaml"
+        )
+
+        XCTAssertThrowsError(try manager.targetURL(for: provider)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("不能使用绝对路径"))
+        }
+    }
+
+    func testTargetURLRejectsSymlinkEscape() throws {
+        let root = temporaryDirectory()
+        let runtime = root.appendingPathComponent("Runtime", isDirectory: true)
+        let outside = root.appendingPathComponent("Outside", isDirectory: true)
+        try FileManager.default.createDirectory(at: runtime, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(
+            at: runtime.appendingPathComponent("rule_providers"),
+            withDestinationURL: outside
+        )
+        let manager = ProviderResourceManager(
+            runtimeDirectory: runtime,
+            backupsDirectory: root.appendingPathComponent("Backups", isDirectory: true)
+        )
+        let provider = ProviderItem(
+            kind: "Rule",
+            name: "remote",
+            detail: "",
+            remoteURL: "https://example.com/rules.yaml",
+            path: "rule_providers/escape.yaml"
+        )
+
+        XCTAssertThrowsError(try manager.targetURL(for: provider)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("Runtime 目录内"))
+        }
+    }
+
     func testBackupAndRollbackPreserveProviderVersions() throws {
         let root = temporaryDirectory()
         let manager = ProviderResourceManager(

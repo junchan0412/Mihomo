@@ -297,6 +297,7 @@ v1.5.0 / M2 发布候选完成状态：
 | v1.6.0 | 完成 Provider 更新备份与回滚：直接下载和批量下载会在覆盖前备份上一版本，资源页展示持久化更新历史，并提供手动回滚入口；诊断包同步记录备份与恢复来源。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.6.0`、manifest、签名和线上更新清单校验作为阶段版本发布门禁。 |
 | v1.7.0 | 完成 Controller WebSocket 事件流：新增 traffic/logs/connections 实时通道，活动页展示事件流状态，断线或 endpoint 不支持时自动降级到轮询，并补充事件解析回归测试。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.7.0`、manifest、签名和线上更新清单校验作为阶段版本发布门禁。 |
 | v1.8.0 | 完成许可证清单打包门禁：`THIRD_PARTY_NOTICES.md` 随 App bundle 打入 Resources，release smoke test 校验 bundle 与 zip 内均存在清单。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test`、`./script/build_and_run.sh --verify`、`script/release_smoke_test.sh 1.8.0`、manifest、签名和线上更新清单校验作为阶段版本发布门禁。 |
+| v1.8.1 | 完成审计整改第一批：Provider 直接下载拒绝绝对路径和 symlink 逃逸；本地/WebDAV zip 恢复改为 entry 预扫描、symlink 拒绝、临时目录解压和 allowlist copy；诊断包导出的 runtime config、app log、core log 统一脱敏并写入 redaction manifest。 | 使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test` 验证 25 个 XCTest，通过 `git diff --check`、`./script/build_and_run.sh --verify`、`./script/package_release.sh 1.8.1` 和 `./script/release_smoke_test.sh 1.8.1`。 |
 
 ## 11. 稳定性与性能审查记录
 

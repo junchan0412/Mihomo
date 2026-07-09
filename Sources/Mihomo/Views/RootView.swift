@@ -2,13 +2,12 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var isLogOverlayPresented = false
 
     var body: some View {
         NavigationSplitView {
             List(selection: $store.selectedSection) {
                 Section("Mihomo") {
-                    ForEach(AppSection.allCases.filter { $0 != .settings }) { section in
+                    ForEach(AppSection.sidebarSections) { section in
                         Label(section.title, systemImage: section.systemImage)
                             .tag(section)
                     }
@@ -22,31 +21,23 @@ struct RootView: View {
             .navigationTitle("Mihomo")
             .listStyle(.sidebar)
         } detail: {
-            ZStack(alignment: .topLeading) {
-                DetailSwitchView(section: store.selectedSection)
-
-                if isLogOverlayPresented {
-                    Color.black.opacity(0.001)
-                        .contentShape(Rectangle())
-                        .ignoresSafeArea()
-                        .onTapGesture {
-                            isLogOverlayPresented = false
-                        }
-                        .zIndex(1)
-                }
-
-                GlobalLogOverlay(
-                    isPresented: $isLogOverlayPresented,
-                    latestLog: store.logs.last,
-                    logs: Array(store.logs.suffix(8)),
-                    clearLogs: store.clearVisibleLogs
-                )
-                .padding(.leading, 20)
-                .padding(.top, 10)
-                .zIndex(2)
-            }
+            DetailSwitchView(section: store.selectedSection)
+                .id(store.selectedSection)
+                .transition(.opacity)
+                .animation(.easeOut(duration: 0.12), value: store.selectedSection)
         }
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                GlobalLogMenu(
+                    latestLog: store.logs.last,
+                    logs: Array(store.logs.suffix(8)),
+                    clearLogs: store.clearVisibleLogs,
+                    openFullLog: {
+                        store.selectedSection = .logs
+                    }
+                )
+            }
+
             ToolbarItemGroup(placement: .primaryAction) {
                 Picker("模式", selection: Binding(
                     get: { store.currentMode },
@@ -66,115 +57,49 @@ struct RootView: View {
     }
 }
 
-private struct GlobalLogOverlay: View {
-    @Binding var isPresented: Bool
+private struct GlobalLogMenu: View {
     var latestLog: LogEntry?
     var logs: [LogEntry]
     var clearLogs: () -> Void
+    var openFullLog: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if isPresented {
-                expandedPanel
-                    .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topLeading)))
+        Menu {
+            if logs.isEmpty {
+                Text("暂无事件")
             } else {
-                collapsedPill
-                    .transition(.opacity)
+                ForEach(logs.reversed()) { entry in
+                    Text(logMenuTitle(for: entry))
+                }
             }
-        }
-        .animation(.snappy(duration: 0.18), value: isPresented)
-    }
 
-    private var collapsedPill: some View {
-        Button {
-            isPresented = true
+            Divider()
+
+            Button("打开日志") {
+                openFullLog()
+            }
+
+            Button("全部清除") {
+                clearLogs()
+            }
+            .disabled(logs.isEmpty)
         } label: {
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: "terminal")
+                    .imageScale(.small)
                 Circle()
                     .fill(levelColor(latestLog?.level))
-                    .frame(width: 8, height: 8)
-
+                    .frame(width: 6, height: 6)
                 Text(levelTitle(latestLog?.level))
-                    .fontWeight(.semibold)
-                    .foregroundStyle(levelColor(latestLog?.level))
-
-                Text(latestLog?.message ?? "暂无事件")
-                    .foregroundStyle(.primary)
+                Text(Formatters.trimmedMenuText(latestLog?.message ?? "暂无事件", limit: 32))
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .truncationMode(.tail)
             }
-            .font(.callout)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .frame(maxWidth: 420, alignment: .leading)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(.quaternary, lineWidth: 1)
-            }
+            .font(.callout.weight(.medium))
+            .frame(maxWidth: 280, alignment: .leading)
         }
-        .buttonStyle(.plain)
+        .menuStyle(.button)
         .help("显示最近日志")
-    }
-
-    private var expandedPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("事件")
-                    .font(.headline)
-                Spacer()
-                Button("全部清除") {
-                    clearLogs()
-                    isPresented = false
-                }
-                .disabled(logs.isEmpty)
-
-                Button {
-                    isPresented = false
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .symbolRenderingMode(.hierarchical)
-                }
-                .buttonStyle(.plain)
-                .help("关闭事件")
-            }
-
-            if logs.isEmpty {
-                ContentUnavailableView("暂无事件", systemImage: "checkmark.circle")
-                    .frame(width: 520, height: 160)
-            } else {
-                VStack(alignment: .leading, spacing: 12) {
-                    ForEach(logs.reversed()) { entry in
-                        VStack(alignment: .leading, spacing: 5) {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(levelColor(entry.level))
-                                    .frame(width: 7, height: 7)
-                                Text(levelTitle(entry.level))
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(levelColor(entry.level))
-                                Text(Formatters.shortDate.string(from: entry.date))
-                                    .foregroundStyle(.secondary)
-                            }
-                            Text(entry.message)
-                                .lineLimit(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                                .textSelection(.enabled)
-                        }
-                    }
-                }
-                .frame(width: 560, alignment: .leading)
-            }
-        }
-        .font(.callout)
-        .padding(16)
-        .frame(maxWidth: 620, alignment: .leading)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.quaternary, lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 8)
     }
 
     private func levelTitle(_ level: String?) -> String {
@@ -195,6 +120,11 @@ private struct GlobalLogOverlay: View {
         case "info": return .green
         default: return .secondary
         }
+    }
+
+    private func logMenuTitle(for entry: LogEntry) -> String {
+        let message = Formatters.trimmedMenuText(entry.message, limit: 36)
+        return "\(levelTitle(entry.level)) \(Formatters.shortDate.string(from: entry.date)) \(message)"
     }
 }
 

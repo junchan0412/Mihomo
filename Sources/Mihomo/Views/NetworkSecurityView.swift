@@ -43,8 +43,8 @@ struct NetworkSecurityView: View {
         }
         .navigationTitle("网络安全")
         .onAppear {
-            store.refreshNetworkTakeoverStates(force: true)
             ensureSelection()
+            store.refreshNetworkTakeoverStates()
         }
         .onChange(of: store.networkTakeoverStates) {
             ensureSelection()

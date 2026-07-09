@@ -64,7 +64,7 @@ struct ProviderResourceManager {
         let fallbackName = Self.safeResourceFileName(provider.name, pathExtension: "yaml")
         let value = rawPath?.isEmpty == false ? rawPath! : "\(fallbackDirectory)/\(fallbackName)"
         if value.hasPrefix("/") {
-            return URL(fileURLWithPath: value)
+            throw providerResourceError("Provider path 不能使用绝对路径：\(value)")
         }
 
         let components = value
@@ -76,9 +76,20 @@ struct ProviderResourceManager {
             throw providerResourceError("Provider path 不能包含 ..：\(value)")
         }
 
-        return components.reduce(runtimeDirectory) { partial, component in
-            partial.appendingPathComponent(component)
+        let runtimeRoot = runtimeDirectory.standardizedFileURL.resolvingSymlinksInPath()
+        var target = runtimeRoot
+        for component in components {
+            target.appendPathComponent(component)
+            let resolvedComponent = target.standardizedFileURL.resolvingSymlinksInPath()
+            guard Self.isContained(resolvedComponent, in: runtimeRoot) else {
+                throw providerResourceError("Provider path 必须位于 Runtime 目录内：\(value)")
+            }
         }
+        let resolvedTarget = target.standardizedFileURL.resolvingSymlinksInPath()
+        guard Self.isContained(resolvedTarget, in: runtimeRoot) else {
+            throw providerResourceError("Provider path 必须位于 Runtime 目录内：\(value)")
+        }
+        return target.standardizedFileURL
     }
 
     func backupExistingResource(at target: URL, provider: ProviderItem, date: Date = Date()) throws -> URL? {
@@ -140,6 +151,12 @@ struct ProviderResourceManager {
         }.joined()
         let trimmed = base.trimmingCharacters(in: CharacterSet(charactersIn: "._-"))
         return trimmed.isEmpty ? "provider" : trimmed
+    }
+
+    private static func isContained(_ url: URL, in directory: URL) -> Bool {
+        let root = directory.standardizedFileURL.path
+        let path = url.standardizedFileURL.path
+        return path == root || path.hasPrefix(root + "/")
     }
 
     private func providerResourceError(_ message: String, code: Int = 1) -> NSError {

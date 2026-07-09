@@ -2852,22 +2852,26 @@ final class AppStore: ObservableObject {
         }
         try manager.createDirectory(at: root, withIntermediateDirectories: true)
 
-        let summary = diagnosticSummaryText()
+        let redactor = DiagnosticRedactor(settings: settings)
+        let summary = redactor.redact(diagnosticSummaryText())
         try summary.write(to: root.appendingPathComponent("summary.txt"), atomically: true, encoding: .utf8)
+        try redactor.manifest.write(to: root.appendingPathComponent("redaction-manifest.txt"), atomically: true, encoding: .utf8)
 
         if manager.fileExists(atPath: AppPaths.runtimeConfigFile.path) {
-            try manager.copyItem(at: AppPaths.runtimeConfigFile, to: root.appendingPathComponent("runtime-config.yaml"))
+            let content = try String(contentsOf: AppPaths.runtimeConfigFile, encoding: .utf8)
+            try redactor.redact(content).write(to: root.appendingPathComponent("runtime-config.yaml"), atomically: true, encoding: .utf8)
         } else if configPreview.isEmpty == false {
-            try configPreview.write(to: root.appendingPathComponent("runtime-config-preview.yaml"), atomically: true, encoding: .utf8)
+            try redactor.redact(configPreview).write(to: root.appendingPathComponent("runtime-config-preview.yaml"), atomically: true, encoding: .utf8)
         }
 
         let recentLogs = logs.suffix(300)
             .map { "[\(Formatters.shortDate.string(from: $0.date))] \($0.level.uppercased()) \($0.message)" }
             .joined(separator: "\n")
-        try recentLogs.write(to: root.appendingPathComponent("app-log-tail.txt"), atomically: true, encoding: .utf8)
+        try redactor.redact(recentLogs).write(to: root.appendingPathComponent("app-log-tail.txt"), atomically: true, encoding: .utf8)
 
         if manager.fileExists(atPath: AppPaths.coreLogFile.path) {
-            try? manager.copyItem(at: AppPaths.coreLogFile, to: root.appendingPathComponent("core.log"))
+            let content = String(decoding: try Data(contentsOf: AppPaths.coreLogFile), as: UTF8.self)
+            try? redactor.redact(content).write(to: root.appendingPathComponent("core.log"), atomically: true, encoding: .utf8)
         }
 
         if manager.fileExists(atPath: archive.path) {

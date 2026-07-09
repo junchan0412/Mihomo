@@ -223,7 +223,7 @@ struct PoliciesView: View {
                 iconImages: store.policyGroupIconImages,
                 selectedGroupID: $selectedGroupID
             )
-            .frame(width: 310)
+            .frame(width: 300)
 
             Divider()
 
@@ -373,9 +373,9 @@ private struct PolicyGroupList: View {
             rows: groups,
             selection: $selectedGroupID,
             columns: [
-                .init(title: "策略组", width: 170) { $0.name },
-                .init(title: "当前", width: 120) { $0.now.isEmpty ? "-" : $0.now },
-                .init(title: "数", width: 44) { "\($0.all.count)" }
+                .init(title: "策略组", width: 130) { $0.name },
+                .init(title: "当前", width: 88) { $0.now.isEmpty ? "-" : $0.now },
+                .init(title: "数量", width: 64) { "\($0.all.count)" }
             ],
             hasHorizontalScroller: false
         )

@@ -15,6 +15,12 @@ enum AppSection: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    static var sidebarSections: [AppSection] {
+        allCases.filter { section in
+            section != .settings && section != .logs
+        }
+    }
+
     var title: String {
         switch self {
         case .overview: return "概览"
