@@ -1,5 +1,23 @@
 import Foundation
 
+enum LogBufferPolicy {
+    static let visibleEntryLimit = 1_200
+    static let bufferedEntryLimit = 1_200
+
+    static func pruneVisible(_ logs: inout [LogEntry]) {
+        prune(&logs, limit: visibleEntryLimit)
+    }
+
+    static func pruneBuffered(_ logs: inout [LogEntry]) {
+        prune(&logs, limit: bufferedEntryLimit)
+    }
+
+    private static func prune(_ logs: inout [LogEntry], limit: Int) {
+        guard limit > 0, logs.count > limit else { return }
+        logs.removeFirst(logs.count - limit)
+    }
+}
+
 extension AppStore {
     func appendLog(_ level: String, _ message: String) {
         guard !message.isEmpty else { return }
@@ -8,6 +26,7 @@ extension AppStore {
             persistLog(entry)
             if logsPaused {
                 bufferedLogs.append(entry)
+                LogBufferPolicy.pruneBuffered(&bufferedLogs)
                 bufferedLogCount = bufferedLogs.count
             } else {
                 pendingLogEntries.append(entry)
@@ -59,9 +78,7 @@ extension AppStore {
     }
 
     private func pruneVisibleLogs() {
-        if logs.count > 1_200 {
-            logs.removeFirst(logs.count - 1_200)
-        }
+        LogBufferPolicy.pruneVisible(&logs)
     }
 
     private func persistLog(_ entry: LogEntry) {

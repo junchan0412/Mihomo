@@ -13,7 +13,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .core: return "核心"
         case .controller: return "Controller"
         case .network: return "网络"
-        case .routine: return "高级"
+        case .routine: return "常驻"
         }
     }
 
@@ -22,7 +22,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .core: return "cpu"
         case .controller: return "point.3.connected.trianglepath.dotted"
         case .network: return "network"
-        case .routine: return "gearshape.2"
+        case .routine: return "clock.arrow.circlepath"
         }
     }
 }
@@ -38,6 +38,9 @@ struct SettingsControllerPane: View {
             SettingsRow("Controller 端口") {
                 TextField("9090", value: $draft.controllerPort, format: .number)
                     .frame(width: 120)
+            }
+            SettingsRow("Secret") {
+                SecureField("Bearer token", text: $draft.controllerSecret)
             }
             SettingsRow("Mixed 端口") {
                 TextField("7890", value: $draft.mixedPort, format: .number)

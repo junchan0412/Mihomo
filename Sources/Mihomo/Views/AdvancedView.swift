@@ -63,7 +63,7 @@ struct AdvancedView: View {
             VStack(alignment: .leading) {
                 Text("高级")
                     .font(MihomoUI.Fonts.pageTitle)
-                Text("Helper、远程 API、DNS、Sniffer、备份与导入。")
+                Text("Helper、远程访问、DNS、Sniffer、备份与导入。")
                     .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
@@ -154,23 +154,11 @@ struct AdvancedView: View {
     }
 
     private var controllerGroup: some View {
-        GroupBox("远程 HTTP API") {
+        GroupBox("远程访问") {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
                 GridRow {
-                    Toggle("显式启用远程访问", isOn: $draft.remoteAPIEnabled)
+                    Toggle("启用远程 HTTP API", isOn: $draft.remoteAPIEnabled)
                     TextField("绑定地址", text: $draft.remoteAPIBindAddress)
-                }
-                GridRow {
-                    Text("Controller Host")
-                    TextField("127.0.0.1", text: $draft.controllerHost)
-                }
-                GridRow {
-                    Text("Controller 端口")
-                    TextField("9090", value: $draft.controllerPort, format: .number)
-                }
-                GridRow {
-                    Text("Secret")
-                    SecureField("Bearer token", text: $draft.controllerSecret)
                 }
             }
             .textFieldStyle(.roundedBorder)

@@ -33,6 +33,7 @@ struct MihomoControllerEventStream {
     var host: String
     var port: Int
     var secret: String = ""
+    var session: URLSession = NetworkSessionFactory.session(for: .controller)
 
     func trafficEvents() -> AsyncThrowingStream<ControllerStreamEvent, Error> {
         eventStream(path: "/traffic", transform: Self.parseTrafficEvent)
@@ -83,9 +84,7 @@ struct MihomoControllerEventStream {
         transform: @escaping (Data) -> ControllerStreamEvent?
     ) -> AsyncThrowingStream<ControllerStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            var request = URLRequest(url: webSocketURL(path: path, queryItems: queryItems))
-            applyAuthorization(to: &request)
-            let task = URLSession.shared.webSocketTask(with: request)
+            let task = session.webSocketTask(with: request(path: path, queryItems: queryItems))
             task.resume()
 
             func receiveNext() {
@@ -108,6 +107,13 @@ struct MihomoControllerEventStream {
                 task.cancel(with: .goingAway, reason: nil)
             }
         }
+    }
+
+    func request(path: String, queryItems: [URLQueryItem] = []) -> URLRequest {
+        var request = URLRequest(url: webSocketURL(path: path, queryItems: queryItems))
+        request.timeoutInterval = NetworkRequestKind.controller.requestTimeout
+        applyAuthorization(to: &request)
+        return request
     }
 
     private func webSocketURL(path: String, queryItems: [URLQueryItem]) -> URL {

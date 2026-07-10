@@ -55,6 +55,29 @@ final class ControllerEventStreamTests: XCTestCase {
         XCTAssertEqual(items.first?.chain, "Auto -> node-a")
     }
 
+    func testBuildsControllerWebSocketRequestWithBoundedTimeoutAndAuthorization() throws {
+        let stream = MihomoControllerEventStream(
+            host: "127.0.0.1",
+            port: 9090,
+            secret: " controller-token "
+        )
+
+        let request = stream.request(
+            path: "logs",
+            queryItems: [URLQueryItem(name: "level", value: "warning")]
+        )
+        let url = try XCTUnwrap(request.url)
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+
+        XCTAssertEqual(components.scheme, "ws")
+        XCTAssertEqual(components.host, "127.0.0.1")
+        XCTAssertEqual(components.port, 9090)
+        XCTAssertEqual(components.path, "/logs")
+        XCTAssertEqual(components.queryItems, [URLQueryItem(name: "level", value: "warning")])
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer controller-token")
+        XCTAssertEqual(request.timeoutInterval, NetworkRequestKind.controller.requestTimeout)
+    }
+
     func testRecoveryStateUsesPollingBeforeFirstLiveEvent() {
         var state = ControllerEventStreamRecoveryState()
 

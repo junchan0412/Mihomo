@@ -94,6 +94,7 @@ struct MihomoControllerClient {
             return ([], uploadTotal, downloadTotal)
         }
 
+        let dateParser = ConnectionDateParser()
         let items = rows.map { row -> ConnectionItem in
             let metadata = row["metadata"] as? [String: Any] ?? [:]
             let chains = row["chains"] as? [String] ?? []
@@ -112,17 +113,73 @@ struct MihomoControllerClient {
                     ?? (metadata["remoteDestination"] as? String)
                     ?? "-",
                 process: (metadata["process"] as? String) ?? (metadata["processPath"] as? String) ?? "-",
+                processPath: metadata["processPath"] as? String ?? "",
                 network: (metadata["network"] as? String) ?? "-",
+                metadataType: (metadata["type"] as? String) ?? "",
                 rule: rule.isEmpty ? "-" : rule,
                 ruleType: ruleType,
                 rulePayload: rulePayload,
                 chain: chains.joined(separator: " -> "),
+                sourceIP: stringValue(metadata["sourceIP"]),
+                sourcePort: stringValue(metadata["sourcePort"]),
+                destinationIP: stringValue(metadata["destinationIP"]),
+                destinationPort: stringValue(metadata["destinationPort"]),
+                remoteDestination: stringValue(metadata["remoteDestination"]),
                 upload: Self.number(row["upload"]),
                 download: Self.number(row["download"]),
-                start: nil
+                start: dateParser.date(from: row["start"])
             )
         }
         return (items, uploadTotal, downloadTotal)
+    }
+
+    private static func stringValue(_ value: Any?) -> String {
+        switch value {
+        case let value as String:
+            return value
+        case let value as NSNumber:
+            return value.stringValue
+        case let value as Int:
+            return String(value)
+        case let value as Int64:
+            return String(value)
+        case let value as Double:
+            return value.rounded() == value ? String(Int64(value)) : String(value)
+        default:
+            return ""
+        }
+    }
+
+    private struct ConnectionDateParser {
+        private let standardFormatter: ISO8601DateFormatter
+        private let fractionalFormatter: ISO8601DateFormatter
+
+        init() {
+            standardFormatter = ISO8601DateFormatter()
+            let fractionalFormatter = ISO8601DateFormatter()
+            fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            self.fractionalFormatter = fractionalFormatter
+        }
+
+        func date(from value: Any?) -> Date? {
+            if let value = value as? Date {
+                return value
+            }
+            if let value = value as? NSNumber {
+                let seconds = value.doubleValue > 10_000_000_000 ? value.doubleValue / 1000 : value.doubleValue
+                return Date(timeIntervalSince1970: seconds)
+            }
+            guard let value = value as? String, value.isEmpty == false else {
+                return nil
+            }
+            if let date = standardFormatter.date(from: value) {
+                return date
+            }
+            if let date = fractionalFormatter.date(from: value) {
+                return date
+            }
+            return nil
+        }
     }
 
     func providers() async throws -> [ProviderItem] {

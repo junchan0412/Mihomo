@@ -139,8 +139,8 @@ private extension AppSection {
         case .activity: return "连接"
         case .networkSecurity: return "网络"
         case .settings: return "通用"
-        case .advanced: return "DNS"
-        case .diagnostics: return "嗅探"
+        case .advanced: return "高级"
+        case .diagnostics: return "诊断"
         default: return title
         }
     }

@@ -23,4 +23,12 @@ final class NetworkClientTests: XCTestCase {
             XCTAssertEqual(configuration.requestCachePolicy, .reloadIgnoringLocalCacheData)
         }
     }
+
+    func testControllerSessionUsesBoundedControllerTimeouts() {
+        let configuration = NetworkSessionFactory.session(for: .controller).configuration
+
+        XCTAssertEqual(configuration.timeoutIntervalForRequest, NetworkRequestKind.controller.requestTimeout)
+        XCTAssertEqual(configuration.timeoutIntervalForResource, NetworkRequestKind.controller.resourceTimeout)
+        XCTAssertFalse(configuration.waitsForConnectivity)
+    }
 }

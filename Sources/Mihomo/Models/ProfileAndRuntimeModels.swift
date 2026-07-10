@@ -193,11 +193,18 @@ struct ConnectionItem: Identifiable, Hashable {
     var id: String
     var host: String
     var process: String
+    var processPath: String = ""
     var network: String
+    var metadataType: String = ""
     var rule: String
     var ruleType: String = ""
     var rulePayload: String = ""
     var chain: String
+    var sourceIP: String = ""
+    var sourcePort: String = ""
+    var destinationIP: String = ""
+    var destinationPort: String = ""
+    var remoteDestination: String = ""
     var upload: Int64
     var download: Int64
     var start: Date?
