@@ -72,7 +72,7 @@ To run the maintainability report locally:
 ./script/maintainability_audit.sh
 ```
 
-The v1.8.71 maintainability pass split TUN recovery routing and snapshot handling out of `HelperNetworkTools.swift` into `HelperTunRecoveryTool.swift`, after v1.8.70 moved the connection detail window into `ConnectionDetailPanelView.swift`; the local report now shows 111 scanned Swift files, 4 warning files, 0 over-max files, and `HelperService.swift` as the largest file at 374 lines.
+The v1.8.72 UI refresh moves the global log picker beside the window title with a wider control, rebuilds the sidebar and Overview screen around a ClashMac-style dashboard, and narrows Activity into a single full-height connections panel. The local maintainability report now shows 113 scanned Swift files, 4 warning files, 0 over-max files, and `HelperService.swift` as the largest file at 374 lines.
 
 ## Network Takeover Smoke
 
