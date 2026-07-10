@@ -18,11 +18,14 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
     }
 
     func helperVersion(withReply reply: @escaping (NSDictionary) -> Void) {
+        let appInfo = appBundleInfo()
         reply(HelperReply.ok("MihomoHelper 0.6.0", payload: [
             "machService": MihomoHelperConstants.machServiceName,
             "effectiveUID": Int(geteuid()),
             "authorizedUserHome": userHomeDirectory.path,
-            "authorizedAppBundle": appBundleURL?.path ?? ""
+            "authorizedAppBundle": appBundleURL?.path ?? "",
+            "authorizedAppVersion": appInfo.version,
+            "authorizedAppBuild": appInfo.build
         ]))
     }
 
@@ -48,6 +51,16 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
         } catch {
             reply(HelperReply.error(error))
         }
+    }
+
+    private func appBundleInfo() -> (version: String, build: String) {
+        guard let appBundleURL else { return ("", "") }
+        let infoURL = appBundleURL.appendingPathComponent("Contents/Info.plist")
+        let info = NSDictionary(contentsOf: infoURL) as? [String: Any]
+        return (
+            info?["CFBundleShortVersionString"] as? String ?? "",
+            info?["CFBundleVersion"] as? String ?? ""
+        )
     }
 
     func prepareAndStartCore(

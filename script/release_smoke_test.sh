@@ -14,10 +14,11 @@ ZIP_PATH="$RELEASE_DIR/Mihomo-$VERSION-macOS-arm64.zip"
 MANIFEST_PATH="$RELEASE_DIR/Mihomo-$VERSION-update.json"
 LATEST_PATH="$RELEASE_DIR/mihomo-update.json"
 NOTICES_PATH="$APP_BUNDLE/Contents/Resources/THIRD_PARTY_NOTICES.md"
+JS_WORKER_PATH="$APP_BUNDLE/Contents/Resources/MihomoJSWorker"
 EXPECTED_BUNDLE_ID="dev.codex.Mihomo"
 EXPECTED_PUBLIC_KEY="V4ac9RiJwSRBGJG/mD7xM2D40VB5feBCin6gCm8Cu3E="
 
-for path in "$APP_BUNDLE" "$ZIP_PATH" "$MANIFEST_PATH" "$LATEST_PATH" "$NOTICES_PATH"; do
+for path in "$APP_BUNDLE" "$ZIP_PATH" "$MANIFEST_PATH" "$LATEST_PATH" "$NOTICES_PATH" "$JS_WORKER_PATH"; do
   if [[ ! -e "$path" ]]; then
     echo "missing artifact: $path" >&2
     exit 1
@@ -43,18 +44,36 @@ zip_sha="$(/usr/bin/shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
 [[ "$manifest_signing" == "$EXPECTED_BUNDLE_ID" ]] || { echo "signing id mismatch" >&2; exit 1; }
 [[ "$manifest_public_key" == "$EXPECTED_PUBLIC_KEY" ]] || { echo "update public key mismatch" >&2; exit 1; }
 [[ "$manifest_algorithm" == "Ed25519" ]] || { echo "signature algorithm mismatch" >&2; exit 1; }
+"$ROOT_DIR/script/sign_update_manifest.swift" --verify "$MANIFEST_PATH" "$EXPECTED_PUBLIC_KEY" >/dev/null || {
+  echo "manifest signature verification failed" >&2
+  exit 1
+}
+tampered_manifest="$(mktemp "${TMPDIR:-/tmp}/mihomo-manifest-tamper.XXXXXX.json")"
+trap 'rm -f "$tampered_manifest"' EXIT
+jq '.notes = ((.notes // "") + " tampered")' "$MANIFEST_PATH" >"$tampered_manifest"
+if "$ROOT_DIR/script/sign_update_manifest.swift" --verify "$tampered_manifest" "$EXPECTED_PUBLIC_KEY" >/dev/null 2>&1; then
+  echo "tampered manifest unexpectedly passed signature verification" >&2
+  exit 1
+fi
 
 cmp -s "$MANIFEST_PATH" "$LATEST_PATH" || { echo "latest manifest differs from version manifest" >&2; exit 1; }
 /usr/bin/unzip -l "$ZIP_PATH" "Mihomo.app/Contents/Resources/THIRD_PARTY_NOTICES.md" >/dev/null || {
   echo "third-party notices missing from zip" >&2
   exit 1
 }
+/usr/bin/unzip -l "$ZIP_PATH" "Mihomo.app/Contents/Resources/MihomoJSWorker" >/dev/null || {
+  echo "JS worker missing from zip" >&2
+  exit 1
+}
 
 /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE"
+"$ROOT_DIR/script/verify_release_identity.sh" "$APP_BUNDLE" >/dev/null
+"$ROOT_DIR/script/update_replacement_smoke.sh" "$VERSION" >/dev/null
 signature_details="$(/usr/bin/codesign -dv --verbose=4 "$APP_BUNDLE" 2>&1 || true)"
 echo "$signature_details" | grep -q "Identifier=$EXPECTED_BUNDLE_ID" || {
   echo "codesign identifier mismatch" >&2
   exit 1
 }
 
+"$ROOT_DIR/script/release_provenance_report.sh" "$VERSION" >/dev/null
 echo "release smoke test passed for $VERSION"

@@ -55,6 +55,42 @@ final class ControllerEventStreamTests: XCTestCase {
         XCTAssertEqual(items.first?.chain, "Auto -> node-a")
     }
 
+    func testRecoveryStateUsesPollingBeforeFirstLiveEvent() {
+        var state = ControllerEventStreamRecoveryState()
+
+        let firstFailure = state.recordFailure(hasReceivedEvent: false)
+
+        XCTAssertEqual(firstFailure.status, "轮询")
+        XCTAssertTrue(firstFailure.shouldLogWarning)
+        XCTAssertEqual(firstFailure.backoffSeconds, 2)
+    }
+
+    func testRecoveryStateResetsAfterLiveEvent() {
+        var state = ControllerEventStreamRecoveryState()
+        _ = state.recordFailure(hasReceivedEvent: false)
+        _ = state.recordFailure(hasReceivedEvent: false)
+
+        state.recordEvent()
+        let failureAfterEvent = state.recordFailure(hasReceivedEvent: true)
+
+        XCTAssertEqual(failureAfterEvent.status, "降级")
+        XCTAssertTrue(failureAfterEvent.shouldLogWarning)
+        XCTAssertEqual(failureAfterEvent.backoffSeconds, 2)
+    }
+
+    func testRecoveryStateCapsReconnectBackoff() {
+        var state = ControllerEventStreamRecoveryState()
+        var lastDecision: ControllerEventStreamFailureDecision?
+
+        for _ in 0..<8 {
+            lastDecision = state.recordFailure(hasReceivedEvent: true)
+        }
+
+        XCTAssertEqual(lastDecision?.status, "降级")
+        XCTAssertEqual(lastDecision?.shouldLogWarning, false)
+        XCTAssertEqual(lastDecision?.backoffSeconds, 12)
+    }
+
     private func jsonData(_ value: [String: Any]) throws -> Data {
         try JSONSerialization.data(withJSONObject: value)
     }

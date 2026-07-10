@@ -6,6 +6,29 @@ enum ControllerStreamEvent: Equatable {
     case connections(items: [ConnectionItem], uploadTotal: Int64, downloadTotal: Int64)
 }
 
+struct ControllerEventStreamFailureDecision: Equatable {
+    var status: String
+    var shouldLogWarning: Bool
+    var backoffSeconds: UInt64
+}
+
+struct ControllerEventStreamRecoveryState: Equatable {
+    private(set) var failureCount = 0
+
+    mutating func recordEvent() {
+        failureCount = 0
+    }
+
+    mutating func recordFailure(hasReceivedEvent: Bool) -> ControllerEventStreamFailureDecision {
+        failureCount += 1
+        return ControllerEventStreamFailureDecision(
+            status: hasReceivedEvent ? "降级" : "轮询",
+            shouldLogWarning: failureCount == 1,
+            backoffSeconds: min(UInt64(max(failureCount, 1) * 2), 12)
+        )
+    }
+}
+
 struct MihomoControllerEventStream {
     var host: String
     var port: Int

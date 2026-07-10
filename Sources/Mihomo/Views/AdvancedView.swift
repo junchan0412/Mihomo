@@ -1,6 +1,4 @@
-import AppKit
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct AdvancedView: View {
     @EnvironmentObject private var store: AppStore
@@ -178,71 +176,7 @@ struct AdvancedView: View {
     }
 
     private var profileEncryptionGroup: some View {
-        GroupBox("Profile 加密") {
-            VStack(alignment: .leading, spacing: 10) {
-                Toggle("使用 Age 加密本地 Profile YAML", isOn: $draft.profileEncryptionEnabled)
-
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                    GridRow {
-                        Text("Age 下载 URL")
-                        TextField("age darwin arm64 tar.gz", text: $draft.ageDownloadURL)
-                    }
-                    GridRow {
-                        Text("age")
-                        TextField("age 可执行文件路径", text: $draft.ageBinaryPath)
-                    }
-                    GridRow {
-                        Text("age-keygen")
-                        TextField("age-keygen 可执行文件路径", text: $draft.ageKeygenPath)
-                    }
-                    GridRow {
-                        Text("Identity")
-                        TextField(AppPaths.ageIdentityFile.path, text: $draft.ageIdentityPath)
-                    }
-                    GridRow {
-                        Text("Recipient")
-                        TextField("age1...", text: $draft.ageRecipient)
-                    }
-                    GridRow {
-                        Text("状态")
-                        Text(store.ageStatus)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
-                }
-                .textFieldStyle(.roundedBorder)
-
-                HStack {
-                    Button {
-                        Task {
-                            await store.installAgeTools(downloadURL: draft.ageDownloadURL)
-                            draft = store.settings
-                        }
-                    } label: {
-                        Label("安装 Age", systemImage: "square.and.arrow.down")
-                    }
-
-                    Button {
-                        Task {
-                            await store.generateAgeIdentity(draftSettings: draft)
-                            draft = store.settings
-                        }
-                    } label: {
-                        Label("生成身份", systemImage: "key")
-                    }
-
-                    Button {
-                        Task {
-                            await store.saveSettings(draft)
-                            await store.migrateProfileEncryptionNow()
-                        }
-                    } label: {
-                        Label(draft.profileEncryptionEnabled ? "加密现有 Profile" : "解密现有 Profile", systemImage: "lock.rotation")
-                    }
-                }
-            }
-            .padding(.vertical, 4)
-        }
+        AdvancedProfileEncryptionGroup(draft: $draft)
     }
 
     private var dnsGroup: some View {
@@ -297,182 +231,19 @@ struct AdvancedView: View {
     }
 
     private var externalUIGroup: some View {
-        GroupBox("外部 UI") {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                GridRow {
-                    Toggle("写入 external-ui", isOn: $draft.externalUIEnabled)
-                    TextField("名称", text: $draft.externalUIName)
-                }
-                GridRow {
-                    Text("下载 URL")
-                    TextField("zashboard/metacubexd zip", text: $draft.externalUIDownloadURL)
-                }
-                GridRow {
-                    Text("状态")
-                    HStack {
-                        Text(store.externalUIStatus)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                        Spacer()
-                        Button {
-                            Task {
-                                await store.saveSettings(draft)
-                                await store.installExternalUI()
-                            }
-                        } label: {
-                            Label("安装 UI", systemImage: "square.and.arrow.down")
-                        }
-                    }
-                }
-            }
-            .textFieldStyle(.roundedBorder)
-            .padding(.vertical, 4)
-        }
+        AdvancedExternalUIGroup(draft: $draft)
     }
 
     private var previewGroup: some View {
-        GroupBox("配置预览 / Diff") {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Button {
-                        store.refreshConfigArtifacts()
-                    } label: {
-                        Label("刷新预览", systemImage: "arrow.clockwise")
-                    }
-                    Spacer()
-                    Text("\(store.configPreview.split(separator: "\n").count) 行")
-                        .foregroundStyle(.secondary)
-                }
-
-                HSplitView {
-                    TextEditor(text: .constant(store.configPreview))
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(minHeight: 260)
-                    TextEditor(text: .constant(store.configDiff))
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(minHeight: 260)
-                }
-                .frame(minHeight: 280)
-            }
-            .padding(.vertical, 4)
-        }
+        AdvancedConfigPreviewGroup()
     }
 
     private var geoGroup: some View {
-        GroupBox("Geo 数据") {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                GridRow {
-                    Text("GeoIP")
-                    TextField("geoip.dat URL", text: $draft.geoIPURL)
-                }
-                GridRow {
-                    Text("GeoSite")
-                    TextField("geosite.dat URL", text: $draft.geoSiteURL)
-                }
-                GridRow {
-                    Text("状态")
-                    HStack {
-                        Text(store.geoUpdateStatus)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button {
-                            Task {
-                                await store.saveSettings(draft)
-                                await store.updateGeoData()
-                            }
-                        } label: {
-                            Label("更新 Geo", systemImage: "globe")
-                        }
-                    }
-                }
-            }
-            .textFieldStyle(.roundedBorder)
-            .padding(.vertical, 4)
-        }
+        AdvancedGeoGroup(draft: $draft)
     }
 
     private var backupGroup: some View {
-        GroupBox("备份 / 同步") {
-            VStack(alignment: .leading, spacing: 10) {
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                    GridRow {
-                        Text("WebDAV URL")
-                        TextField("https://dav.example.com/Mihomo.zip", text: $draft.backupWebDAVURL)
-                    }
-                    GridRow {
-                        Text("WebDAV 用户")
-                        TextField("username", text: $draft.backupWebDAVUsername)
-                    }
-                    GridRow {
-                        Text("WebDAV 密码")
-                        SecureField("password", text: $draft.backupWebDAVPassword)
-                    }
-                    GridRow {
-                        Text("Gist Token")
-                        SecureField("token", text: $draft.gistToken)
-                    }
-                    GridRow {
-                        Text("Gist ID")
-                        TextField("可为空", text: $draft.gistID)
-                    }
-                }
-                .textFieldStyle(.roundedBorder)
-
-                HStack {
-                    Button {
-                        store.createLocalBackup()
-                    } label: {
-                        Label("本地备份", systemImage: "archivebox")
-                    }
-
-                    Button {
-                        restoreLocalBackup()
-                    } label: {
-                        Label("本地恢复", systemImage: "arrow.down.doc")
-                    }
-
-                    Button {
-                        Task {
-                            await store.saveSettings(draft)
-                            await store.uploadWebDAVBackup()
-                        }
-                    } label: {
-                        Label("上传 WebDAV", systemImage: "icloud.and.arrow.up")
-                    }
-
-                    Button {
-                        Task {
-                            await store.saveSettings(draft)
-                            await store.restoreWebDAVBackup()
-                        }
-                    } label: {
-                        Label("恢复 WebDAV", systemImage: "icloud.and.arrow.down")
-                    }
-
-                    Button {
-                        Task {
-                            await store.saveSettings(draft)
-                            await store.uploadGistBackup()
-                        }
-                    } label: {
-                        Label("同步 Gist", systemImage: "curlybraces")
-                    }
-
-                    Button {
-                        Task {
-                            await store.saveSettings(draft)
-                            await store.restoreGistBackup()
-                        }
-                    } label: {
-                        Label("恢复 Gist", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                }
-                Text(store.backupStatus)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
-            .padding(.vertical, 4)
-        }
+        AdvancedBackupGroup(draft: $draft)
     }
 
     private var deepLinkGroup: some View {
@@ -502,18 +273,4 @@ struct AdvancedView: View {
             .filter { !$0.isEmpty }
     }
 
-    private func restoreLocalBackup() {
-        let panel = NSOpenPanel()
-        panel.title = "选择备份文件"
-        panel.allowedContentTypes = [.zipArchive]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        if panel.runModal() == .OK, let url = panel.url {
-            Task { await store.restoreLocalBackup(url: url) }
-        }
-    }
-}
-
-private extension UTType {
-    static let zipArchive = UTType(filenameExtension: "zip") ?? .data
 }

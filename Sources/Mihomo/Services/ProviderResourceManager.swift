@@ -29,7 +29,7 @@ struct ProviderResourceManager {
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("Mihomo", forHTTPHeaderField: "User-Agent")
-        let (downloaded, response) = try await URLSession.shared.download(for: request)
+        let (downloaded, response) = try await NetworkClient.download(for: request)
         defer { try? FileManager.default.removeItem(at: downloaded) }
 
         if let http = response as? HTTPURLResponse,

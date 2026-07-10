@@ -6,21 +6,40 @@ struct AgeIdentity: Hashable {
 }
 
 final class ProfileAgeService {
+    private let toolsDirectory: URL
+    private let runtimeDirectory: URL
+
+    init(
+        toolsDirectory: URL = AppPaths.toolsDirectory,
+        runtimeDirectory: URL = AppPaths.runtimeDirectory
+    ) {
+        self.toolsDirectory = toolsDirectory
+        self.runtimeDirectory = runtimeDirectory
+    }
+
     static func isAgeArmored(_ content: String) -> Bool {
         content.hasPrefix("-----BEGIN AGE ENCRYPTED FILE-----")
             || content.hasPrefix("age-encryption.org/v1")
     }
 
-    func installTools(from urlString: String) async throws -> (agePath: String, keygenPath: String) {
+    func installTools(from urlString: String, expectedSHA256: String = "") async throws -> (agePath: String, keygenPath: String) {
         guard let url = URL(string: urlString) else {
             throw ageError("Age 下载 URL 无效。")
         }
         try AppPaths.ensureBaseDirectories()
-        let tempRoot = AppPaths.runtimeDirectory.appendingPathComponent("age-tools-\(UUID().uuidString)", isDirectory: true)
+        let (downloaded, _) = try await NetworkClient.download(from: url)
+        return try installDownloadedArchive(downloaded, expectedSHA256: expectedSHA256)
+    }
+
+    func installDownloadedArchive(_ downloaded: URL, expectedSHA256: String = "") throws -> (agePath: String, keygenPath: String) {
+        try ArtifactChecksum.validate(fileURL: downloaded, expectedSHA256: expectedSHA256, artifactName: "Age 下载包")
+        try FileManager.default.createDirectory(at: toolsDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
+
+        let tempRoot = runtimeDirectory.appendingPathComponent("age-tools-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempRoot) }
 
-        let (downloaded, _) = try await URLSession.shared.download(from: url)
         let unpack = tempRoot.appendingPathComponent("unpack", isDirectory: true)
         try FileManager.default.createDirectory(at: unpack, withIntermediateDirectories: true)
         let result = try Shell.run("/usr/bin/tar", ["-xzf", downloaded.path, "-C", unpack.path])
@@ -30,8 +49,8 @@ final class ProfileAgeService {
 
         let age = try locateExecutable(named: "age", in: unpack)
         let keygen = try locateExecutable(named: "age-keygen", in: unpack)
-        let targetAge = AppPaths.toolsDirectory.appendingPathComponent("age")
-        let targetKeygen = AppPaths.toolsDirectory.appendingPathComponent("age-keygen")
+        let targetAge = toolsDirectory.appendingPathComponent("age")
+        let targetKeygen = toolsDirectory.appendingPathComponent("age-keygen")
         for pair in [(age, targetAge), (keygen, targetKeygen)] {
             if FileManager.default.fileExists(atPath: pair.1.path) {
                 try FileManager.default.removeItem(at: pair.1)

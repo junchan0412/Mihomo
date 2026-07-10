@@ -83,4 +83,38 @@ final class ControllerAndHelperMockTests: XCTestCase {
             XCTAssertTrue(error.localizedDescription.contains("permission denied"))
         }
     }
+
+    func testHelperRuntimeBindingAuditAcceptsCurrentAppVersionAndPath() {
+        let appURL = URL(fileURLWithPath: "/Applications/Mihomo.app")
+        let result = HelperRuntimeBindingAudit.evaluate(
+            currentAppURL: appURL,
+            currentVersion: "1.8.47",
+            currentBuild: "abc123",
+            payload: [
+                "authorizedAppBundle": "/Applications/Mihomo.app",
+                "authorizedAppVersion": "1.8.47",
+                "authorizedAppBuild": "abc123"
+            ]
+        )
+
+        XCTAssertEqual(result.state, .ok)
+    }
+
+    func testHelperRuntimeBindingAuditWarnsForOldRegisteredApp() {
+        let appURL = URL(fileURLWithPath: "/Applications/Mihomo.app")
+        let result = HelperRuntimeBindingAudit.evaluate(
+            currentAppURL: appURL,
+            currentVersion: "1.8.47",
+            currentBuild: "abc123",
+            payload: [
+                "authorizedAppBundle": "/Applications/Mihomo-Old.app",
+                "authorizedAppVersion": "1.8.46",
+                "authorizedAppBuild": "old999"
+            ]
+        )
+
+        XCTAssertEqual(result.state, .warning)
+        XCTAssertTrue(result.detail.contains("Mihomo-Old.app"))
+        XCTAssertTrue(result.detail.contains("old999"))
+    }
 }
