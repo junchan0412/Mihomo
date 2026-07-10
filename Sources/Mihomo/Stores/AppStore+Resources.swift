@@ -1,41 +1,6 @@
 import Foundation
 
 extension AppStore {
-    func refreshProvidersFromController() async {
-        do {
-            providers = try await controllerClient().providers()
-            updateRuleProviderHitStatistics()
-            advancedStatus = "已从 Controller 读取 \(providers.count) 个 Provider"
-        } catch {
-            appendLog("warning", "Controller Provider 读取失败，保留本地解析结果：\(error.localizedDescription)")
-            refreshConfigArtifacts()
-        }
-    }
-
-    func updateProvider(_ provider: ProviderItem) async {
-        do {
-            try await controllerClient().updateProvider(provider)
-            appendLog("info", "已请求更新 \(provider.kind) Provider：\(provider.name)")
-            recordProviderUpdate(
-                provider,
-                action: "Controller",
-                succeeded: true,
-                targetPath: "-",
-                message: "Controller 已接受更新请求"
-            )
-            await refreshProvidersFromController()
-        } catch {
-            appendLog("error", "Provider 更新失败：\(error.localizedDescription)")
-            recordProviderUpdate(
-                provider,
-                action: "Controller",
-                succeeded: false,
-                targetPath: "-",
-                message: error.localizedDescription
-            )
-        }
-    }
-
     func updateProviderResource(_ provider: ProviderItem) async {
         do {
             let result = try await ProviderResourceManager().download(provider)
@@ -57,6 +22,36 @@ extension AppStore {
             recordProviderUpdate(
                 provider,
                 action: "下载",
+                succeeded: false,
+                targetPath: provider.path ?? "-",
+                message: error.localizedDescription
+            )
+        }
+    }
+
+    func refreshProviderResource(_ provider: ProviderItem) async {
+        if provider.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            await updateProviderResource(provider)
+            return
+        }
+
+        do {
+            let result = try ProviderResourceManager().refreshLocal(provider)
+            resourceUpdateStatus = "\(provider.name) 已重新载入：\(Formatters.bytes(result.size))"
+            recordProviderUpdate(
+                provider,
+                action: "本地刷新",
+                succeeded: true,
+                targetPath: result.target.path,
+                message: resourceUpdateStatus
+            )
+            refreshConfigArtifacts()
+        } catch {
+            resourceUpdateStatus = "\(provider.name) 重新载入失败：\(error.localizedDescription)"
+            appendLog("error", resourceUpdateStatus)
+            recordProviderUpdate(
+                provider,
+                action: "本地刷新",
                 succeeded: false,
                 targetPath: provider.path ?? "-",
                 message: error.localizedDescription
@@ -127,15 +122,13 @@ extension AppStore {
 
     func updateAllExternalResources() async {
         refreshConfigArtifacts()
-        let providerItems = providers.filter {
-            $0.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        }
+        let providerItems = providers
         let maxConcurrent = max(1, min(settings.profileRefreshMaxConcurrent, 8))
         var succeeded = 0
         var failed = 0
         var completed = 0
 
-        resourceUpdateStatus = "正在并发更新 \(providerItems.count) 个 Provider（并发 \(maxConcurrent)）与 Geo 数据..."
+        resourceUpdateStatus = "正在更新 \(providerItems.count) 个本地与远程资源（并发 \(maxConcurrent)）及 Geo 数据..."
         for batchStart in stride(from: 0, to: providerItems.count, by: maxConcurrent) {
             let batchEnd = min(batchStart + maxConcurrent, providerItems.count)
             let batch = Array(providerItems[batchStart..<batchEnd])
@@ -144,25 +137,47 @@ extension AppStore {
                 for provider in batch {
                     group.addTask {
                         do {
-                            let result = try await ProviderResourceManager().download(provider)
-                            return ProviderResourceUpdateResult(provider: provider, download: result, errorMessage: nil)
+                            if provider.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                                let result = try await ProviderResourceManager().download(provider)
+                                return ProviderResourceUpdateResult(
+                                    provider: provider,
+                                    action: "批量下载",
+                                    targetPath: result.target.path,
+                                    backupPath: result.backup?.path,
+                                    errorMessage: nil
+                                )
+                            }
+                            let result = try ProviderResourceManager().refreshLocal(provider)
+                            return ProviderResourceUpdateResult(
+                                provider: provider,
+                                action: "本地刷新",
+                                targetPath: result.target.path,
+                                backupPath: nil,
+                                errorMessage: nil
+                            )
                         } catch {
-                            return ProviderResourceUpdateResult(provider: provider, download: nil, errorMessage: error.localizedDescription)
+                            return ProviderResourceUpdateResult(
+                                provider: provider,
+                                action: provider.remoteURL == nil ? "本地刷新" : "批量下载",
+                                targetPath: provider.path ?? "-",
+                                backupPath: nil,
+                                errorMessage: error.localizedDescription
+                            )
                         }
                     }
                 }
 
                 for await result in group {
                     completed += 1
-                    if let download = result.download {
+                    if result.errorMessage == nil {
                         succeeded += 1
                         recordProviderUpdate(
                             result.provider,
-                            action: "批量下载",
+                            action: result.action,
                             succeeded: true,
-                            targetPath: download.target.path,
-                            message: download.backup == nil ? "批量更新成功" : "批量更新成功；已备份上一版：\(download.backup?.path ?? "")",
-                            backupPath: download.backup?.path
+                            targetPath: result.targetPath,
+                            message: result.backupPath == nil ? "资源刷新成功" : "资源更新成功；已备份上一版：\(result.backupPath ?? "")",
+                            backupPath: result.backupPath
                         )
                     } else {
                         failed += 1
@@ -182,7 +197,7 @@ extension AppStore {
         }
 
         if providerItems.isEmpty {
-            resourceUpdateStatus = "没有需要下载的 Provider，正在更新 Geo 数据..."
+            resourceUpdateStatus = "当前配置没有 Provider，正在更新 Geo 数据..."
         }
 
         do {
@@ -283,6 +298,8 @@ extension AppStore {
 
 private struct ProviderResourceUpdateResult {
     var provider: ProviderItem
-    var download: ProviderResourceDownloadResult?
+    var action: String
+    var targetPath: String
+    var backupPath: String?
     var errorMessage: String?
 }

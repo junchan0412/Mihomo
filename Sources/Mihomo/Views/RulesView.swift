@@ -46,7 +46,7 @@ struct RulesView: View {
             Divider()
 
             VStack(spacing: 10) {
-                ruleTable
+                ruleWorkspace
                 bottomBar
             }
             .padding(16)
@@ -92,6 +92,12 @@ struct RulesView: View {
             Spacer()
 
             searchField
+
+            Button {
+                beginAddRule()
+            } label: {
+                Label("新建规则", systemImage: "plus")
+            }
 
             Button {
                 store.refreshConfigArtifacts()
@@ -155,6 +161,24 @@ struct RulesView: View {
                 ContentUnavailableView("没有规则", systemImage: "list.bullet.rectangle")
             }
         }
+    }
+
+    private var ruleWorkspace: some View {
+        HStack(spacing: 0) {
+            ruleTable
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            RuleInspectorPane(
+                entry: selectedEntry,
+                add: beginAddRule,
+                edit: beginEdit,
+                delete: deleteSelectedRule
+            )
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).stroke(.quaternary, lineWidth: 1) }
     }
 
     private var bottomBar: some View {
@@ -287,7 +311,7 @@ struct RulesView: View {
     }
 }
 
-private struct RuleTableEntry: Identifiable, Hashable {
+struct RuleTableEntry: Identifiable, Hashable {
     var rule: RuleItem
     var type: String
     var value: String

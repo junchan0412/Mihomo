@@ -44,6 +44,15 @@ enum ActivityModuleTab: String, CaseIterable, Identifiable {
     var isEnabled: Bool {
         self != .devices
     }
+
+    var destinationSection: AppSection? {
+        switch self {
+        case .dns: return .networkSecurity
+        case .traffic: return .overview
+        case .logs: return .logs
+        case .recent, .active, .devices: return nil
+        }
+    }
 }
 
 struct ActivityModuleTabs: View {

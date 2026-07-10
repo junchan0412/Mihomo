@@ -30,7 +30,7 @@ struct ExternalResourceRow: Identifiable, Hashable {
             let message = latestRecord?.message.trimmingCharacters(in: .whitespacesAndNewlines) ?? "更新失败"
             return "失败：\(message)"
         case .localOnly:
-            return fileExists ? "本地就绪" : "无远程 URL"
+            return fileExists ? "本地就绪" : "本地文件缺失"
         }
     }
 
@@ -57,18 +57,24 @@ struct ExternalResourceRow: Identifiable, Hashable {
     }
 
     var canDownload: Bool { hasRemoteURL }
+    var canRefresh: Bool { hasRemoteURL || configuredPath != nil }
+    var updateActionTitle: String { hasRemoteURL ? "下载更新" : "重新载入" }
 
     var detailText: String {
         [
-            provider.detail,
-            provider.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+            redactedProviderDetail,
             "路径：\(pathText)"
         ]
-        .compactMap { value in
-            guard let value, value.isEmpty == false, value != "-" else { return nil }
-            return value
-        }
+        .filter { $0.isEmpty == false && $0 != "-" }
         .joined(separator: " · ")
+    }
+
+    private var redactedProviderDetail: String {
+        let detail = provider.detail.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let remote = provider.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines),
+              remote.isEmpty == false
+        else { return detail }
+        return detail.replacingOccurrences(of: remote, with: Self.redactedURL(remote))
     }
 
     private var hasRemoteURL: Bool {
@@ -105,6 +111,13 @@ struct ExternalResourceRow: Identifiable, Hashable {
             .joined()
         let name = sanitized.trimmingCharacters(in: CharacterSet(charactersIn: "-."))
         return name.isEmpty ? "provider" : name
+    }
+
+    private static func redactedURL(_ value: String) -> String {
+        guard var components = URLComponents(string: value) else { return "远程 URL（已隐藏参数）" }
+        components.query = nil
+        components.fragment = nil
+        return components.string ?? "远程 URL（已隐藏参数）"
     }
 }
 

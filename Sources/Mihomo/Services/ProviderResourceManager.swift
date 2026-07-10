@@ -11,6 +11,11 @@ struct ProviderResourceRollbackResult: Hashable {
     var replacedBackup: URL?
 }
 
+struct ProviderResourceRefreshResult: Hashable {
+    var target: URL
+    var size: Int64
+}
+
 struct ProviderResourceManager {
     var runtimeDirectory: URL = AppPaths.runtimeDirectory
     var backupsDirectory: URL = AppPaths.providerBackupsDirectory
@@ -56,6 +61,20 @@ struct ProviderResourceManager {
         let replacedBackup = try backupExistingResource(at: target, provider: provider)
         try replaceTarget(at: target, with: backup, rollbackBackup: replacedBackup)
         return ProviderResourceRollbackResult(target: target, restoredFrom: backup, replacedBackup: replacedBackup)
+    }
+
+    func refreshLocal(_ provider: ProviderItem) throws -> ProviderResourceRefreshResult {
+        let target = try targetURL(for: provider)
+        guard FileManager.default.fileExists(atPath: target.path) else {
+            throw providerResourceError("本地 Provider 文件不存在：\(target.path)")
+        }
+        let attributes = try FileManager.default.attributesOfItem(atPath: target.path)
+        let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+        guard size > 0 else {
+            throw providerResourceError("本地 Provider 文件为空：\(target.path)")
+        }
+        _ = try Data(contentsOf: target, options: [.mappedIfSafe])
+        return ProviderResourceRefreshResult(target: target, size: size)
     }
 
     func targetURL(for provider: ProviderItem) throws -> URL {

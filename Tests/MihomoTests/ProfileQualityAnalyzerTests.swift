@@ -2,7 +2,7 @@ import XCTest
 @testable import Mihomo
 
 final class ProfileQualityAnalyzerTests: XCTestCase {
-    func testRuntimeSourceItemsIdentifyAppOverlayProfileAndYamlFragments() {
+    func testRuntimeSourceItemsIdentifyConfigPriorityAndAppDefaults() {
         let profile = ProfileItem(
             id: UUID(),
             name: "Local",
@@ -52,12 +52,13 @@ final class ProfileQualityAnalyzerTests: XCTestCase {
         )
 
         let sources = Dictionary(uniqueKeysWithValues: report.sourceItems.map { ($0.path, $0) })
-        XCTAssertEqual(sources["mixed-port"]?.source, "App overlay")
-        XCTAssertEqual(sources["mixed-port"]?.value, "7891")
-        XCTAssertEqual(sources["mixed-port"]?.isAppManaged, true)
-        XCTAssertEqual(sources["proxy-groups"]?.source, "Profile")
-        XCTAssertEqual(sources["rule-providers"]?.source, "YAML 片段")
-        XCTAssertEqual(sources["tun"]?.source, "App overlay")
+        XCTAssertEqual(sources["mixed-port"]?.source, "Profile 配置")
+        XCTAssertEqual(sources["mixed-port"]?.value, "9999")
+        XCTAssertEqual(sources["mixed-port"]?.usesAppDefault, false)
+        XCTAssertEqual(sources["proxy-groups"]?.source, "Profile 配置")
+        XCTAssertEqual(sources["rule-providers"]?.source, "YAML 覆写")
+        XCTAssertEqual(sources["tun"]?.source, "应用默认")
+        XCTAssertEqual(sources["tun"]?.usesAppDefault, true)
     }
 
     func testAnalyzerFlagsRuntimeSchemaRisks() {

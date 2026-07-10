@@ -194,7 +194,7 @@ struct ProfilesView: View {
                     openWindow(id: "fragments-editor")
                 }
                 .environmentObject(store)
-                .frame(width: 340, alignment: .topLeading)
+                .frame(width: 380, alignment: .topLeading)
             }
 
             ProfileQualityPane(report: store.profileQualityReport(for: selectedProfile))
@@ -218,9 +218,9 @@ struct ProfilesView: View {
             .init(title: "状态", width: 72) { profile in
                 profile.id == store.settings.activeProfileID ? "启用" : "-"
             },
-            .init(title: "名称", width: 260) { $0.name },
+            .init(title: "名称", width: 180) { $0.name },
             .init(title: "类型", width: 80) { $0.source == .remote ? "远程" : "本地" },
-            .init(title: "来源", width: 320) { profile in
+            .init(title: "来源", width: 220) { profile in
                 profile.source == .remote ? profile.location : profile.fileName
             },
             .init(title: "更新", width: 140) { Formatters.shortDate.string(from: $0.updatedAt) }

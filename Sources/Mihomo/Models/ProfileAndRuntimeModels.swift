@@ -102,7 +102,7 @@ struct RuntimeConfigSourceItem: Identifiable, Hashable {
     var source: String
     var value: String
     var detail: String
-    var isAppManaged: Bool
+    var usesAppDefault: Bool
 }
 
 struct ConfigDiffLayer: Identifiable, Hashable {

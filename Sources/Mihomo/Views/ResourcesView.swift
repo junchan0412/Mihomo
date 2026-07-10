@@ -33,8 +33,8 @@ struct ResourcesView: View {
         return allRows.first { $0.id == selectedResourceID }
     }
 
-    private var downloadableCount: Int {
-        allRows.filter(\.canDownload).count
+    private var refreshableCount: Int {
+        allRows.filter(\.canRefresh).count
     }
 
     var body: some View {
@@ -64,7 +64,7 @@ struct ResourcesView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("外部资源")
                     .font(MihomoUI.Fonts.pageTitle)
-                Text("从其他文件或 URL 加载 Proxy Provider、Rule Provider 与 Geo 数据。")
+                Text("统一管理配置引用的 Proxy Provider、Rule Provider、本地规则集与 Geo 数据。")
                     .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
@@ -85,11 +85,11 @@ struct ResourcesView: View {
                 rows: visibleRows,
                 selection: $selectedResourceID,
                 columns: [
-                    .init(title: "名称", width: 220) { $0.nameText },
+                    .init(title: "名称", width: 160) { $0.nameText },
                     .init(title: "类型", width: 150) { $0.typeText },
                     .init(title: "最后更新", width: 150) { $0.lastUpdatedText },
-                    .init(title: "路径", width: 360) { $0.pathText },
-                    .init(title: "状态", width: 180, textColor: statusTextColor) { $0.statusText }
+                    .init(title: "状态", width: 150, textColor: statusTextColor) { $0.statusText },
+                    .init(title: "路径", width: 420) { $0.pathText }
                 ],
                 onDoubleClick: handleDoubleClick,
                 hasHorizontalScroller: true
@@ -100,7 +100,7 @@ struct ResourcesView: View {
                     ContentUnavailableView(
                         showsOnlyUnready ? "没有未就绪资源" : "没有外部资源",
                         systemImage: "shippingbox",
-                        description: Text(showsOnlyUnready ? "当前 Provider 均已就绪。" : "本地配置未声明 Provider，或 Controller 当前不可用。")
+                        description: Text(showsOnlyUnready ? "当前本地与远程资源均已就绪。" : "当前配置没有声明 Provider 或本地规则集。")
                     )
                 }
             }
@@ -136,43 +136,24 @@ struct ResourcesView: View {
             Spacer()
 
             Button {
-                store.refreshConfigArtifacts()
-            } label: {
-                Label("本地解析", systemImage: "doc.text.magnifyingglass")
-            }
-
-            Button {
-                Task { await store.refreshProvidersFromController() }
-            } label: {
-                Label("Controller", systemImage: "arrow.triangle.2.circlepath")
-            }
-            .disabled(store.isCoreRunning == false)
-
-            Button {
                 Task { await store.updateAllExternalResources() }
             } label: {
                 Label("全部更新", systemImage: "arrow.down.circle")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(downloadableCount == 0)
-
-            Button {
-                store.selectedSection = .overview
-            } label: {
-                Label("完成", systemImage: "checkmark")
-            }
+            .disabled(refreshableCount == 0)
         }
         .font(.callout)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
     }
 
-    @ViewBuilder
     private var selectedResourcePane: some View {
-        if let selectedRow {
-            let history = store.providerUpdateHistory(for: selectedRow.provider)
-            let rollbackRecord = store.latestProviderRollbackRecord(for: selectedRow.provider)
-            VStack(alignment: .leading, spacing: 10) {
+        Group {
+            if let selectedRow {
+                let history = store.providerUpdateHistory(for: selectedRow.provider)
+                let rollbackRecord = store.latestProviderRollbackRecord(for: selectedRow.provider)
+                VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     Label(selectedRow.provider.name, systemImage: selectedRow.provider.kind == "Proxy" ? "point.3.connected.trianglepath.dotted" : "list.bullet.clipboard")
                         .font(.headline)
@@ -195,27 +176,28 @@ struct ResourcesView: View {
                     .help(rollbackRecord?.backupPath ?? "没有可用备份")
 
                     Button {
-                        Task { await store.updateProviderResource(selectedRow.provider) }
+                        Task { await store.refreshProviderResource(selectedRow.provider) }
                     } label: {
-                        Label("下载", systemImage: "arrow.down.circle")
+                        Label(selectedRow.updateActionTitle, systemImage: selectedRow.canDownload ? "arrow.down.circle" : "arrow.clockwise")
                     }
-                    .disabled(selectedRow.canDownload == false)
-
-                    Button {
-                        Task { await store.updateProvider(selectedRow.provider) }
-                    } label: {
-                        Label("Controller", systemImage: "arrow.clockwise")
-                    }
-                    .disabled(store.isCoreRunning == false)
+                    .disabled(selectedRow.canRefresh == false)
                 }
 
                 ProviderHistoryPane(records: Array(history.prefix(6)))
             }
-            .font(.callout)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(.quaternary.opacity(0.24), in: RoundedRectangle(cornerRadius: 8))
+            } else {
+                ContentUnavailableView(
+                    showsOnlyUnready ? "没有需要处理的资源" : "选择一个资源",
+                    systemImage: "shippingbox",
+                    description: Text(showsOnlyUnready ? "关闭过滤可以查看全部资源。" : "选择资源后可查看路径、更新与回滚历史。")
+                )
+            }
         }
+        .font(.callout)
+        .frame(maxWidth: .infinity, minHeight: 138, alignment: .topLeading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.quaternary.opacity(0.24), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func ensureSelection() {
@@ -231,8 +213,8 @@ struct ResourcesView: View {
     }
 
     private func handleDoubleClick(_ row: ExternalResourceRow) {
-        guard row.canDownload else { return }
-        Task { await store.updateProviderResource(row.provider) }
+        guard row.canRefresh else { return }
+        Task { await store.refreshProviderResource(row.provider) }
     }
 
     private func statusTextColor(_ row: ExternalResourceRow) -> NSColor? {

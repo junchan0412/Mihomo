@@ -3,7 +3,7 @@ import Foundation
 struct ProfileQualityAnalyzer {
     typealias YAMLMap = [String: Any]
 
-    private let appManagedKeys: Set<String> = [
+    private let appDefaultKeys: Set<String> = [
         "mixed-port",
         "socks-port",
         "allow-lan",
@@ -154,10 +154,10 @@ struct ProfileQualityAnalyzer {
         let sourceRules = (yamlRoot(transformedContent)?["rules"] as? [Any] ?? []).count
 
         return [
-            .init(title: "Mixed Port", value: stringValue(root["mixed-port"]), detail: "App overlay 最终接管端口"),
+            .init(title: "Mixed Port", value: stringValue(root["mixed-port"]), detail: "最终运行端口；配置声明优先于应用默认"),
             .init(title: "SOCKS Port", value: stringValue(root["socks-port"]), detail: root["socks-port"] == nil ? "未启用独立 SOCKS 端口" : "来自 App 设置"),
             .init(title: "Controller", value: stringValue(root["external-controller"]), detail: "外部控制器监听地址"),
-            .init(title: "DNS", value: dns == nil ? "未启用" : "\(stringValue(dns?["enhanced-mode"])) · \(arrayCount(dns?["nameserver"])) 个 nameserver", detail: "由 App overlay 生成"),
+            .init(title: "DNS", value: dns == nil ? "未启用" : "\(stringValue(dns?["enhanced-mode"])) · \(arrayCount(dns?["nameserver"])) 个 nameserver", detail: "最终运行配置；未声明字段使用应用默认"),
             .init(title: "TUN", value: boolValue(tun?["enable"]) ? "已启用" : "未启用", detail: tun?["stack"].map { "stack: \($0)" } ?? "未写入 tun 配置"),
             .init(title: "Provider", value: "Proxy \(proxyProviders.count) / Rule \(ruleProviders.count)", detail: "最终 runtime config 中的 Provider 数量"),
             .init(title: "规则", value: "\(rules.count)", detail: sourceRules == rules.count ? "来自 Profile/JS 输出" : "已应用禁用规则过滤"),
@@ -197,11 +197,11 @@ struct ProfileQualityAnalyzer {
 
         return inspectedKeys.compactMap { key in
             let finalValue = generatedRoot[key]
-            let isAppManaged = appManagedKeys.contains(key)
-            guard finalValue != nil || isAppManaged else { return nil }
+            let hasAppDefault = appDefaultKeys.contains(key)
+            guard finalValue != nil || hasAppDefault else { return nil }
             let source = sourceTitle(
                 for: key,
-                isAppManaged: isAppManaged,
+                hasAppDefault: hasAppDefault,
                 originalRoot: originalRoot,
                 transformedRoot: transformedRoot,
                 yamlFragmentKeys: yamlFragmentKeys
@@ -213,50 +213,49 @@ struct ProfileQualityAnalyzer {
                 detail: sourceDetail(
                     for: key,
                     source: source,
-                    isAppManaged: isAppManaged,
+                    hasAppDefault: hasAppDefault,
                     value: finalValue
                 ),
-                isAppManaged: isAppManaged
+                usesAppDefault: source == "应用默认"
             )
         }
     }
 
     private func sourceTitle(
         for key: String,
-        isAppManaged: Bool,
+        hasAppDefault: Bool,
         originalRoot: YAMLMap,
         transformedRoot: YAMLMap,
         yamlFragmentKeys: Set<String>
     ) -> String {
-        if isAppManaged {
-            return "App overlay"
-        }
         if yamlFragmentKeys.contains(key) {
-            return "YAML 片段"
+            return "YAML 覆写"
         }
         if transformedRoot.keys.contains(key) {
             if valuesDiffer(originalRoot[key], transformedRoot[key]) {
                 return "JS Transform"
             }
-            return "Profile"
+            return "Profile 配置"
         }
+        if hasAppDefault { return "应用默认" }
         return "生成结果"
     }
 
-    private func sourceDetail(for key: String, source: String, isAppManaged: Bool, value: Any?) -> String {
-        if isAppManaged {
-            let state = value == nil ? "当前未写入" : "最终由 App 设置写入"
-            return "\(state)；Profile、JS 或 YAML 片段中的同名字段会被移除后重写。"
-        }
+    private func sourceDetail(for key: String, source: String, hasAppDefault: Bool, value: Any?) -> String {
         switch source {
-        case "YAML 片段":
-            return "由启用的 YAML 片段合并到 Profile 后进入 runtime config。"
+        case "YAML 覆写":
+            return "由启用的 YAML 覆写片段合并，优先级高于 Profile、JS Transform 与应用内设置。"
         case "JS Transform":
-            return "由 JS Transform 修改 Profile 后进入 runtime config。"
-        case "Profile":
-            return "保留自当前 Profile / 订阅。"
+            return "由 JS Transform 修改 Profile 后写入，优先级高于应用内同名设置。"
+        case "Profile 配置":
+            return "来自当前 Profile / 订阅；配置中声明的值优先于应用内同名设置。"
+        case "应用默认":
+            let state = value == nil ? "当前未写入" : "当前生效"
+            return "\(state)；仅当 Profile、JS Transform 与 YAML 覆写均未声明此字段时使用应用内设置。"
         default:
-            return "由生成流程保留在最终 runtime config。"
+            return hasAppDefault
+                ? "由生成流程保留；配置未覆盖时回退到应用默认值。"
+                : "由生成流程保留在最终 runtime config。"
         }
     }
 
@@ -281,25 +280,17 @@ struct ProfileQualityAnalyzer {
         ].compactMap { $0 }
 
         return [
-            .init(
-                name: "Profile 原文",
-                changed: false,
-                summary: "\(profileLines) 行，\(Formatters.bytes(Int64(profileBytes)))"
-            ),
+            .init(name: "应用默认", changed: generatedConfig.isEmpty == false, summary: appOverlayFields.joined(separator: "、")),
+            .init(name: "Profile 配置", changed: profileContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false, summary: "\(profileLines) 行，\(Formatters.bytes(Int64(profileBytes)))"),
             .init(
                 name: "JS Transform",
                 changed: settings.jsOverrideEnabled && profileContent != transformedContent,
                 summary: settings.jsOverrideEnabled ? "\(enabledJSFragments.count) 个启用片段" : "未启用"
             ),
             .init(
-                name: "YAML 片段",
+                name: "YAML 覆写",
                 changed: settings.yamlOverrideEnabled && enabledYAMLFragments.isEmpty == false,
                 summary: settings.yamlOverrideEnabled ? enabledYAMLFragments.map(\.name).prefix(3).joined(separator: "、") : "未启用"
-            ),
-            .init(
-                name: "App overlay",
-                changed: generatedConfig.isEmpty == false,
-                summary: appOverlayFields.joined(separator: "、")
             )
         ]
     }

@@ -141,6 +141,30 @@ enum NetworkSecuritySnapshotKind: String, Hashable {
     }
 }
 
+enum NetworkWorkspaceTab: String, CaseIterable, Identifiable {
+    case overview
+    case dns
+    case recovery
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .overview: return "概览"
+        case .dns: return "DNS"
+        case .recovery: return "恢复"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .overview: return "rectangle.grid.2x2"
+        case .dns: return "server.rack"
+        case .recovery: return "arrow.uturn.backward.circle"
+        }
+    }
+}
+
 struct NetworkSecuritySnapshotItem: Identifiable, Hashable {
     var id: NetworkSecuritySnapshotKind { kind }
     var kind: NetworkSecuritySnapshotKind

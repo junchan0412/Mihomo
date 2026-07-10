@@ -1,237 +1,265 @@
-import AppKit
 import SwiftUI
 
 struct NetworkSecurityView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var selectedTakeoverKind: NetworkTakeoverKind? = .systemProxy
+    @State private var draft = AppSettings.default
     @State private var selectedSnapshotKind: NetworkSecuritySnapshotKind? = .systemProxy
 
     private var states: [NetworkTakeoverState] {
-        let current = store.networkTakeoverStates
-        guard current.isEmpty else { return current }
-        return NetworkTakeoverKind.allCases.map { store.networkTakeoverState(for: $0) }
+        store.networkTakeoverStates.isEmpty
+            ? NetworkTakeoverKind.allCases.map { store.networkTakeoverState(for: $0) }
+            : store.networkTakeoverStates
     }
 
-    private var snapshots: [NetworkSecuritySnapshotItem] {
-        store.networkSecuritySnapshotItems
-    }
-
-    private var selectedState: NetworkTakeoverState? {
-        guard let selectedTakeoverKind else { return states.first }
-        return states.first { $0.kind == selectedTakeoverKind } ?? states.first
-    }
-
-    private var selectedSnapshot: NetworkSecuritySnapshotItem? {
-        guard let selectedSnapshotKind else { return snapshots.first }
-        return snapshots.first { $0.kind == selectedSnapshotKind } ?? snapshots.first
-    }
+    private var snapshots: [NetworkSecuritySnapshotItem] { store.networkSecuritySnapshotItems }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                takeoverControls
-                HStack(alignment: .top, spacing: 14) {
-                    takeoverPanel
-                    snapshotPanel
+        VStack(spacing: 0) {
+            header
+            Divider()
+            ScrollView {
+                Group {
+                    switch store.networkWorkspaceTab {
+                    case .overview: overviewPane
+                    case .dns: dnsPane
+                    case .recovery: recoveryPane
+                    }
                 }
-                NetworkRepairCenterView()
-                    .environmentObject(store)
+                .frame(maxWidth: 900, alignment: .topLeading)
+                .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+                .padding(.vertical, MihomoUI.pageVerticalPadding)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
-            .padding(.horizontal, MihomoUI.pageHorizontalPadding)
-            .padding(.vertical, MihomoUI.pageVerticalPadding)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .navigationTitle("网络安全")
+        .navigationTitle("网络")
         .onAppear {
-            ensureSelection()
+            draft = store.settings
             store.refreshNetworkTakeoverStates()
         }
-        .onChange(of: store.networkTakeoverStates) {
-            ensureSelection()
-        }
-        .onChange(of: store.lastSystemProxySnapshot) {
-            ensureSelection()
-        }
-        .onChange(of: store.lastSystemDNSSnapshot) {
-            ensureSelection()
-        }
-        .onChange(of: store.lastTunRecoverySnapshot) {
-            ensureSelection()
-        }
+        .onReceive(store.$settings) { draft = $0 }
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("网络安全")
-                    .font(MihomoUI.Fonts.pageTitle)
-                Text("集中管理系统代理、系统 DNS、TUN 路由、恢复快照和修复动作。")
-                    .font(MihomoUI.Fonts.pageSubtitle)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("网络").font(MihomoUI.Fonts.pageTitle)
+                    Text("按模式开启接管；DNS 配置与异常恢复保持独立。")
+                        .font(MihomoUI.Fonts.pageSubtitle)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
                 Label(overallHealthTitle, systemImage: overallHealthIcon)
-                    .font(MihomoUI.Fonts.bodyMedium)
                     .foregroundStyle(overallHealthColor)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
                     .background(overallHealthColor.opacity(0.12), in: Capsule())
+            }
 
-                HStack(spacing: 8) {
-                    Button {
-                        store.refreshNetworkTakeoverStates(force: true)
-                    } label: {
-                        Label("刷新", systemImage: "arrow.clockwise")
-                    }
-
-                    Button {
-                        Task { await store.runDiagnostics() }
-                    } label: {
-                        Label("诊断", systemImage: "stethoscope")
-                    }
-
-                    Button {
-                        store.exportDiagnosticBundle()
-                    } label: {
-                        Label("导出", systemImage: "square.and.arrow.up")
+            HStack {
+                Picker("网络分类", selection: $store.networkWorkspaceTab) {
+                    ForEach(NetworkWorkspaceTab.allCases) { tab in
+                        Label(tab.title, systemImage: tab.systemImage).tag(tab)
                     }
                 }
-                .buttonStyle(.bordered)
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 520)
+                Spacer()
+                Button { store.refreshNetworkTakeoverStates(force: true) } label: {
+                    Label("刷新状态", systemImage: "arrow.clockwise")
+                }
+            }
+        }
+        .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+        .padding(.vertical, 14)
+    }
+
+    private var overviewPane: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("选择接管方式").font(.title3.weight(.semibold))
+            Text("普通代理优先使用系统代理；需要透明接管更多应用时再开启 TUN。两者会自动互斥。")
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .top, spacing: 14) {
+                takeoverCard(
+                    title: "系统代理",
+                    subtitle: "适合大多数浏览器与遵循 macOS 代理设置的应用。",
+                    icon: "network",
+                    kind: .systemProxy,
+                    isOn: systemProxyBinding
+                )
+                takeoverCard(
+                    title: "TUN / 路由",
+                    subtitle: "透明接管更广，但需要 Helper 权限和正确的恢复快照。",
+                    icon: "point.3.connected.trianglepath.dotted",
+                    kind: .tun,
+                    isOn: tunBinding
+                )
+                takeoverCard(
+                    title: "系统 DNS",
+                    subtitle: "将 macOS DNS 临时切换为指定服务器；与运行时 DNS 不同。",
+                    icon: "server.rack",
+                    kind: .systemDNS,
+                    isOn: systemDNSBinding
+                )
+            }
+
+            if let advisory = store.networkModeAdvisory {
+                Label(advisory, systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+            }
+
+            SettingsSection(title: "使用建议", subtitle: "从最简单的模式开始，需要时再逐步增加接管范围。", systemImage: "lightbulb") {
+                SettingsRow("常规使用") { Text("系统代理").foregroundStyle(.secondary) }
+                SettingsRow("游戏 / 命令行 / 特殊应用") { Text("TUN / 路由").foregroundStyle(.secondary) }
+                SettingsRow("需要固定 macOS DNS") { Text("系统 DNS；服务器在 DNS 标签中设置").foregroundStyle(.secondary) }
             }
         }
     }
 
-    private var takeoverControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                Label("接管模式", systemImage: "switch.2")
-                    .font(.headline)
-                Spacer()
-                if let advisory = store.networkModeAdvisory {
-                    Label(advisory, systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                        .lineLimit(2)
+    private var dnsPane: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsSection(
+                title: "运行时 DNS",
+                subtitle: "写入 mihomo 运行配置。Profile 或覆写中声明的 dns 字段优先级更高。",
+                systemImage: "shippingbox"
+            ) {
+                SettingsRow("Enhanced Mode") {
+                    Picker("Enhanced Mode", selection: $draft.dnsEnhancedMode) {
+                        Text("fake-ip").tag("fake-ip")
+                        Text("redir-host").tag("redir-host")
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 280)
+                }
+                SettingsRow("Nameserver") {
+                    TextField("逗号或换行分隔", text: listBinding(\.dnsNameservers))
+                }
+                SettingsRow("Fallback") {
+                    TextField("可选", text: listBinding(\.dnsFallbacks))
                 }
             }
 
-            HStack(spacing: 18) {
-                Toggle("系统代理", isOn: systemProxyBinding)
-                    .toggleStyle(.switch)
-                Toggle("TUN / 路由", isOn: tunBinding)
-                    .toggleStyle(.switch)
-                Toggle("系统 DNS", isOn: autoDNSBinding)
-                    .toggleStyle(.switch)
-                Spacer()
-                Text("系统代理与 TUN 会自动互斥；DNS 快照、代理快照和 TUN 快照互不混用。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+            SettingsSection(
+                title: "macOS 系统 DNS",
+                subtitle: "开启后修改系统网络服务的 DNS，并创建独立快照用于恢复。",
+                systemImage: "desktopcomputer"
+            ) {
+                SettingsToggleRow("核心运行时接管系统 DNS", isOn: $draft.autoSetSystemDNS)
+                SettingsRow("DNS 服务器") {
+                    TextField("1.1.1.1, 8.8.8.8", text: listBinding(\.systemDNSServers))
+                }
+                SettingsRow("当前状态") {
+                    Text(state(for: .systemDNS).actualState).foregroundStyle(.secondary)
+                }
             }
-        }
-        .font(.callout)
-        .padding(12)
-        .background(.quaternary.opacity(0.24), in: RoundedRectangle(cornerRadius: 8))
-    }
 
-    private var takeoverPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("接管状态")
-                    .font(.headline)
-                Spacer()
-                Text("\(states.count) 项")
-                    .font(.callout)
+                Text(draft == store.settings ? "DNS 设置已应用" : "DNS 设置尚未应用")
                     .foregroundStyle(.secondary)
+                Spacer()
+                Button("取消") { draft = store.settings }.disabled(draft == store.settings)
+                Button("应用 DNS 设置") { Task { await store.saveSettings(draft) } }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(draft == store.settings)
             }
-
-            AppKitTable(
-                rows: states,
-                selection: $selectedTakeoverKind,
-                columns: [
-                    .init(title: "类型", width: 110) { $0.kind.title },
-                    .init(title: "实际状态", width: 220, textColor: takeoverTextColor) { $0.actualState },
-                    .init(title: "恢复动作", width: 170) { $0.recoveryAction }
-                ],
-                hasHorizontalScroller: false
-            )
-            .frame(height: 142)
-
-            if let selectedState {
-                NetworkSecurityDetailBlock(
-                    title: selectedState.kind.title,
-                    systemImage: selectedState.kind.systemImage,
-                    health: selectedState.health,
-                    rows: [
-                        ("期望", selectedState.desiredState),
-                        ("实际", selectedState.actualState),
-                        ("最近操作", selectedState.lastOperation),
-                        ("修复动作", selectedState.recoveryAction)
-                    ]
-                )
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(12)
-        .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.quaternary, lineWidth: 1)
         }
     }
 
-    private var snapshotPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
+    private var recoveryPane: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsSection(
+                title: "恢复快照",
+                subtitle: "每种接管模式使用独立快照，避免代理、DNS 与 TUN 状态互相覆盖。",
+                systemImage: "externaldrive.badge.timemachine"
+            ) {
+                ForEach(snapshots) { snapshot in
+                    Button {
+                        selectedSnapshotKind = snapshot.kind
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: snapshot.kind.systemImage)
+                                .foregroundStyle(healthColor(snapshot.health))
+                                .frame(width: 22)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(snapshot.kind.title).foregroundStyle(.primary)
+                                Text(snapshot.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            Spacer()
+                            Text(snapshot.status).foregroundStyle(healthColor(snapshot.health))
+                            Image(systemName: "chevron.right").foregroundStyle(.tertiary)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if let selected = snapshots.first(where: { $0.kind == selectedSnapshotKind }) ?? snapshots.first {
+                SettingsSection(title: selected.kind.title, subtitle: selected.detail, systemImage: selected.kind.systemImage) {
+                    SettingsRow("状态") { Text(selected.status).foregroundStyle(healthColor(selected.health)) }
+                    SettingsRow("创建时间") { Text(selected.createdAt.map { Formatters.shortDate.string(from: $0) } ?? "-").foregroundStyle(.secondary) }
+                    SettingsRow("文件") { Text(selected.path).foregroundStyle(.secondary).textSelection(.enabled) }
+                }
+            }
+
+            NetworkRepairCenterView().environmentObject(store)
+        }
+    }
+
+    private func takeoverCard(title: String, subtitle: String, icon: String, kind: NetworkTakeoverKind, isOn: Binding<Bool>) -> some View {
+        let item = state(for: kind)
+        return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("快照边界")
-                    .font(.headline)
+                Image(systemName: icon).font(.title2).foregroundStyle(healthColor(item.health))
                 Spacer()
-                Text(snapshotSummary)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                Toggle(title, isOn: isOn).labelsHidden().toggleStyle(.switch)
             }
-
-            AppKitTable(
-                rows: snapshots,
-                selection: $selectedSnapshotKind,
-                columns: [
-                    .init(title: "快照", width: 120) { $0.kind.title },
-                    .init(title: "状态", width: 170, textColor: snapshotTextColor) { $0.status },
-                    .init(title: "路径", width: 280) { $0.path }
-                ],
-                hasHorizontalScroller: true
-            )
-            .frame(height: 142)
-
-            if let selectedSnapshot {
-                NetworkSecurityDetailBlock(
-                    title: selectedSnapshot.kind.title,
-                    systemImage: selectedSnapshot.kind.systemImage,
-                    health: selectedSnapshot.health,
-                    rows: [
-                        ("状态", selectedSnapshot.status),
-                        ("创建", selectedSnapshot.createdAt.map { Formatters.shortDate.string(from: $0) } ?? "-"),
-                        ("边界", selectedSnapshot.detail),
-                        ("文件", selectedSnapshot.path)
-                    ]
-                )
-            }
+            Text(title).font(.headline)
+            Text(subtitle).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Divider()
+            Text(item.actualState).font(.caption).foregroundStyle(healthColor(item.health)).lineLimit(2)
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(12)
-        .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(.quaternary, lineWidth: 1)
-        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 180, alignment: .topLeading)
+        .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
+        .overlay { RoundedRectangle(cornerRadius: 12).stroke(.quaternary, lineWidth: 1) }
     }
 
-    private var snapshotSummary: String {
-        let active = snapshots.filter { $0.createdAt != nil }.count
-        return "\(active)/\(snapshots.count) 个待恢复"
+    private func state(for kind: NetworkTakeoverKind) -> NetworkTakeoverState {
+        states.first(where: { $0.kind == kind }) ?? store.networkTakeoverState(for: kind)
+    }
+
+    private var systemProxyBinding: Binding<Bool> {
+        Binding(get: { store.systemProxyEnabled }, set: { _ in Task { await store.toggleSystemProxy() } })
+    }
+
+    private var tunBinding: Binding<Bool> {
+        Binding(get: { store.settings.tunEnabled }, set: { enabled in Task { await store.setTunEnabled(enabled) } })
+    }
+
+    private var systemDNSBinding: Binding<Bool> {
+        Binding(get: { store.settings.autoSetSystemDNS }, set: { enabled in
+            var settings = store.settings
+            settings.autoSetSystemDNS = enabled
+            Task { await store.saveSettings(settings) }
+        })
+    }
+
+    private func listBinding(_ keyPath: WritableKeyPath<AppSettings, [String]>) -> Binding<String> {
+        Binding(
+            get: { draft[keyPath: keyPath].joined(separator: ", ") },
+            set: { value in
+                draft[keyPath: keyPath] = value.components(separatedBy: CharacterSet(charactersIn: ",\n"))
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { !$0.isEmpty }
+            }
+        )
     }
 
     private var overallHealthTitle: String {
@@ -252,102 +280,7 @@ struct NetworkSecurityView: View {
         }
     }
 
-    private var overallHealthColor: Color {
-        healthColor(store.networkSecurityOverallHealth)
-    }
-
-    private var systemProxyBinding: Binding<Bool> {
-        Binding(
-            get: { store.systemProxyEnabled },
-            set: { _ in Task { await store.toggleSystemProxy() } }
-        )
-    }
-
-    private var tunBinding: Binding<Bool> {
-        Binding(
-            get: { store.settings.tunEnabled },
-            set: { enabled in Task { await store.setTunEnabled(enabled) } }
-        )
-    }
-
-    private var autoDNSBinding: Binding<Bool> {
-        Binding(
-            get: { store.settings.autoSetSystemDNS },
-            set: { enabled in
-                var updated = store.settings
-                updated.autoSetSystemDNS = enabled
-                Task { await store.saveSettings(updated) }
-            }
-        )
-    }
-
-    private func ensureSelection() {
-        if selectedTakeoverKind == nil || states.contains(where: { $0.kind == selectedTakeoverKind }) == false {
-            selectedTakeoverKind = states.first?.kind
-        }
-        if selectedSnapshotKind == nil || snapshots.contains(where: { $0.kind == selectedSnapshotKind }) == false {
-            selectedSnapshotKind = snapshots.first?.kind
-        }
-    }
-
-    private func takeoverTextColor(_ state: NetworkTakeoverState) -> NSColor? {
-        nsColor(state.health)
-    }
-
-    private func snapshotTextColor(_ item: NetworkSecuritySnapshotItem) -> NSColor? {
-        nsColor(item.health)
-    }
-
-    private func nsColor(_ health: NetworkTakeoverHealth) -> NSColor? {
-        switch health {
-        case .ok:
-            return .systemGreen
-        case .warning:
-            return .systemOrange
-        case .failed:
-            return .systemRed
-        case .inactive:
-            return .secondaryLabelColor
-        }
-    }
-}
-
-private struct NetworkSecurityDetailBlock: View {
-    var title: String
-    var systemImage: String
-    var health: NetworkTakeoverHealth
-    var rows: [(String, String)]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .foregroundStyle(healthColor(health))
-                    .frame(width: 18)
-                Text(title)
-                    .font(.callout.weight(.semibold))
-                Spacer()
-            }
-
-            ForEach(rows, id: \.0) { row in
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(row.0)
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 54, alignment: .leading)
-                    Text(row.1)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .textSelection(.enabled)
-                    Spacer(minLength: 0)
-                }
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.background.opacity(0.36), in: RoundedRectangle(cornerRadius: 8))
-    }
+    private var overallHealthColor: Color { healthColor(store.networkSecurityOverallHealth) }
 }
 
 private func healthColor(_ health: NetworkTakeoverHealth) -> Color {

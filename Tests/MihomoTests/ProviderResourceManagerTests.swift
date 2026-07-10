@@ -2,6 +2,22 @@ import XCTest
 @testable import Mihomo
 
 final class ProviderResourceManagerTests: XCTestCase {
+    func testRefreshLocalProviderValidatesExistingFile() throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let runtime = root.appendingPathComponent("Runtime", isDirectory: true)
+        try FileManager.default.createDirectory(at: runtime.appendingPathComponent("rules"), withIntermediateDirectories: true)
+        let file = runtime.appendingPathComponent("rules/local.yaml")
+        try "payload:\n  - example.com\n".write(to: file, atomically: true, encoding: .utf8)
+        let manager = ProviderResourceManager(runtimeDirectory: runtime, backupsDirectory: root.appendingPathComponent("Backups"))
+        let provider = ProviderItem(kind: "Rule", name: "Local", detail: "", providerType: "file", path: "rules/local.yaml")
+
+        let result = try manager.refreshLocal(provider)
+
+        XCTAssertEqual(result.target.standardizedFileURL, file.standardizedFileURL)
+        XCTAssertGreaterThan(result.size, 0)
+    }
+
     func testTargetURLRejectsParentTraversal() throws {
         let root = temporaryDirectory()
         let manager = ProviderResourceManager(

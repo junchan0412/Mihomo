@@ -7,6 +7,8 @@ struct PoliciesView: View {
     @State private var selectedNodeID: String?
     @State private var searchText = ""
     @State private var pendingAutomaticOverride: PolicyNodeRow?
+    @State private var showingGroupEditor = false
+    @State private var groupEditorContent = ""
 
     private var displayGroups: [ProxyGroup] {
         store.proxyGroups.isEmpty ? store.offlineProxyGroups : store.proxyGroups
@@ -107,6 +109,18 @@ struct PoliciesView: View {
         } message: { row in
             Text("\(row.group.name) 是自动测速策略组。手动选择会覆盖当前自动测速结果，关闭代理或重启核心后恢复自动选择。")
         }
+        .sheet(isPresented: $showingGroupEditor, onDismiss: {
+            store.refreshConfigArtifacts()
+        }) {
+            PolicyGroupEditorSheet(
+                profileName: store.activeProfile?.name ?? "当前配置",
+                content: $groupEditorContent,
+                cancel: { showingGroupEditor = false },
+                save: savePolicyGroups
+            )
+            .environmentObject(store)
+            .frame(minWidth: 900, minHeight: 620)
+        }
     }
 
     @ViewBuilder
@@ -157,6 +171,13 @@ struct PoliciesView: View {
             }
 
             Spacer()
+
+            Button {
+                openPolicyGroupEditor()
+            } label: {
+                Label("编辑策略组", systemImage: "slider.horizontal.3")
+            }
+            .disabled(store.activeProfile == nil)
 
             if store.proxyGroups.isEmpty == false {
                 Button {
@@ -348,5 +369,19 @@ struct PoliciesView: View {
 
     private func selectNode(_ row: PolicyNodeRow) {
         Task { await store.selectProxy(group: row.group.name, proxy: row.node.name) }
+    }
+
+    private func openPolicyGroupEditor() {
+        guard let profile = store.activeProfile else { return }
+        groupEditorContent = store.profileContent(for: profile)
+        showingGroupEditor = true
+    }
+
+    private func savePolicyGroups() {
+        guard let profile = store.activeProfile else { return }
+        Task {
+            await store.saveProfileEditor(profileID: profile.id, name: profile.name, content: groupEditorContent)
+            showingGroupEditor = false
+        }
     }
 }

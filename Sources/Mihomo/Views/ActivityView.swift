@@ -162,17 +162,13 @@ struct ActivityView: View {
 
     private var moduleTabs: some View {
         ActivityModuleTabs(selection: moduleTab) { tab in
-            switch tab {
-            case .recent, .active:
+            if let destination = tab.destinationSection {
+                if tab == .dns {
+                    store.networkWorkspaceTab = .dns
+                }
+                store.selectedSection = destination
+            } else if tab.isEnabled {
                 moduleTab = tab
-            case .dns:
-                store.selectedSection = .advanced
-            case .traffic:
-                store.selectedSection = .overview
-            case .logs:
-                store.selectedSection = .logs
-            case .devices:
-                break
             }
         }
     }

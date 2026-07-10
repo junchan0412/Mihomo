@@ -54,6 +54,7 @@ final class AppStore: ObservableObject {
     @Published var settingsMigrationLog: [String] = []
     @Published var diagnosticExportStatus = "尚未导出诊断包"
     @Published var ruleFocusQuery = ""
+    @Published var networkWorkspaceTab: NetworkWorkspaceTab = .overview
 
     let logStore = LogStore()
     let activityStore = RuntimeActivityStore()
