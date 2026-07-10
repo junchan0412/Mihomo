@@ -5,29 +5,17 @@ struct RootView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(selection: $store.selectedSection) {
-                Section("Mihomo") {
-                    ForEach(AppSection.sidebarSections) { section in
-                        Label(section.title, systemImage: section.systemImage)
-                            .tag(section)
-                    }
-                }
-
-                Section("配置") {
-                    Label(AppSection.settings.title, systemImage: AppSection.settings.systemImage)
-                        .tag(AppSection.settings)
-                }
-            }
-            .navigationTitle("Mihomo")
-            .listStyle(.sidebar)
+            MihomoSidebarView(selection: $store.selectedSection)
+                .navigationSplitViewColumnWidth(min: 248, ideal: 276, max: 300)
         } detail: {
             DetailSwitchView(section: store.selectedSection)
                 .id(store.selectedSection)
+                .navigationTitle("")
                 .transition(.opacity)
                 .animation(.easeOut(duration: 0.12), value: store.selectedSection)
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) {
+            ToolbarItem(placement: .principal) {
                 GlobalLogMenu(
                     latestLog: store.logs.last,
                     logs: Array(store.logs.suffix(8)),
@@ -36,6 +24,7 @@ struct RootView: View {
                         store.selectedSection = .logs
                     }
                 )
+                .frame(width: 420, alignment: .leading)
             }
 
             ToolbarItemGroup(placement: .primaryAction) {
@@ -96,7 +85,7 @@ private struct GlobalLogMenu: View {
                     .lineLimit(1)
             }
             .font(.callout.weight(.medium))
-            .frame(maxWidth: 280, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .menuStyle(.button)
         .help("显示最近日志")

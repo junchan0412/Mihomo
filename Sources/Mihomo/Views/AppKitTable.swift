@@ -27,6 +27,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
     var onDoubleClick: ((Row) -> Void)?
     var hasHorizontalScroller: Bool
     var allowsParentScrollPassthrough: Bool
+    var borderType: NSBorderType
 
     init(
         rows: [Row],
@@ -34,7 +35,8 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         columns: [AppKitTableColumn<Row>],
         onDoubleClick: ((Row) -> Void)? = nil,
         hasHorizontalScroller: Bool = true,
-        allowsParentScrollPassthrough: Bool = false
+        allowsParentScrollPassthrough: Bool = false,
+        borderType: NSBorderType = .bezelBorder
     ) {
         self.rows = rows
         self._selection = selection
@@ -42,6 +44,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         self.onDoubleClick = onDoubleClick
         self.hasHorizontalScroller = hasHorizontalScroller
         self.allowsParentScrollPassthrough = allowsParentScrollPassthrough
+        self.borderType = borderType
     }
 
     func makeCoordinator() -> Coordinator {
@@ -71,7 +74,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         scrollView.hasHorizontalScroller = hasHorizontalScroller
         scrollView.allowsParentScrollPassthrough = allowsParentScrollPassthrough
         scrollView.autohidesScrollers = true
-        scrollView.borderType = .bezelBorder
+        scrollView.borderType = borderType
         scrollView.documentView = tableView
 
         context.coordinator.configureColumns(on: tableView)
@@ -82,6 +85,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         guard let tableView = scrollView.documentView as? NSTableView else { return }
         context.coordinator.parent = self
         scrollView.hasHorizontalScroller = hasHorizontalScroller
+        scrollView.borderType = borderType
         (scrollView as? AppKitTableScrollView)?.allowsParentScrollPassthrough = allowsParentScrollPassthrough
         context.coordinator.configureColumns(on: tableView)
         context.coordinator.reloadDataIfNeeded(on: tableView)
