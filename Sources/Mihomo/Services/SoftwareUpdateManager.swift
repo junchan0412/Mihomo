@@ -242,7 +242,18 @@ final class SoftwareUpdateManager {
           fi
         }
 
-        while /usr/bin/pgrep -x "Mihomo" >/dev/null 2>&1; do
+        is_current_app_running() {
+          executable="$current/Contents/MacOS/Mihomo"
+          for pid in $(/usr/bin/pgrep -x "Mihomo" 2>/dev/null || true); do
+            command=$(/bin/ps -p "$pid" -o command= 2>/dev/null || true)
+            case "$command" in
+              "$executable"|"$executable "*) return 0 ;;
+            esac
+          done
+          return 1
+        }
+
+        while is_current_app_running; do
           /bin/sleep 0.2
         done
 

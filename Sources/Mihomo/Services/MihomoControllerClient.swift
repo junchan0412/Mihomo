@@ -5,10 +5,6 @@ struct MihomoControllerClient {
     var port: Int
     var secret: String = ""
 
-    private var baseURL: URL {
-        URL(string: "http://\(host):\(port)")!
-    }
-
     func version() async throws -> String {
         let json = try await getJSON("/version")
         return (json["version"] as? String) ?? "unknown"
@@ -95,7 +91,7 @@ struct MihomoControllerClient {
         }
 
         let dateParser = ConnectionDateParser()
-        let items = rows.map { row -> ConnectionItem in
+        let items = rows.enumerated().map { index, row -> ConnectionItem in
             let metadata = row["metadata"] as? [String: Any] ?? [:]
             let chains = row["chains"] as? [String] ?? []
             let ruleType = row["rule"] as? String ?? ""
@@ -107,7 +103,7 @@ struct MihomoControllerClient {
                 .filter { !$0.isEmpty }
                 .joined(separator: " ")
             return ConnectionItem(
-                id: row["id"] as? String ?? UUID().uuidString,
+                id: row["id"] as? String ?? Self.fallbackConnectionID(metadata: metadata, chains: chains, index: index),
                 host: (metadata["host"] as? String)
                     ?? (metadata["destinationIP"] as? String)
                     ?? (metadata["remoteDestination"] as? String)
@@ -253,7 +249,7 @@ struct MihomoControllerClient {
     }
 
     private func getJSON(_ path: String) async throws -> [String: Any] {
-        let url = endpointURL(path)
+        let url = try endpointURL(path)
         var request = URLRequest(url: url)
         applyAuthorization(to: &request)
         let (data, response) = try await NetworkClient.data(for: request, kind: .controller)
@@ -263,7 +259,7 @@ struct MihomoControllerClient {
     }
 
     private func sendJSON(_ path: String, method: String, body: [String: Any]?) async throws {
-        let url = endpointURL(path)
+        let url = try endpointURL(path)
         var request = URLRequest(url: url)
         request.httpMethod = method
         applyAuthorization(to: &request)
@@ -275,8 +271,29 @@ struct MihomoControllerClient {
         try validate(response: response, data: data)
     }
 
-    private func endpointURL(_ path: String) -> URL {
-        URL(string: path.hasPrefix("/") ? path : "/\(path)", relativeTo: baseURL)!.absoluteURL
+    private func endpointURL(_ path: String) throws -> URL {
+        let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedHost.isEmpty == false, (1...65_535).contains(port) else {
+            throw controllerError("Controller 地址无效：\(host):\(port)")
+        }
+
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = normalizedHost
+        components.port = port
+
+        let rawPath = path.hasPrefix("/") ? path : "/\(path)"
+        if let queryStart = rawPath.firstIndex(of: "?") {
+            components.path = String(rawPath[..<queryStart])
+            components.percentEncodedQuery = String(rawPath[rawPath.index(after: queryStart)...])
+        } else {
+            components.path = rawPath
+        }
+
+        guard let url = components.url else {
+            throw controllerError("Controller 地址无效：\(host):\(port)")
+        }
+        return url
     }
 
     private func applyAuthorization(to request: inout URLRequest) {
@@ -286,7 +303,9 @@ struct MihomoControllerClient {
     }
 
     private func validate(response: URLResponse, data: Data) throws {
-        guard let http = response as? HTTPURLResponse else { return }
+        guard let http = response as? HTTPURLResponse else {
+            throw controllerError("Controller 返回了无效的网络响应。")
+        }
         guard (200..<300).contains(http.statusCode) else {
             let fallback = String(data: data, encoding: .utf8) ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
             throw controllerError(parsedErrorMessage(data: data, fallback: fallback), code: http.statusCode)
@@ -316,6 +335,21 @@ struct MihomoControllerClient {
         if let value = value as? Double { return Int64(value) }
         if let value = value as? String { return Int64(value) ?? 0 }
         return 0
+    }
+
+    private static func fallbackConnectionID(metadata: [String: Any], chains: [String], index: Int) -> String {
+        let parts = [
+            stringValue(metadata["sourceIP"]),
+            stringValue(metadata["sourcePort"]),
+            stringValue(metadata["host"]),
+            stringValue(metadata["destinationIP"]),
+            stringValue(metadata["destinationPort"]),
+            stringValue(metadata["network"]),
+            stringValue(metadata["processPath"]),
+            chains.joined(separator: ">")
+        ].filter { $0.isEmpty == false }
+
+        return parts.isEmpty ? "connection-\(index)" : parts.joined(separator: "|")
     }
 }
 

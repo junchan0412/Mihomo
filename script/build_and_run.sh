@@ -15,7 +15,8 @@ if [[ -z "${DEVELOPER_DIR:-}" && -d "$DEFAULT_DEVELOPER_DIR" ]]; then
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_VERSION="${APP_VERSION:-0.7.0-dev}"
+DEFAULT_APP_VERSION="$(git -C "$ROOT_DIR" describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)"
+APP_VERSION="${APP_VERSION:-${DEFAULT_APP_VERSION:-0.0.0}}"
 APP_BUILD="${APP_BUILD:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%d%H%M%S)}"
 CODESIGN_IDENTITY="${MIHOMO_CODESIGN_IDENTITY:--}"
 CODESIGN_OPTIONS="${MIHOMO_CODESIGN_OPTIONS:-}"
@@ -163,7 +164,7 @@ if command -v codesign >/dev/null 2>&1; then
 fi
 
 open_app() {
-  /usr/bin/open -n -F -a "$APP_BUNDLE"
+  /usr/bin/open -n -F "$APP_BUNDLE"
 }
 
 case "$MODE" in

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct OverviewView: View {
     @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var activityStore: RuntimeActivityStore
 
     var body: some View {
         ScrollView {
@@ -22,7 +23,7 @@ struct OverviewView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("晨光微熹，开启新篇！")
+            Text(greeting)
                 .font(MihomoUI.Fonts.pageTitle)
             Text(store.activeProfile?.name ?? "没有启用的配置")
                 .font(MihomoUI.Fonts.pageSubtitle)
@@ -33,11 +34,11 @@ struct OverviewView: View {
 
     private var summaryStrip: some View {
         HStack(spacing: 0) {
-            OverviewSummaryMetric(title: "总下载", value: totalDownloadText, systemImage: "arrow.down.circle", tint: .blue)
+            OverviewSummaryMetric(title: "当前下载", value: totalDownloadText, systemImage: "arrow.down.circle", tint: .blue)
             OverviewDivider()
-            OverviewSummaryMetric(title: "总上传", value: totalUploadText, systemImage: "arrow.up.circle", tint: .red)
+            OverviewSummaryMetric(title: "当前上传", value: totalUploadText, systemImage: "arrow.up.circle", tint: .red)
             OverviewDivider()
-            OverviewSummaryMetric(title: "连接数", value: "\(store.connections.count)", systemImage: "link", tint: .cyan)
+            OverviewSummaryMetric(title: "连接数", value: "\(activityStore.connections.count)", systemImage: "link", tint: .cyan)
             OverviewDivider()
             OverviewSummaryMetric(title: "访问目标", value: "\(uniqueTargetCount)", systemImage: "location.north.circle", tint: .purple)
         }
@@ -58,18 +59,18 @@ struct OverviewView: View {
             OverviewPanel(title: "流量趋势", systemImage: "chart.line.uptrend.xyaxis", tint: .blue) {
                 VStack(alignment: .leading, spacing: 16) {
                     HStack(spacing: 36) {
-                        TrafficRateLabel(title: "↓", value: Formatters.rate(store.downloadRate), total: totalDownloadText, tint: .blue)
-                        TrafficRateLabel(title: "↑", value: Formatters.rate(store.uploadRate), total: totalUploadText, tint: .red)
+                        TrafficRateLabel(title: "↓", value: Formatters.rate(activityStore.downloadRate), total: totalDownloadText, tint: .blue)
+                        TrafficRateLabel(title: "↑", value: Formatters.rate(activityStore.uploadRate), total: totalUploadText, tint: .red)
                     }
-                    TrafficGraphView(samples: store.trafficSamples)
+                    TrafficGraphView(samples: activityStore.trafficSamples)
                         .frame(minHeight: 220)
                 }
             }
             .frame(minHeight: 314)
 
             VStack(spacing: MihomoUI.cardSpacing) {
-                OverviewSideStat(title: "活跃连接", value: "\(store.connections.count)", detail: "已关闭 0", systemImage: "link", tint: .cyan)
-                OverviewSideStat(title: "核心状态", value: store.coreStatus, detail: store.controllerEventStreamStatus, systemImage: "cpu", tint: .purple)
+                OverviewSideStat(title: "活跃连接", value: "\(activityStore.connections.count)", detail: "当前会话", systemImage: "link", tint: .cyan)
+                OverviewSideStat(title: "核心状态", value: store.coreStatus, detail: activityStore.eventStreamStatus, systemImage: "cpu", tint: .purple)
                 OverviewSideStat(title: "出站模式", value: modeTitle(store.currentMode), detail: store.isCoreRunning ? "运行中" : "未运行", systemImage: "arrow.triangle.branch", tint: .red)
             }
             .frame(width: 318)
@@ -140,12 +141,20 @@ struct OverviewView: View {
         }
     }
 
+    private var greeting: String {
+        switch Calendar.current.component(.hour, from: Date()) {
+        case 5..<12: return "早上好，网络状态一目了然。"
+        case 12..<18: return "下午好，保持连接稳定顺畅。"
+        default: return "晚上好，随时掌握网络状态。"
+        }
+    }
+
     private var totalDownloadBytes: Int64 {
-        store.connections.reduce(Int64(0)) { $0 + $1.download }
+        activityStore.totalDownloadBytes
     }
 
     private var totalUploadBytes: Int64 {
-        store.connections.reduce(Int64(0)) { $0 + $1.upload }
+        activityStore.totalUploadBytes
     }
 
     private var totalDownloadText: String {
@@ -161,28 +170,19 @@ struct OverviewView: View {
     }
 
     private var uniqueTargetCount: Int {
-        Set(store.connections.map(\.host).filter { !$0.isEmpty }).count
+        activityStore.uniqueTargetCount
     }
 
     private var directTrafficBytes: Int64 {
-        trafficBytes { connection in
-            let text = "\(connection.rule) \(connection.chain)".lowercased()
-            return text.contains("direct") || text.contains("直连")
-        }
+        activityStore.directTrafficBytes
     }
 
     private var proxyTrafficBytes: Int64 {
-        max(0, totalDownloadBytes + totalUploadBytes - directTrafficBytes)
+        activityStore.proxyTrafficBytes
     }
 
     private var timelineSamples: [TrafficSample] {
-        Array(store.trafficSamples.suffix(28))
-    }
-
-    private func trafficBytes(where predicate: (ConnectionItem) -> Bool) -> Int64 {
-        store.connections.reduce(Int64(0)) { total, connection in
-            predicate(connection) ? total + connection.download + connection.upload : total
-        }
+        Array(activityStore.trafficSamples.suffix(28))
     }
 
     private func timelineHeight(for sample: TrafficSample) -> CGFloat {

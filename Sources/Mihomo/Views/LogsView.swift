@@ -3,16 +3,17 @@ import SwiftUI
 
 struct LogsView: View {
     @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var logStore: LogStore
     @State private var searchText = ""
     @State private var selectedLevel = "全部"
 
     private var levels: [String] {
-        ["全部"] + Array(Set(store.logs.map { $0.level.uppercased() })).sorted()
+        ["全部"] + Array(Set(logStore.entries.map { $0.level.uppercased() })).sorted()
     }
 
     private var filteredLogs: [LogEntry] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return store.logs.filter { entry in
+        return logStore.entries.filter { entry in
             let levelMatches = selectedLevel == "全部" || entry.level.uppercased() == selectedLevel
             let textMatches = query.isEmpty || entry.message.localizedCaseInsensitiveContains(query)
             return levelMatches && textMatches
@@ -30,7 +31,7 @@ struct LogsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button(store.logsPaused ? "继续日志" : "暂停日志") {
+                Button(logStore.isPaused ? "继续日志" : "暂停日志") {
                     store.toggleLogPause()
                 }
                 Button("打开日志文件") {
@@ -55,7 +56,7 @@ struct LogsView: View {
 
                 Spacer()
 
-                Text(store.logsPaused ? "已暂停，缓冲 \(store.bufferedLogCount) 条 · \(filteredLogs.count) / \(store.logs.count)" : "\(filteredLogs.count) / \(store.logs.count)")
+                Text(logStore.isPaused ? "已暂停，缓冲 \(logStore.bufferedCount) 条 · \(filteredLogs.count) / \(logStore.entries.count)" : "\(filteredLogs.count) / \(logStore.entries.count)")
                     .foregroundStyle(.secondary)
             }
 

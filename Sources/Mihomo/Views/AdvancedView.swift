@@ -48,7 +48,7 @@ struct AdvancedView: View {
             .padding(.top, 8)
             .background(.bar)
         }
-        .navigationTitle("高级")
+        .navigationTitle("高级工具")
         .onAppear {
             draft = store.settings
             store.refreshConfigArtifacts()
@@ -61,9 +61,9 @@ struct AdvancedView: View {
     private var header: some View {
         HStack {
             VStack(alignment: .leading) {
-                Text("高级")
+                Text("高级工具")
                     .font(MihomoUI.Fonts.pageTitle)
-                Text("Helper、远程访问、DNS、Sniffer、备份与导入。")
+                Text("面向维护与排障的 Helper、远程访问、DNS、Sniffer、备份与导入工具。")
                     .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
@@ -173,10 +173,6 @@ struct AdvancedView: View {
     private var dnsGroup: some View {
         GroupBox("DNS") {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                GridRow {
-                    Toggle("启动时设置系统 DNS", isOn: $draft.autoSetSystemDNS)
-                    TextField("1.1.1.1, 8.8.8.8", text: listBinding(\.systemDNSServers))
-                }
                 GridRow {
                     Text("Enhanced Mode")
                     Picker("Enhanced Mode", selection: $draft.dnsEnhancedMode) {

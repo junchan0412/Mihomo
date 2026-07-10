@@ -11,14 +11,11 @@ enum AppSection: String, CaseIterable, Identifiable {
     case advanced
     case logs
     case diagnostics
-    case settings
 
     var id: String { rawValue }
 
     static var sidebarSections: [AppSection] {
-        allCases.filter { section in
-            section != .settings && section != .logs
-        }
+        allCases.filter { $0 != .logs }
     }
 
     var title: String {
@@ -30,10 +27,9 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .profiles: return "配置"
         case .rules: return "规则"
         case .resources: return "资源"
-        case .advanced: return "高级"
+        case .advanced: return "高级工具"
         case .logs: return "日志"
         case .diagnostics: return "诊断"
-        case .settings: return "设置"
         }
     }
 
@@ -49,7 +45,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .advanced: return "wrench.and.screwdriver"
         case .logs: return "terminal"
         case .diagnostics: return "stethoscope"
-        case .settings: return "gearshape"
         }
     }
 }

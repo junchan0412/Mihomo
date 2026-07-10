@@ -1,13 +1,13 @@
-# Mihomo macOS 原生客户端开发报告（第三版）
+# Mihomo macOS 原生客户端开发报告（第四版）
 
-生成日期：2026-07-07
-报告定位：基于当前仓库状态，对第二版开发报告进行更新。第三版重点跟进 v1.4.2 之后的阶段推进：M1 网络安全中心、M2 配置 Inspector 字段来源、DNS/TUN/Provider/Sniffer schema 风险检查、v1.6.0 Provider 更新备份与回滚、v1.7.0 Controller WebSocket 事件流，以及 v1.8.0 许可证清单打包门禁。
+生成日期：2026-07-11
+报告定位：基于 `v1.8.75`（`e199595`）基线记录本轮完整重构。第四版重点跟进高频状态隔离、后台日志批量落盘、Controller/WebSocket 稳定性、原生 Settings 信息架构、Toolbar accessibility、设置 schema v3 迁移、Activity 大型 View 拆分，以及 production release gate 验证。
 
 ## 1. 当前结论
 
-当前项目已经从早期规划推进到 v1.8.0 许可证清单打包发布候选阶段。主 App 使用 SwiftUI 为主、AppKit 为辅的架构，已经形成概览、网络安全、活动、策略、配置、规则、资源、高级、日志、诊断、设置等完整工作台；特权操作已从主 App 收口到 XPC Helper；配置生成、资源更新、Profile 编辑、备份同步、应用内更新等高级能力也已落地。
+当前项目已经推进到以 v1.8.75 为基线的系统性重构完成阶段。主 App 继续采用 SwiftUI 为主、AppKit 为辅的架构，形成概览、网络安全、活动、策略、配置、规则、资源、高级工具、日志、诊断等主工作台；设置使用独立原生 Settings 窗口；特权操作由 XPC Helper 承担；配置生成、资源更新、Profile 编辑、备份同步、应用内更新等高级能力均保留。
 
-本轮修复后，项目的日常可用性更接近成熟网络工具：日志入口不再绑定单一页面，策略页在核心未启动时也能读取本地配置结构，资源页改为高密度表格并支持 Provider 并发下载、上一版本备份和手动回滚，活动页可通过 Controller WebSocket 实时接收流量、日志和连接事件并保留轮询降级，网络安全中心集中展示系统代理、系统 DNS、TUN、快照边界和修复动作，配置 Inspector 能解释 runtime 字段来自 Profile、JS Transform、YAML 片段还是 App overlay。但当前项目还不应直接定义为“稳定公开发行版”。它更接近“可长期自用和小范围测试的 Beta 前状态”。核心原因不是功能不足，而是以下几个系统性硬化点仍需要继续收敛：
+本轮重构后，连接、速率、流量样本、WebSocket 状态和日志不再通过单一 `AppStore.objectWillChange` 扩散到所有页面；日志写盘改为 actor 串行批量处理；Controller 非法 endpoint、非 HTTP 响应和缺失连接 ID 均有明确降级；WebSocket 增加 heartbeat；设置、必要网络选项与高级工具完成边界重排；主工具栏恢复核心启停、系统代理和 TUN 快捷控制；Activity 由 1,093 行单文件拆为 4 个职责文件。项目已经具备稳定自用和扩大测试范围的基础，但正式公开分发仍需继续完成 Developer ID、公证和更多真实网络接管场景验证：
 
 - 网络接管状态机和快照边界已集中到网络安全中心，但还需要更多真实系统场景回归。
 - Helper 已承担高权限操作，但授权校验、操作审计、失败回滚还需要面向真实分发继续硬化。
@@ -21,7 +21,7 @@
 | 工程组织 | SwiftPM 工程，包含主 App、Helper、Shared 协议三个 target | `Package.swift` |
 | 平台要求 | macOS 14+，Swift 5.9+ | `Package.swift`、`README.md` |
 | UI 技术 | SwiftUI 主体，AppKit 承接高密度表格、日志文本视图、窗口细节 | `Sources/Mihomo/Views` |
-| 主界面 | Sidebar 分区覆盖概览、网络安全、活动、策略、配置、规则、资源、高级、日志、诊断、设置 | `AppSection`、`RootView` |
+| 主界面 | Sidebar 覆盖概览、网络安全、活动、策略、配置、规则、资源、高级工具、日志、诊断；设置通过独立原生 Settings 窗口打开 | `AppSection`、`RootView`、`MihomoSidebarView` |
 | Controller 能力 | 封装版本、模式、策略组、连接、流量、Provider、延迟测试等 API | `MihomoControllerClient.swift`、`AppStore.swift` |
 | 特权能力 | XPC Helper 执行 core 启停、配置校验、系统代理、系统 DNS、TUN 快照、LaunchDaemon 管理 | `MihomoHelper`、`HelperClient.swift` |
 | 配置生成 | 使用 Yams 结构化合并 YAML，清理 App 管理键，支持 YAML/JS 覆写、禁用规则、候选配置与回滚 | `RuntimeConfigBuilder.swift`、`ProfileStore.swift` |
@@ -373,6 +373,7 @@ v1.5.0 / M2 发布候选完成状态：
 | v1.8.70 | 完成活动页维护性拆分：将连接详情窗口、tab、inspector、流量 tile 和详情行从 `ActivityView.swift` 拆入 `ConnectionDetailPanelView.swift`；`ActivityView.swift` 从 387 行降至 223 行，新增详情窗口文件 165 行；maintainability audit warning 6 -> 5，over-max 继续为 0 个。 | 使用 `./script/maintainability_audit.sh --output dist/maintainability/maintainability-v1.8.70.md --summary dist/maintainability/maintainability-v1.8.70.summary.tsv` 验证 110 个 Swift 文件、5 个 warning 文件、0 个 over-max 文件，最大文件为 `HelperNetworkTools.swift` 384 行；使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test --filter AppKitAccessibilityTests` 验证 2 个 AppKit bridge 测试；通过完整 `swift test` 73 个 XCTest、`git diff --check`、`./script/ci_release_gate.sh`、`./script/package_release.sh 1.8.70`、`./script/release_smoke_test.sh 1.8.70` 和 `./script/update_replacement_smoke.sh 1.8.70`；`dist/releases/Mihomo-1.8.70-provenance.md` 已记录 manifest 验签和 artifact checksums；发布包 SHA-256 为 `fbb42730294497ee6eb1cb39c5002e905f6eb8896450b1aa9e896763e04741db`。 |
 | v1.8.71 | 完成 Helper 网络工具维护性拆分：将 TUN recovery 路由快照、默认路由恢复、utun 新增路由筛选和回滚描述从 `HelperNetworkTools.swift` 拆入 `HelperTunRecoveryTool.swift`；`HelperNetworkTools.swift` 从 384 行降至 222 行，新增 TUN recovery 文件 163 行；maintainability audit warning 5 -> 4，over-max 继续为 0 个。 | 使用 `./script/maintainability_audit.sh --output dist/maintainability/maintainability-v1.8.71.md --summary dist/maintainability/maintainability-v1.8.71.summary.tsv` 验证 111 个 Swift 文件、4 个 warning 文件、0 个 over-max 文件，最大文件为 `HelperService.swift` 374 行；使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test --filter HelperPathPolicyTests` 验证 6 个 Helper path/snapshot 测试；通过完整 `swift test` 73 个 XCTest、`git diff --check`、`./script/ci_release_gate.sh`、`./script/package_release.sh 1.8.71`、`./script/release_smoke_test.sh 1.8.71` 和 `./script/update_replacement_smoke.sh 1.8.71`；`dist/releases/Mihomo-1.8.71-provenance.md` 已记录 manifest 验签和 artifact checksums；发布包 SHA-256 为 `58da8bd78337549c9c5c65ed17e62f85c93453425ff55423a0a3da8364700fad`。 |
 | v1.8.72 | 完成参考图 UI refresh：全局日志菜单移入标题右侧并加宽；新增 ClashMac 风格 `MihomoSidebarView` 和概览 dashboard helper；活动页收敛为单一连接表格面板并复用无边框 `AppKitTable`。maintainability audit 维持 113 个 Swift 文件、4 个 warning 文件、0 个 over-max 文件，最大文件为 `HelperService.swift` 374 行。 | 使用 `./script/maintainability_audit.sh --output dist/maintainability/maintainability-v1.8.72.md --summary dist/maintainability/maintainability-v1.8.72.summary.tsv` 验证维护性报告；使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test` 验证 73 个 XCTest；通过 `git diff --check`、`./script/ci_release_gate.sh`、`./script/package_release.sh 1.8.72`、`./script/release_smoke_test.sh 1.8.72` 和 `./script/update_replacement_smoke.sh 1.8.72`；`dist/releases/Mihomo-1.8.72-provenance.md` 已记录 manifest 验签和 artifact checksums；发布包 SHA-256 为 `d92723f8ae62c655d250d177b5d33bcc7c9422257b96247c0db8cc219dda9465`。 |
+| v1.8.75（重构基线） | 完成运行时、网络、UI/UX 与维护性重构：新增 `RuntimeActivityStore`、`LogStore` 和 `LogPersistenceWriter`，隔离连接/流量/日志高频通知并后台批量写盘；Controller endpoint 改为安全校验，WebSocket 增加 15 秒 heartbeat 和轮询降级，缺失连接 ID 使用确定性 fallback；设置移入原生 Settings 窗口，必要 DNS 选项归入网络设置，高级页改名“高级工具”；工具栏恢复核心/系统代理/TUN 独立按钮并修复 AX 标签复用；设置迁移按 v1→v2→v3 逐级执行；Activity 1,093 行单文件拆为 4 个职责文件；构建脚本从 Git tag 推导版本并打开工作区绝对 bundle。 | 使用指定 Xcode beta 完成 87 个 XCTest，0 failures；通过 `git diff --check`、`./script/build_and_run.sh --verify` 和 `./script/ci_release_gate.sh`；真实设置文件由 v2 自动迁移到 v3，第二次启动未重复迁移；AX tree 实测核心、系统代理、TUN 均为独立 Button 且 label/value/identifier 正确；maintainability audit 扫描 126 个 Swift 文件，7 个 warning、0 个 over-max。 |
 
 ## 11. 稳定性与性能审查记录
 
@@ -425,3 +426,61 @@ v1.4.2 完成状态：
 | AppKit 渲染优化 | 已实现 | 表格先比较行数组再计算签名；日志视图先比较日志 entries 再拼接文本。 |
 | 活动页渲染收敛 | 已实现 | 连接表格行在一次 body 内只计算一次。 |
 | UI 布局稳定性 | 已实现 | 策略启动空态、配置页可滚动和主窗口尺寸稳定修复纳入 1.4.2。 |
+
+## 13. v1.8.75 系统性重构记录
+
+### 13.1 重构目标与边界
+
+本轮以 tag `v1.8.75`、commit `e199595` 为源码基线，不恢复旧 v1.8.0 原型。目标是减少高频无关刷新和主线程 I/O、降低内存常驻压力、提高 Controller 网络容错、收敛设置与高级工具边界，并在不删除现有专业能力的前提下降低日常操作门槛。
+
+### 13.2 状态、性能与内存
+
+| 项目 | 重构前 | 重构后 |
+| --- | --- | --- |
+| 高频运行状态 | 连接、速率、流量样本和 WebSocket 状态通过 `AppStore` 发布，设置/配置等无关页面可能被连带刷新 | `RuntimeActivityStore` 单独发布运行状态，连接摘要在快照变化时一次计算 |
+| 日志观察范围 | 日志数组、暂停状态和缓冲计数由 `AppStore` 发布 | `LogStore` 仅使日志消费者失效 |
+| 日志落盘 | 主线程逐条打开文件并写入 | `LogPersistenceWriter` actor 串行收集并批量写盘，shutdown 时 flush |
+| 生命周期清理 | polling、profile refresh、WebSocket 和待写日志可能跨退出边界继续存活 | shutdown 明确取消任务、停止事件流并等待日志 flush |
+| Activity 维护性 | `ActivityView.swift` 1,093 行，混合 root、sidebar、detail、presentation helper | 拆为 `ActivityView.swift`、`ActivitySidebarView.swift`、`ActivityConnectionDetailView.swift` 和 `ConnectionItem+ActivityPresentation.swift` |
+
+### 13.3 网络稳定性
+
+- Controller HTTP/WebSocket URL 构造不再 force unwrap；非法 host/port 返回可读错误。
+- HTTP 请求明确拒绝非 HTTP 响应，避免把协议异常当作普通解码失败。
+- WebSocket 使用 15 秒 ping heartbeat，并继续保留 bounded reconnect backoff 与 polling fallback。
+- Controller 未提供 connection ID 时，按连接字段生成稳定确定性 ID，避免刷新时随机 UUID 导致表格整批抖动。
+- 软件更新安装脚本只等待目标 bundle 可执行路径对应的进程退出，不再被机器上其他同名 `Mihomo` 进程阻塞。
+
+### 13.4 UI、UX 与设置层级
+
+- Settings 从主 Sidebar 内容路由移除，使用 `SettingsLink` 打开独立 macOS Settings 窗口。
+- 系统 DNS 自动接管及 DNS 服务器属于必要网络选项，移入“设置 → 网络”；资源安装、备份、加密、外部 UI、Geo 与诊断类操作保留在“高级工具”。
+- Toolbar 使用独立原生 item 提供核心、系统代理和 TUN 快捷控制；每个按钮具有稳定 accessibility label、value、identifier 和 Button role。
+- 删除菜单栏无实际数据的“进程与客户端”占位行及重复“更新资源”入口。
+- 概览使用按时间变化的问候语；“总上传/总下载”改为“当前上传/当前下载”；连接状态说明改为“当前会话”。
+
+### 13.5 设置迁移与构建一致性
+
+- `SettingsMigrator` 按目标版本逐级执行迁移。v2→v3 即使没有额外数据变换，也必须持久化 v3 schema marker 并记录明确日志。
+- 新增测试验证 v2 设置写入临时文件后为 v3，重新加载不再触发迁移；v1 数据会依次执行 v2、v3 两步。
+- `build_and_run.sh` 默认从最近 `v*` Git tag 推导 `CFBundleShortVersionString`，从当前 commit 推导 build。
+- App 启动使用 `open -n -F <absolute bundle path>`，防止误开 `/Applications/Mihomo.app` 或更新缓存内的同名客户端。
+
+### 13.6 验证证据
+
+| 门禁 | 结果 |
+| --- | --- |
+| SwiftPM XCTest | 87 tests，0 failures |
+| Settings 实机迁移 | v2 自动保存为 v3；第二次启动迁移日志计数不增加 |
+| Bundle 身份 | `CFBundleShortVersionString=1.8.75`；基线构建验证为 `e199595`，提交后由脚本使用新 commit hash |
+| 运行进程 | 确认为工作区 `dist/Mihomo.app/Contents/MacOS/Mihomo` |
+| Accessibility | AX tree 中核心、系统代理、TUN 分别为独立 Button，Description/Help/Value/ID 正确 |
+| 视觉 QA | 概览、活动页、独立 Settings 窗口和网络设置在暗色模式下无重叠、截断或布局回归 |
+| Maintainability | 126 个 Swift 文件，7 个 warning，0 个 over-max；最大文件 `HelperService.swift` 374 行 |
+| Release gate | production build、bundle 必需文件、严格 codesign、release identity、ZIP 内容和 maintainability 全部通过 |
+
+### 13.7 后续风险
+
+- 本地 ad-hoc 包仍需要在受保护环境完成 Developer ID、Team ID、notarization 和 stapled ticket 验证。
+- 7 个 350–500 行 warning 文件应在后续触碰时继续拆分或补充直接行为测试，但当前没有超过 500 行的 Swift 文件。
+- 本轮已实测 toolbar 和主要页面 AX tree；完整 VoiceOver、键盘-only 与所有高级工具流程仍应按 `accessibility_qa_checklist.sh` 持续留证。

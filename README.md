@@ -2,7 +2,22 @@
 
 Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repository contains the MVP described in `Mihomo-macOS-development-report.md`: a professional desktop shell inspired by Surge's information architecture, while using mihomo as the runtime engine.
 
-## 1.0 MVP Scope
+## v1.8.75 Refactor
+
+The current refactor branch is based on tag `v1.8.75` (`e199595`) and focuses on runtime efficiency, network resilience, maintainability, and a lower-friction macOS user experience:
+
+- High-frequency connection, traffic, WebSocket, and log state now lives in focused `RuntimeActivityStore` and `LogStore` objects instead of invalidating the entire `AppStore` UI tree.
+- App log persistence is serialized and batched by `LogPersistenceWriter`, with pending work flushed during app shutdown.
+- Controller HTTP/WebSocket endpoints are validated without force unwraps; WebSocket streams use heartbeat pings, bounded recovery backoff, polling fallback, and stable fallback connection identities.
+- Settings use a dedicated macOS Settings window. Required DNS takeover options live in the Network settings pane, while artifact management, backup, encryption, and diagnostic operations remain under Advanced Tools.
+- The main toolbar exposes separate Core, System Proxy, and TUN controls with stable accessibility labels, values, identifiers, and native toolbar item roles.
+- The Activity screen is split into focused root, sidebar, detail, and presentation files. The previous 1,093-line view no longer exceeds the 500-line maintainability threshold.
+- Settings schema migration now advances v1/v2 data through every required step to v3 and persists the marker once, preventing repeated migration on every launch.
+- `script/build_and_run.sh` derives the app version from the latest Git tag and opens the exact workspace `dist/Mihomo.app` bundle instead of another installed copy with the same name.
+
+See `Mihomo-macOS-development-report.md` for the implementation record, architecture boundaries, validation evidence, and remaining release risks.
+
+## Current Scope
 
 - SwiftUI-first macOS app with a native sidebar, toolbar, Settings scene, and Menu Bar Extra.
 - AppKit-backed `NSTableView` and `NSTextView` bridges for dense connection/policy/profile tables and high-volume log scrolling, with explicit VoiceOver labels, table/text-area roles, and keyboard activation for detail tables.
@@ -64,7 +79,7 @@ Useful modes:
 ./script/build_and_run.sh --telemetry
 ```
 
-Pull requests and pushes to `main`/`codex/**` run GitHub Actions CI with `git diff --check`, `swift test`, and a non-interactive release-bundle gate. The test suite covers update version comparison, pre-install package validation failures for bad SHA-256, missing `Mihomo.app`, and bundle id mismatch, installer rollback when replacement copy or post-copy signature verification fails, Controller WebSocket reconnect/fallback backoff behavior, and Provider rollback history/file-preservation edges. The gate rebuilds the app bundle, verifies nested signatures, required Helper/JS worker/notices files, `Info.plist` identity, release signing identity, and the corresponding zip entries, then writes a non-blocking maintainability report for Swift files above the configured size thresholds. Release smoke cryptographically verifies the Ed25519 update manifest signature against the compiled public key and confirms a tampered manifest copy is rejected. Private-key manifest signing remains a protected release-environment step.
+Pull requests and pushes to `main`/`codex/**` run GitHub Actions CI with `git diff --check`, `swift test`, and a non-interactive release-bundle gate. The current suite contains 87 XCTest cases, including runtime-store invalidation isolation, batched log persistence, settings v1/v2-to-v3 migration persistence, update rollback, Controller WebSocket recovery, endpoint validation, stable connection identity, Provider rollback, AppKit accessibility, and configuration/security boundaries. The gate rebuilds the app bundle, verifies nested signatures, required Helper/JS worker/notices files, `Info.plist` identity, release signing identity, and the corresponding zip entries, then writes a non-blocking maintainability report for Swift files above the configured size thresholds. Release smoke cryptographically verifies the Ed25519 update manifest signature against the compiled public key and confirms a tampered manifest copy is rejected. Private-key manifest signing remains a protected release-environment step.
 
 To run the maintainability report locally:
 
@@ -72,7 +87,7 @@ To run the maintainability report locally:
 ./script/maintainability_audit.sh
 ```
 
-The v1.8.72 UI refresh moves the global log picker beside the window title with a wider control, rebuilds the sidebar and Overview screen around a ClashMac-style dashboard, and narrows Activity into a single full-height connections panel. The local maintainability report now shows 113 scanned Swift files, 4 warning files, 0 over-max files, and `HelperService.swift` as the largest file at 374 lines.
+The v1.8.75 refactor preserves the ClashMac-style dashboard while separating high-frequency runtime state, moving Settings into its native window, restoring Core/System Proxy/TUN toolbar controls, and splitting the Activity feature into focused files. The local maintainability report now shows 126 scanned Swift files, 7 warning files, 0 over-max files, and `HelperService.swift` as the largest file at 374 lines.
 
 ## Network Takeover Smoke
 

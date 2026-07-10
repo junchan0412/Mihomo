@@ -5,7 +5,7 @@ struct MihomoSidebarView: View {
     @Binding var selection: AppSection
 
     private let mainSections: [AppSection] = [.overview, .activity, .policies, .rules, .profiles, .logs]
-    private let engineSections: [AppSection] = [.settings, .networkSecurity, .resources, .advanced, .diagnostics]
+    private let engineSections: [AppSection] = [.networkSecurity, .resources, .advanced, .diagnostics]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -15,6 +15,7 @@ struct MihomoSidebarView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     sidebarGroup(title: "常规", sections: mainSections)
                     sidebarGroup(title: "引擎", sections: engineSections)
+                    settingsGroup
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 2)
@@ -92,6 +93,34 @@ struct MihomoSidebarView: View {
         .foregroundStyle(.secondary)
     }
 
+    private var settingsGroup: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("应用")
+                .font(MihomoUI.Fonts.caption)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 2)
+
+            SettingsLink {
+                HStack(spacing: 10) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 14, weight: .medium))
+                        .symbolRenderingMode(.hierarchical)
+                        .frame(width: 18)
+                    Text("设置")
+                        .font(MihomoUI.Fonts.sidebar)
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+            .help("打开设置窗口")
+        }
+    }
+
     private func sidebarStatus(_ title: String, isOn: Bool, activeColor: Color) -> some View {
         HStack(spacing: 8) {
             Circle()
@@ -138,8 +167,7 @@ private extension AppSection {
         switch self {
         case .activity: return "连接"
         case .networkSecurity: return "网络"
-        case .settings: return "通用"
-        case .advanced: return "高级"
+        case .advanced: return "高级工具"
         case .diagnostics: return "诊断"
         default: return title
         }

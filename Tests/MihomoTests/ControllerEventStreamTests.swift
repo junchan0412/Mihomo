@@ -62,7 +62,7 @@ final class ControllerEventStreamTests: XCTestCase {
             secret: " controller-token "
         )
 
-        let request = stream.request(
+        let request = try stream.request(
             path: "logs",
             queryItems: [URLQueryItem(name: "level", value: "warning")]
         )
@@ -76,6 +76,17 @@ final class ControllerEventStreamTests: XCTestCase {
         XCTAssertEqual(components.queryItems, [URLQueryItem(name: "level", value: "warning")])
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer controller-token")
         XCTAssertEqual(request.timeoutInterval, NetworkRequestKind.controller.requestTimeout)
+    }
+
+    func testInvalidEndpointFailsWithoutCrashing() async {
+        let stream = MihomoControllerEventStream(host: "", port: 0).trafficEvents()
+
+        do {
+            for try await _ in stream {}
+            XCTFail("Expected invalid endpoint error")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("地址无效"))
+        }
     }
 
     func testRecoveryStateUsesPollingBeforeFirstLiveEvent() {

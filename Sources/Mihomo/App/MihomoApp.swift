@@ -28,6 +28,8 @@ struct MihomoApp: App {
         WindowGroup("Mihomo", id: "main") {
             RootView()
                 .environmentObject(store)
+                .environmentObject(store.logStore)
+                .environmentObject(store.activityStore)
                 .frame(minWidth: 1080, minHeight: 700)
                 .task {
                     await store.bootstrap()
@@ -104,7 +106,7 @@ struct MihomoApp: App {
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
 
-                Button(store.logsPaused ? "继续日志" : "暂停日志") {
+                Button("切换日志暂停") {
                     store.toggleLogPause()
                 }
                 .keyboardShortcut("p", modifiers: [.command, .option])
@@ -141,6 +143,7 @@ struct MihomoApp: App {
         Window("连接详情", id: "connection-detail") {
             ConnectionDetailPanelView()
                 .environmentObject(store)
+                .environmentObject(store.activityStore)
                 .frame(minWidth: 340, minHeight: 420)
         }
         .defaultSize(width: 380, height: 520)
@@ -162,10 +165,20 @@ struct MihomoApp: App {
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(store)
+                .environmentObject(store.logStore)
         } label: {
-            Text(store.menuBarTitle)
+            MenuBarStatusLabel(store: store, activityStore: store.activityStore)
         }
         .menuBarExtraStyle(.menu)
+    }
+}
+
+private struct MenuBarStatusLabel: View {
+    @ObservedObject var store: AppStore
+    @ObservedObject var activityStore: RuntimeActivityStore
+
+    var body: some View {
+        Text(store.menuBarTitle)
     }
 }
 

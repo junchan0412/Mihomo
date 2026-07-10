@@ -105,6 +105,31 @@ final class ControllerAndHelperMockTests: XCTestCase {
         XCTAssertEqual(secondsStart.timeIntervalSince1970, 1_700_000_100, accuracy: 0.001)
     }
 
+    func testConnectionWithoutControllerIDGetsStableFallbackIdentity() throws {
+        let payload: [String: Any] = [
+            "connections": [[
+                "metadata": [
+                    "host": "example.com",
+                    "sourceIP": "127.0.0.1",
+                    "sourcePort": 51000,
+                    "destinationIP": "93.184.216.34",
+                    "destinationPort": 443,
+                    "network": "tcp",
+                    "processPath": "/Applications/Safari.app/Contents/MacOS/Safari"
+                ],
+                "chains": ["Auto", "node-a"],
+                "upload": 1,
+                "download": 2
+            ]]
+        ]
+
+        let first = try XCTUnwrap(MihomoControllerClient.parseConnections(from: payload).0.first?.id)
+        let second = try XCTUnwrap(MihomoControllerClient.parseConnections(from: payload).0.first?.id)
+
+        XCTAssertEqual(first, second)
+        XCTAssertTrue(first.contains("example.com"))
+    }
+
     func testMockControllerProviderParsing() {
         let providerJSON: [String: Any] = [
             "providers": [

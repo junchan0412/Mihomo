@@ -16,20 +16,47 @@ struct RootView: View {
         }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                GlobalLogMenu(
-                    latestLog: store.logs.last,
-                    logs: Array(store.logs.suffix(8)),
-                    clearLogs: store.clearVisibleLogs,
-                    openFullLog: {
-                        store.selectedSection = .logs
-                    }
-                )
+                GlobalLogMenuHost()
                 .frame(width: 260, alignment: .leading)
             }
 
-            ToolbarItemGroup(placement: .primaryAction) {
-                GlobalQuickControlsView()
+            ToolbarItem(id: "core-control", placement: .primaryAction) {
+                ToolbarStateButton(
+                    title: "核心",
+                    accessibilityTitle: "核心",
+                    accessibilityIdentifier: "toolbar.core",
+                    systemImage: store.isCoreRunning ? "stop.fill" : "play.fill",
+                    isOn: store.isCoreRunning
+                ) {
+                    Task { await store.toggleCore() }
+                }
+            }
 
+            ToolbarItem(id: "system-proxy-control", placement: .primaryAction) {
+                ToolbarStateButton(
+                    title: "代理",
+                    accessibilityTitle: "系统代理",
+                    accessibilityIdentifier: "toolbar.system-proxy",
+                    systemImage: "network",
+                    isOn: store.systemProxyEnabled
+                ) {
+                    Task { await store.toggleSystemProxy() }
+                }
+            }
+
+            ToolbarItem(id: "tun-control", placement: .primaryAction) {
+                ToolbarStateButton(
+                    title: "TUN",
+                    accessibilityTitle: "TUN",
+                    accessibilityIdentifier: "toolbar.tun",
+                    systemImage: "lock.shield",
+                    isOn: store.settings.tunEnabled
+                ) {
+                    Task { await store.setTunEnabled(!store.settings.tunEnabled) }
+                }
+            }
+
+            ToolbarItem(id: "mode-control", placement: .primaryAction) {
                 Picker("模式", selection: Binding(
                     get: { store.currentMode },
                     set: { mode in Task { await store.setMode(mode) } }
@@ -43,6 +70,22 @@ struct RootView: View {
             }
         }
         .background(WindowIdentifierView(identifier: AppWindowIdentifier.main))
+    }
+}
+
+private struct GlobalLogMenuHost: View {
+    @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var logStore: LogStore
+
+    var body: some View {
+        GlobalLogMenu(
+            latestLog: logStore.entries.last,
+            logs: Array(logStore.entries.suffix(8)),
+            clearLogs: store.clearVisibleLogs,
+            openFullLog: {
+                store.selectedSection = .logs
+            }
+        )
     }
 }
 
@@ -118,32 +161,10 @@ private struct GlobalLogMenu: View {
     }
 }
 
-private struct GlobalQuickControlsView: View {
-    @EnvironmentObject private var store: AppStore
-
-    var body: some View {
-        HStack(spacing: 6) {
-            ToolbarStateButton(
-                title: "代理",
-                systemImage: "network",
-                isOn: store.systemProxyEnabled
-            ) {
-                Task { await store.toggleSystemProxy() }
-            }
-
-            ToolbarStateButton(
-                title: "TUN",
-                systemImage: "lock.shield",
-                isOn: store.settings.tunEnabled
-            ) {
-                Task { await store.setTunEnabled(!store.settings.tunEnabled) }
-            }
-        }
-    }
-}
-
 private struct ToolbarStateButton: View {
     var title: String
+    var accessibilityTitle: String
+    var accessibilityIdentifier: String
     var systemImage: String
     var isOn: Bool
     var action: () -> Void
@@ -159,11 +180,15 @@ private struct ToolbarStateButton: View {
                 Text(title)
             }
             .font(MihomoUI.Fonts.bodyMedium)
-            .frame(minWidth: title == "代理" ? 54 : 46)
+            .frame(minWidth: title == "TUN" ? 46 : 54)
         }
+        .id(accessibilityIdentifier)
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .help("\(title == "代理" ? "系统代理" : title)\(isOn ? "已启用" : "未启用")")
+        .accessibilityLabel(Text(accessibilityTitle))
+        .accessibilityValue(Text(isOn ? "已启用" : "未启用"))
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .help("\(accessibilityTitle)\(isOn ? "已启用" : "未启用")")
     }
 }
 
@@ -192,8 +217,6 @@ struct DetailSwitchView: View {
             LogsView()
         case .diagnostics:
             DiagnosticsView()
-        case .settings:
-            SettingsRootView()
         }
     }
 }

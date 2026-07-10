@@ -7,5 +7,7 @@ final class SettingsPresentationTests: XCTestCase {
 
         XCTAssertEqual(titles, ["核心", "Controller", "网络", "常驻"])
         XCTAssertFalse(titles.contains("高级"))
+        XCTAssertFalse(AppSection.allCases.map(\.title).contains("设置"))
+        XCTAssertTrue(AppSection.allCases.map(\.title).contains("高级工具"))
     }
 }

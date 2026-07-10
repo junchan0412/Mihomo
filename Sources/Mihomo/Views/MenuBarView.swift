@@ -52,14 +52,6 @@ struct MenuBarView: View {
 
             Divider()
 
-            Text("进程与客户端")
-                .foregroundStyle(.secondary)
-            Text("-")
-            Text("-")
-            Text("-")
-
-            Divider()
-
             Button("更新资源") {
                 Task { await store.updateAllExternalResources() }
             }
@@ -78,9 +70,7 @@ struct MenuBarView: View {
                     Task { await store.testAllProxyDelays() }
                 }
 
-                Button(store.logsPaused ? "继续日志" : "暂停日志") {
-                    store.toggleLogPause()
-                }
+                LogPauseMenuButton()
 
                 Button("轻量模式") {
                     store.enterLightweightMode()
@@ -94,10 +84,6 @@ struct MenuBarView: View {
 
                 Button("刷新订阅") {
                     Task { await store.refreshAllRemoteProfiles() }
-                }
-
-                Button("更新资源") {
-                    Task { await store.updateAllExternalResources() }
                 }
 
                 Button("更新 Geo 数据") {
@@ -241,6 +227,17 @@ struct MenuBarView: View {
         MainWindowPresenter.present(openWindow: openWindow)
     }
 
+}
+
+private struct LogPauseMenuButton: View {
+    @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var logStore: LogStore
+
+    var body: some View {
+        Button(logStore.isPaused ? "继续日志" : "暂停日志") {
+            store.toggleLogPause()
+        }
+    }
 }
 
 private struct PolicyGroupMenuLabel: View {

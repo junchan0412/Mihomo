@@ -82,59 +82,14 @@ extension AppStore {
     }
 
     private func persistLog(_ entry: LogEntry) {
-        try? AppPaths.ensureBaseDirectories()
         let line = "\(Formatters.shortDate.string(from: entry.date)) [\(entry.level.uppercased())] \(entry.message)\n"
-        writeLogLine(line, to: AppPaths.appLogFile, prefix: "mihomo-app")
-        if entry.level.lowercased() == "core" {
-            writeLogLine(line, to: AppPaths.coreLogFile, prefix: "mihomo-core")
-        }
-        pruneOldLogsIfNeeded()
-    }
-
-    private func writeLogLine(_ line: String, to url: URL, prefix: String) {
-        rotateLogIfNeeded(url: url, prefix: prefix)
-        if FileManager.default.fileExists(atPath: url.path) == false {
-            FileManager.default.createFile(atPath: url.path, contents: nil)
-        }
-        guard let handle = try? FileHandle(forWritingTo: url) else { return }
-        defer { try? handle.close() }
-        _ = try? handle.seekToEnd()
-        handle.write(Data(line.utf8))
-    }
-
-    private func rotateLogIfNeeded(url: URL, prefix: String) {
-        guard settings.logMaxFileSizeMB > 0,
-              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? NSNumber
-        else { return }
-
-        let maxBytes = Int64(settings.logMaxFileSizeMB) * 1_024 * 1_024
-        guard size.int64Value >= maxBytes else { return }
-        let rotated = AppPaths.rotatedLogFile(prefix: prefix)
-        try? FileManager.default.removeItem(at: rotated)
-        try? FileManager.default.moveItem(at: url, to: rotated)
-    }
-
-    private func pruneOldLogsIfNeeded() {
-        let now = Date()
-        if let lastLogPruneAt, now.timeIntervalSince(lastLogPruneAt) < 300 {
-            return
-        }
-        lastLogPruneAt = now
-        guard settings.logRetentionDays > 0,
-              let urls = try? FileManager.default.contentsOfDirectory(
-                at: AppPaths.logsDirectory,
-                includingPropertiesForKeys: [.contentModificationDateKey],
-                options: [.skipsHiddenFiles]
-              )
-        else { return }
-
-        let cutoff = now.addingTimeInterval(-Double(settings.logRetentionDays) * 24 * 60 * 60)
-        for url in urls where url.pathExtension == "log" && url.lastPathComponent.hasPrefix("mihomo-") {
-            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey])
-            if let modified = values?.contentModificationDate, modified < cutoff {
-                try? FileManager.default.removeItem(at: url)
-            }
+        let policy = LogPersistencePolicy(
+            maxFileSizeBytes: Int64(settings.logMaxFileSizeMB) * 1_024 * 1_024,
+            retentionDays: settings.logRetentionDays
+        )
+        let isCore = entry.level.lowercased() == "core"
+        Task { [logPersistenceWriter] in
+            await logPersistenceWriter.enqueue(line: line, isCore: isCore, policy: policy)
         }
     }
 }

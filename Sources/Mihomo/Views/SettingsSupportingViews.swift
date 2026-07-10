@@ -73,6 +73,10 @@ struct SettingsNetworkPane: View {
         SettingsSection(title: "网络接管", systemImage: "network") {
             SettingsToggleRow("允许局域网访问", isOn: $draft.allowLAN)
             SettingsToggleRow("在运行配置中启用 TUN", isOn: $draft.tunEnabled)
+            SettingsToggleRow("核心启动时设置系统 DNS", isOn: $draft.autoSetSystemDNS)
+            SettingsRow("系统 DNS 服务器") {
+                TextField("1.1.1.1, 8.8.8.8", text: listBinding(\.systemDNSServers))
+            }
             SettingsToggleRow("停止/退出时回滚 TUN DNS 与路由", isOn: $draft.restoreTunOnStop)
             SettingsToggleRow("策略切换后关闭连接", isOn: $draft.closeConnectionsOnPolicyChange)
             SettingsToggleRow("退出时恢复系统代理", isOn: $draft.restoreSystemProxyOnQuit)
@@ -82,6 +86,18 @@ struct SettingsNetworkPane: View {
                     .textSelection(.enabled)
             }
         }
+    }
+
+    private func listBinding(_ keyPath: WritableKeyPath<AppSettings, [String]>) -> Binding<String> {
+        Binding(
+            get: { draft[keyPath: keyPath].joined(separator: ", ") },
+            set: { text in
+                draft[keyPath: keyPath] = text
+                    .components(separatedBy: CharacterSet(charactersIn: ",\n"))
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                    .filter { $0.isEmpty == false }
+            }
+        )
     }
 }
 

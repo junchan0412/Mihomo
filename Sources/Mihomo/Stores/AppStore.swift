@@ -14,12 +14,7 @@ final class AppStore: ObservableObject {
     @Published var currentMode = "rule"
     @Published var systemProxyEnabled = false
     @Published var proxyGroups: [ProxyGroup] = []
-    @Published var connections: [ConnectionItem] = []
-    @Published var logs: [LogEntry] = []
     @Published var diagnostics: [DiagnosticResult] = []
-    @Published var uploadRate: Int64 = 0
-    @Published var downloadRate: Int64 = 0
-    @Published var trafficSamples: [TrafficSample] = []
     @Published var newRemoteURL = ""
     @Published var newRemoteName = ""
     @Published var profileAutoRefreshStatus = "未启用"
@@ -33,8 +28,6 @@ final class AppStore: ObservableObject {
     @Published var profileRefreshFailureCount = 0
     @Published var delayTestStatus = "未运行"
     @Published var delayTestFailureSummary = ""
-    @Published var logsPaused = false
-    @Published var bufferedLogCount = 0
     @Published var offlineProxyGroups: [ProxyGroup] = []
     @Published var configFragments: [ConfigFragment] = []
     @Published var disabledRules: Set<String> = []
@@ -61,7 +54,49 @@ final class AppStore: ObservableObject {
     @Published var settingsMigrationLog: [String] = []
     @Published var diagnosticExportStatus = "尚未导出诊断包"
     @Published var ruleFocusQuery = ""
-    @Published var controllerEventStreamStatus = "轮询"
+
+    let logStore = LogStore()
+    let activityStore = RuntimeActivityStore()
+
+    var connections: [ConnectionItem] {
+        get { activityStore.connections }
+        set { activityStore.replaceConnections(newValue) }
+    }
+
+    var uploadRate: Int64 {
+        get { activityStore.uploadRate }
+        set { activityStore.uploadRate = newValue }
+    }
+
+    var downloadRate: Int64 {
+        get { activityStore.downloadRate }
+        set { activityStore.downloadRate = newValue }
+    }
+
+    var trafficSamples: [TrafficSample] {
+        get { activityStore.trafficSamples }
+        set { activityStore.trafficSamples = newValue }
+    }
+
+    var controllerEventStreamStatus: String {
+        get { activityStore.eventStreamStatus }
+        set { activityStore.eventStreamStatus = newValue }
+    }
+
+    var logs: [LogEntry] {
+        get { logStore.entries }
+        set { logStore.entries = newValue }
+    }
+
+    var logsPaused: Bool {
+        get { logStore.isPaused }
+        set { logStore.isPaused = newValue }
+    }
+
+    var bufferedLogCount: Int {
+        get { logStore.bufferedCount }
+        set { logStore.bufferedCount = newValue }
+    }
 
     let profileStore = ProfileStore()
     let systemProxy = SystemProxyManager()
@@ -79,6 +114,7 @@ final class AppStore: ObservableObject {
     let helperAuditService = HelperAuditService()
     let softwareUpdateManager = SoftwareUpdateManager()
     let profileQualityAnalyzer = ProfileQualityAnalyzer()
+    let logPersistenceWriter = LogPersistenceWriter()
     var pollingTask: Task<Void, Never>?
     var profileRefreshTask: Task<Void, Never>?
     var profileRefreshQueueRunning = false
@@ -91,7 +127,6 @@ final class AppStore: ObservableObject {
     var bufferedLogs: [LogEntry] = []
     var pendingLogEntries: [LogEntry] = []
     var logFlushTask: Task<Void, Never>?
-    var lastLogPruneAt: Date?
     var ruleHitBaselines: [String: Int] = [:]
     var availableUpdateManifestURL: URL?
     var lastNetworkOperations: [NetworkTakeoverKind: String] = [:]

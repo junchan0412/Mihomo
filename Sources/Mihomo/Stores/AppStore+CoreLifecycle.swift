@@ -225,11 +225,15 @@ extension AppStore {
     func shutdown() async {
         shutdownRequested = true
         profileRefreshTask?.cancel()
+        profileRefreshTask = nil
+        pollingTask?.cancel()
+        pollingTask = nil
         stopControllerEventStreams(status: "轮询")
         _ = try? await helperClient.stopCore(
             restoreDNS: settings.autoSetSystemDNS || (settings.restoreSystemProxyOnQuit && systemProxyEnabled),
             restoreTun: settings.tunEnabled && settings.restoreTunOnStop
         )
+        await logPersistenceWriter.flush()
     }
 
     func startPolling() {

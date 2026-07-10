@@ -84,7 +84,15 @@ struct MihomoControllerEventStream {
         transform: @escaping (Data) -> ControllerStreamEvent?
     ) -> AsyncThrowingStream<ControllerStreamEvent, Error> {
         AsyncThrowingStream { continuation in
-            let task = session.webSocketTask(with: request(path: path, queryItems: queryItems))
+            let webSocketRequest: URLRequest
+            do {
+                webSocketRequest = try request(path: path, queryItems: queryItems)
+            } catch {
+                continuation.finish(throwing: error)
+                return
+            }
+
+            let task = session.webSocketTask(with: webSocketRequest)
             task.resume()
 
             func receiveNext() {
@@ -103,27 +111,46 @@ struct MihomoControllerEventStream {
             }
 
             receiveNext()
+            let heartbeatTask = Task {
+                while Task.isCancelled == false {
+                    try? await Task.sleep(nanoseconds: 15_000_000_000)
+                    guard Task.isCancelled == false else { return }
+                    task.sendPing { error in
+                        guard let error else { return }
+                        task.cancel(with: .goingAway, reason: nil)
+                        continuation.finish(throwing: error)
+                    }
+                }
+            }
             continuation.onTermination = { _ in
+                heartbeatTask.cancel()
                 task.cancel(with: .goingAway, reason: nil)
             }
         }
     }
 
-    func request(path: String, queryItems: [URLQueryItem] = []) -> URLRequest {
-        var request = URLRequest(url: webSocketURL(path: path, queryItems: queryItems))
+    func request(path: String, queryItems: [URLQueryItem] = []) throws -> URLRequest {
+        var request = URLRequest(url: try webSocketURL(path: path, queryItems: queryItems))
         request.timeoutInterval = NetworkRequestKind.controller.requestTimeout
         applyAuthorization(to: &request)
         return request
     }
 
-    private func webSocketURL(path: String, queryItems: [URLQueryItem]) -> URL {
+    private func webSocketURL(path: String, queryItems: [URLQueryItem]) throws -> URL {
+        let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedHost.isEmpty == false, (1...65_535).contains(port) else {
+            throw controllerError("Controller WebSocket 地址无效：\(host):\(port)")
+        }
         var components = URLComponents()
         components.scheme = "ws"
-        components.host = host
+        components.host = normalizedHost
         components.port = port
         components.path = path.hasPrefix("/") ? path : "/\(path)"
         components.queryItems = queryItems.isEmpty ? nil : queryItems
-        return components.url!
+        guard let url = components.url else {
+            throw controllerError("Controller WebSocket 地址无效：\(host):\(port)")
+        }
+        return url
     }
 
     private func applyAuthorization(to request: inout URLRequest) {
@@ -149,5 +176,9 @@ struct MihomoControllerEventStream {
         if let value = value as? Double { return Int64(value) }
         if let value = value as? String { return Int64(value) ?? 0 }
         return 0
+    }
+
+    private func controllerError(_ message: String) -> NSError {
+        NSError(domain: "MihomoControllerWebSocket", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
 }

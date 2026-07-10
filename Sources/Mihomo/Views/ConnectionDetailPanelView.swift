@@ -2,11 +2,12 @@ import SwiftUI
 
 struct ConnectionDetailPanelView: View {
     @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var activityStore: RuntimeActivityStore
     @State private var tab: ConnectionDetailTab = .summary
 
     private var connection: ConnectionItem? {
         guard let id = store.connectionDetailConnectionID else { return nil }
-        return store.connections.first { $0.id == id }
+        return activityStore.connections.first { $0.id == id }
     }
 
     var body: some View {
