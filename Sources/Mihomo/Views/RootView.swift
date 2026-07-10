@@ -84,10 +84,11 @@ private struct GlobalLogMenu: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            .font(.callout.weight(.medium))
+            .font(MihomoUI.Fonts.bodyMedium)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .menuStyle(.button)
+        .controlSize(.small)
         .help("显示最近日志")
     }
 
@@ -165,7 +166,7 @@ private struct ToolbarStateButton: View {
                     .frame(width: 6, height: 6)
                 Text(title)
             }
-            .font(.callout.weight(.medium))
+            .font(MihomoUI.Fonts.bodyMedium)
             .frame(minWidth: 58)
         }
         .buttonStyle(.bordered)

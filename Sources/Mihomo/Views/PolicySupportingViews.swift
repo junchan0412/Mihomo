@@ -180,15 +180,15 @@ struct PolicyStartupEmptyState: View {
             Spacer(minLength: 0)
 
             Image(systemName: isCoreRunning ? "point.3.connected.trianglepath.dotted" : "power.circle")
-                .font(.system(size: 42, weight: .semibold))
+                .font(.system(size: 34, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 6) {
                 Text(title)
-                    .font(.title2.weight(.semibold))
+                    .font(MihomoUI.Fonts.pageTitle)
                 Text(message)
-                    .font(.callout)
+                    .font(MihomoUI.Fonts.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -234,9 +234,13 @@ struct PolicyStartupEmptyState: View {
 
             Spacer(minLength: 0)
         }
-        .padding(28)
+        .padding(MihomoUI.pageHorizontalPadding)
         .frame(maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
-        .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 8))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(MihomoUI.cardStroke, lineWidth: 1)
+        }
     }
 
     private var title: String {
@@ -261,10 +265,10 @@ private struct PolicyStartupFact: View {
     var body: some View {
         VStack(spacing: 3) {
             Text(title)
-                .font(.caption)
+                .font(MihomoUI.Fonts.caption)
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.callout.weight(.medium))
+                .font(MihomoUI.Fonts.bodyMedium)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
@@ -281,14 +285,14 @@ struct PolicySearchEmptyState: View {
             Spacer(minLength: 0)
 
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 36, weight: .semibold))
+                .font(.system(size: 30, weight: .semibold))
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 5) {
                 Text("没有匹配的策略")
-                    .font(.title3.weight(.semibold))
+                    .font(MihomoUI.Fonts.pageTitle)
                 Text("未找到包含“\(query)”的策略组或节点。")
-                    .font(.callout)
+                    .font(MihomoUI.Fonts.body)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -301,8 +305,12 @@ struct PolicySearchEmptyState: View {
 
             Spacer(minLength: 0)
         }
-        .padding(28)
+        .padding(MihomoUI.pageHorizontalPadding)
         .frame(maxWidth: .infinity, minHeight: 420, maxHeight: .infinity)
-        .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(MihomoUI.cardStroke, lineWidth: 1)
+        }
     }
 }

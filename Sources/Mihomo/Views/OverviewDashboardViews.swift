@@ -9,15 +9,15 @@ struct OverviewSummaryMetric: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
-                .font(.title3)
+                .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(tint)
-                .frame(width: 30)
+                .frame(width: 26)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(MihomoUI.Fonts.caption)
                     .foregroundStyle(.secondary)
                 Text(value)
-                    .font(.title2.weight(.bold))
+                    .font(MihomoUI.Fonts.metric)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
             }
@@ -29,10 +29,10 @@ struct OverviewSummaryMetric: View {
 
 struct OverviewDivider: View {
     var body: some View {
-        Rectangle()
-            .fill(Color.secondary.opacity(0.18))
-            .frame(width: 1, height: 52)
-            .padding(.horizontal, 12)
+            Rectangle()
+                .fill(Color.secondary.opacity(0.18))
+            .frame(width: 1, height: 44)
+            .padding(.horizontal, 10)
     }
 }
 
@@ -57,16 +57,15 @@ struct OverviewPanel<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Label(title, systemImage: systemImage)
-                .font(.callout.weight(.semibold))
+                .font(MihomoUI.Fonts.sectionTitle)
                 .foregroundStyle(.secondary)
                 .labelStyle(.titleAndIcon)
                 .symbolRenderingMode(.monochrome)
                 .tint(tint)
             content
         }
-        .padding(20)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
+        .mihomoCard()
     }
 }
 
@@ -82,10 +81,10 @@ struct TrafficRateLabel: View {
                 Text(title)
                     .foregroundStyle(tint)
                 Text(value)
-                    .font(.title2.weight(.bold))
+                    .font(MihomoUI.Fonts.metric)
             }
             Text(total)
-                .font(.callout.weight(.medium))
+                .font(MihomoUI.Fonts.bodyMedium)
                 .foregroundStyle(.secondary)
         }
     }
@@ -101,21 +100,20 @@ struct OverviewSideStat: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label(title, systemImage: systemImage)
-                .font(.callout.weight(.semibold))
+                .font(MihomoUI.Fonts.sectionTitle)
                 .foregroundStyle(.secondary)
                 .tint(tint)
             Text(value)
-                .font(.title.weight(.bold))
+                .font(MihomoUI.Fonts.metricLarge)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
             Text(detail)
-                .font(.callout.weight(.medium))
+                .font(MihomoUI.Fonts.bodyMedium)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, minHeight: 98, alignment: .leading)
-        .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
+        .frame(maxWidth: .infinity, minHeight: 90, alignment: .leading)
+        .mihomoCard()
     }
 }
 
@@ -139,7 +137,7 @@ struct TrafficDistributionBar: View {
             }
         }
         .frame(height: 12)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
+        .background(MihomoUI.mutedFill, in: RoundedRectangle(cornerRadius: 4))
     }
 }
 
@@ -155,10 +153,10 @@ struct DistributionLegend: View {
                     .fill(tint)
                     .frame(width: 8, height: 8)
                 Text(value)
-                    .font(.headline)
+                    .font(MihomoUI.Fonts.sectionTitle)
             }
             Text(title)
-                .font(.caption.weight(.medium))
+                .font(MihomoUI.Fonts.caption)
                 .foregroundStyle(.secondary)
         }
     }

@@ -83,9 +83,9 @@ struct RulesView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("规则")
-                    .font(.title2.bold())
+                    .font(MihomoUI.Fonts.pageTitle)
                 Text("\(store.rules.count) 条规则，\(store.disabledRules.count) 条已禁用。")
-                    .font(.callout)
+                    .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
 

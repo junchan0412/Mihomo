@@ -8,8 +8,9 @@ struct DiagnosticsView: View {
             HStack {
                 VStack(alignment: .leading) {
                     Text("诊断")
-                        .font(.largeTitle.bold())
+                        .font(MihomoUI.Fonts.pageTitle)
                     Text("检查核心、运行配置、系统代理快照、TUN 状态、Controller 和日志。")
+                        .font(MihomoUI.Fonts.pageSubtitle)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -90,7 +91,8 @@ struct DiagnosticsView: View {
                 }
             }
         }
-        .padding(24)
+        .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+        .padding(.vertical, MihomoUI.pageVerticalPadding)
         .navigationTitle("诊断")
     }
 

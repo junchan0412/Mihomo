@@ -26,7 +26,8 @@ struct SettingsRootView: View {
                     }
                 }
                 .frame(maxWidth: 760, alignment: .leading)
-                .padding(24)
+                .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+                .padding(.vertical, MihomoUI.pageVerticalPadding)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
         }
@@ -49,9 +50,9 @@ struct SettingsRootView: View {
         HStack(spacing: 16) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("设置")
-                    .font(.title2.bold())
+                    .font(MihomoUI.Fonts.pageTitle)
                 Text("核心、Controller、网络接管与常驻行为。")
-                    .font(.callout)
+                    .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
 
@@ -65,7 +66,7 @@ struct SettingsRootView: View {
             .pickerStyle(.segmented)
             .frame(width: 430)
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, MihomoUI.pageHorizontalPadding)
         .padding(.vertical, 14)
     }
 

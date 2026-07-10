@@ -5,26 +5,27 @@ struct OverviewView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: MihomoUI.sectionSpacing) {
                 header
                 summaryStrip
                 mainDashboardGrid
                 secondaryDashboardGrid
                 trafficTimelinePanel
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 24)
+            .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+            .padding(.vertical, MihomoUI.pageVerticalPadding)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .background(MihomoUI.pageBackground)
         .navigationTitle("概览")
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 4) {
             Text("晨光微熹，开启新篇！")
-                .font(.title2.weight(.bold))
+                .font(MihomoUI.Fonts.pageTitle)
             Text(store.activeProfile?.name ?? "没有启用的配置")
-                .font(.callout.weight(.medium))
+                .font(MihomoUI.Fonts.pageSubtitle)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
         }
@@ -40,40 +41,47 @@ struct OverviewView: View {
             OverviewDivider()
             OverviewSummaryMetric(title: "访问目标", value: "\(uniqueTargetCount)", systemImage: "location.north.circle", tint: .purple)
         }
-        .padding(.vertical, 18)
-        .padding(.horizontal, 20)
-        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
+        .padding(.vertical, 16)
+        .padding(.horizontal, 18)
+        .background(
+            MihomoUI.cardFill,
+            in: RoundedRectangle(cornerRadius: MihomoUI.cornerRadius, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: MihomoUI.cornerRadius, style: .continuous)
+                .stroke(MihomoUI.cardStroke, lineWidth: 1)
+        }
     }
 
     private var mainDashboardGrid: some View {
-        HStack(alignment: .top, spacing: 18) {
+        HStack(alignment: .top, spacing: MihomoUI.cardSpacing) {
             OverviewPanel(title: "流量趋势", systemImage: "chart.line.uptrend.xyaxis", tint: .blue) {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 44) {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 36) {
                         TrafficRateLabel(title: "↓", value: Formatters.rate(store.downloadRate), total: totalDownloadText, tint: .blue)
                         TrafficRateLabel(title: "↑", value: Formatters.rate(store.uploadRate), total: totalUploadText, tint: .red)
                     }
                     TrafficGraphView(samples: store.trafficSamples)
-                        .frame(minHeight: 230)
+                        .frame(minHeight: 220)
                 }
             }
-            .frame(minHeight: 332)
+            .frame(minHeight: 314)
 
-            VStack(spacing: 18) {
+            VStack(spacing: MihomoUI.cardSpacing) {
                 OverviewSideStat(title: "活跃连接", value: "\(store.connections.count)", detail: "已关闭 0", systemImage: "link", tint: .cyan)
                 OverviewSideStat(title: "核心状态", value: store.coreStatus, detail: store.controllerEventStreamStatus, systemImage: "cpu", tint: .purple)
                 OverviewSideStat(title: "出站模式", value: modeTitle(store.currentMode), detail: store.isCoreRunning ? "运行中" : "未运行", systemImage: "arrow.triangle.branch", tint: .red)
             }
-            .frame(width: 330)
+            .frame(width: 318)
         }
     }
 
     private var secondaryDashboardGrid: some View {
-        HStack(alignment: .top, spacing: 18) {
+        HStack(alignment: .top, spacing: MihomoUI.cardSpacing) {
             OverviewPanel(title: "流量分布", systemImage: "arrow.triangle.branch", tint: .indigo) {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 16) {
                     Text(totalTrafficText)
-                        .font(.title.weight(.bold))
+                        .font(MihomoUI.Fonts.metricLarge)
                     TrafficDistributionBar(directBytes: directTrafficBytes, proxyBytes: proxyTrafficBytes)
                     HStack(spacing: 22) {
                         DistributionLegend(title: "直连", value: Formatters.bytes(directTrafficBytes), tint: .cyan)
@@ -86,7 +94,7 @@ struct OverviewView: View {
             OverviewPanel(title: "策略组", systemImage: "square.grid.2x2", tint: .purple) {
                 if store.proxyGroups.isEmpty {
                     Text("暂无数据")
-                        .font(.headline)
+                        .font(MihomoUI.Fonts.sectionTitle)
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, minHeight: 126, alignment: .center)
                 } else {
@@ -100,7 +108,7 @@ struct OverviewView: View {
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
-                            .font(.callout.weight(.medium))
+                            .font(MihomoUI.Fonts.bodyMedium)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -119,9 +127,9 @@ struct OverviewView: View {
                         .frame(height: timelineHeight(for: timelineSamples[index]))
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120, alignment: .bottomLeading)
+            .frame(maxWidth: .infinity, minHeight: 106, maxHeight: 106, alignment: .bottomLeading)
         }
-        .frame(minHeight: 186)
+        .frame(minHeight: 168)
     }
 
     private func modeTitle(_ mode: String) -> String {

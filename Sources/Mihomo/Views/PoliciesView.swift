@@ -64,7 +64,8 @@ struct PoliciesView: View {
             }
             mainContent
         }
-        .padding(24)
+        .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+        .padding(.vertical, MihomoUI.pageVerticalPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("策略")
         .onAppear {
@@ -148,8 +149,9 @@ struct PoliciesView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("策略")
-                    .font(.largeTitle.bold())
+                    .font(MihomoUI.Fonts.pageTitle)
                 Text(headerSubtitle)
+                    .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }

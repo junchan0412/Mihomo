@@ -43,7 +43,8 @@ struct ResourcesView: View {
             resourceTablePane
             selectedResourcePane
         }
-        .padding(24)
+        .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+        .padding(.vertical, MihomoUI.pageVerticalPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("资源")
         .onAppear {
@@ -62,9 +63,9 @@ struct ResourcesView: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("外部资源")
-                    .font(.largeTitle.bold())
+                    .font(MihomoUI.Fonts.pageTitle)
                 Text("从其他文件或 URL 加载 Proxy Provider、Rule Provider 与 Geo 数据。")
-                    .font(.callout)
+                    .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
 

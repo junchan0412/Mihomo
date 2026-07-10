@@ -24,8 +24,9 @@ struct LogsView: View {
             HStack {
                 VStack(alignment: .leading) {
                     Text("日志")
-                        .font(.largeTitle.bold())
+                        .font(MihomoUI.Fonts.pageTitle)
                     Text("高频日志使用 AppKit NSTextView 渲染，并同步落盘到用户日志目录。")
+                        .font(MihomoUI.Fonts.pageSubtitle)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -65,7 +66,8 @@ struct LogsView: View {
             AppKitLogView(entries: filteredLogs)
                 .frame(minHeight: 560)
         }
-        .padding(24)
+        .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+        .padding(.vertical, MihomoUI.pageVerticalPadding)
         .navigationTitle("日志")
     }
 }

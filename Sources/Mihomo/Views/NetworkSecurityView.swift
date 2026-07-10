@@ -38,7 +38,8 @@ struct NetworkSecurityView: View {
                 NetworkRepairCenterView()
                     .environmentObject(store)
             }
-            .padding(24)
+            .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+            .padding(.vertical, MihomoUI.pageVerticalPadding)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .navigationTitle("网络安全")
@@ -64,8 +65,9 @@ struct NetworkSecurityView: View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("网络安全")
-                    .font(.largeTitle.bold())
+                    .font(MihomoUI.Fonts.pageTitle)
                 Text("集中管理系统代理、系统 DNS、TUN 路由、恢复快照和修复动作。")
+                    .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
 
@@ -73,7 +75,7 @@ struct NetworkSecurityView: View {
 
             VStack(alignment: .trailing, spacing: 8) {
                 Label(overallHealthTitle, systemImage: overallHealthIcon)
-                    .font(.callout.weight(.semibold))
+                    .font(MihomoUI.Fonts.bodyMedium)
                     .foregroundStyle(overallHealthColor)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)

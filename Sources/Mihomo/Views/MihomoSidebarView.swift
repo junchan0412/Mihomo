@@ -12,45 +12,45 @@ struct MihomoSidebarView: View {
             brandHeader
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    sidebarGroup(sections: mainSections)
+                VStack(alignment: .leading, spacing: 16) {
+                    sidebarGroup(title: "常规", sections: mainSections)
                     sidebarGroup(title: "引擎", sections: engineSections)
                 }
-                .padding(.horizontal, 14)
+                .padding(.horizontal, 12)
                 .padding(.top, 4)
             }
 
             statusFooter
-                .padding(.horizontal, 18)
-                .padding(.bottom, 16)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 14)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.72))
+        .background(.bar)
     }
 
     private var brandHeader: some View {
         HStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.accentColor.opacity(0.14))
+                    .fill(Color.accentColor.opacity(0.12))
                 Text("M")
-                    .font(.title2.weight(.heavy))
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(Color.accentColor)
             }
-            .frame(width: 46, height: 46)
+            .frame(width: 40, height: 40)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Mihomo")
-                    .font(.headline.weight(.bold))
+                    .font(.system(size: 14, weight: .semibold))
                 Text(appVersion)
-                    .font(.caption.weight(.medium))
+                    .font(MihomoUI.Fonts.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
         }
-        .padding(.top, 16)
-        .padding(.horizontal, 18)
+        .padding(.top, 15)
+        .padding(.horizontal, 16)
         .padding(.bottom, 12)
     }
 
@@ -64,9 +64,10 @@ struct MihomoSidebarView: View {
         VStack(alignment: .leading, spacing: 6) {
             if let title {
                 Text(title)
-                    .font(.caption.weight(.semibold))
+                    .font(MihomoUI.Fonts.caption)
                     .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
+                    .textCase(.uppercase)
+                    .padding(.horizontal, 10)
                     .padding(.bottom, 2)
             }
 
@@ -87,7 +88,7 @@ struct MihomoSidebarView: View {
             sidebarStatus("TUN", isOn: store.settings.tunEnabled, activeColor: .purple)
             sidebarStatus("核心", isOn: store.isCoreRunning, activeColor: .red)
         }
-        .font(.caption.weight(.medium))
+        .font(MihomoUI.Fonts.caption)
         .foregroundStyle(.secondary)
     }
 
@@ -108,21 +109,22 @@ private struct SidebarSectionButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Image(systemName: section.systemImage)
-                    .font(.system(size: 17, weight: .medium))
-                    .frame(width: 22)
+                    .font(.system(size: 15, weight: .medium))
+                    .symbolRenderingMode(.hierarchical)
+                    .frame(width: 20)
                 Text(section.sidebarTitle)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(MihomoUI.Fonts.sidebar)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 13)
-            .frame(height: 38)
-            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .padding(.horizontal, 12)
+            .frame(height: 34)
+            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.accentColor : Color.clear)
+                    .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
             )
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }

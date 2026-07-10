@@ -33,14 +33,14 @@ struct ActivityView: View {
 
         VStack(spacing: 0) {
             connectionToolbar(rowCount: rows.count)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .background(Color(nsColor: .windowBackgroundColor))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.bar)
 
             connectionTable(rows: rows)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(MihomoUI.pageBackground)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("活动")
         .onChange(of: selectedRowID) {
@@ -60,12 +60,13 @@ struct ActivityView: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 220)
+            .controlSize(.regular)
+            .frame(width: 188)
 
             Text("\(rowCount)")
-                .font(.title3.weight(.semibold))
+                .font(MihomoUI.Fonts.metric)
                 .monospacedDigit()
-                .frame(minWidth: 36, alignment: .leading)
+                .frame(minWidth: 34, alignment: .leading)
                 .foregroundStyle(.secondary)
 
             Spacer(minLength: 20)
@@ -75,7 +76,7 @@ struct ActivityView: View {
                 Task { await store.closeAllConnections() }
             } label: {
                 Image(systemName: "xmark.circle")
-                    .font(.title3)
+                    .font(.system(size: 17, weight: .medium))
             }
             .buttonStyle(.borderless)
             .disabled(store.connections.isEmpty)
@@ -86,10 +87,15 @@ struct ActivityView: View {
                     .foregroundStyle(.secondary)
                 TextField("过滤主机、进程、规则...", text: $filterText)
                     .textFieldStyle(.plain)
+                    .font(MihomoUI.Fonts.body)
             }
-            .padding(.horizontal, 14)
-            .frame(width: 430, height: 38)
-            .background(.quaternary.opacity(0.38), in: RoundedRectangle(cornerRadius: 8))
+            .padding(.horizontal, 12)
+            .frame(width: 400, height: 34)
+            .background(MihomoUI.mutedFill, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(MihomoUI.cardStroke, lineWidth: 1)
+            }
         }
     }
 

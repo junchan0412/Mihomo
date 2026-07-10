@@ -62,8 +62,9 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         tableView.allowsMultipleSelection = false
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.selectionHighlightStyle = .regular
-        tableView.rowHeight = 26
-        tableView.intercellSpacing = NSSize(width: 0, height: 2)
+        tableView.rowHeight = 28
+        tableView.intercellSpacing = NSSize(width: 0, height: 1)
+        tableView.backgroundColor = .textBackgroundColor
         tableView.onActivateSelection = { [weak coordinator = context.coordinator, weak tableView] in
             guard let coordinator, let tableView else { return }
             coordinator.activateSelection(on: tableView)
@@ -174,6 +175,8 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
                 tableColumn.width = column.width
                 tableColumn.minWidth = min(column.width, 80)
                 tableColumn.resizingMask = .userResizingMask
+                tableColumn.headerCell.font = .systemFont(ofSize: 12, weight: .semibold)
+                tableColumn.headerCell.textColor = .secondaryLabelColor
                 tableView.addTableColumn(tableColumn)
             }
             columnSignature = nextSignature
@@ -220,7 +223,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             let textField = NSTextField(labelWithString: "")
             textField.lineBreakMode = .byTruncatingTail
             textField.usesSingleLineMode = true
-            textField.font = .systemFont(ofSize: NSFont.systemFontSize)
+            textField.font = .systemFont(ofSize: 13)
             textField.translatesAutoresizingMaskIntoConstraints = false
             textField.setAccessibilityElement(false)
 

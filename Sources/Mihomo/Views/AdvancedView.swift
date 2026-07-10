@@ -19,7 +19,8 @@ struct AdvancedView: View {
                 backupGroup
                 deepLinkGroup
             }
-            .padding(24)
+            .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+            .padding(.vertical, MihomoUI.pageVerticalPadding)
         }
         .safeAreaInset(edge: .bottom) {
             HStack {
@@ -42,7 +43,8 @@ struct AdvancedView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(draft == store.settings)
             }
-            .padding([.horizontal, .bottom], 24)
+            .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+            .padding(.bottom, MihomoUI.pageVerticalPadding)
             .padding(.top, 8)
             .background(.bar)
         }
@@ -60,8 +62,9 @@ struct AdvancedView: View {
         HStack {
             VStack(alignment: .leading) {
                 Text("高级")
-                    .font(.largeTitle.bold())
+                    .font(MihomoUI.Fonts.pageTitle)
                 Text("Helper、远程 API、DNS、Sniffer、备份与导入。")
+                    .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
             Spacer()

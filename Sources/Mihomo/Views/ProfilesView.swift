@@ -19,7 +19,8 @@ struct ProfilesView: View {
                 profileTablePane
                 detailPane
             }
-            .padding(24)
+            .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+            .padding(.vertical, MihomoUI.pageVerticalPadding)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -46,9 +47,9 @@ struct ProfilesView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("配置")
-                    .font(.largeTitle.bold())
+                    .font(MihomoUI.Fonts.pageTitle)
                 Text("管理本地配置、远程订阅与运行时覆写。")
-                    .font(.callout)
+                    .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
 
@@ -84,7 +85,11 @@ struct ProfilesView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.quaternary.opacity(0.24), in: RoundedRectangle(cornerRadius: 8))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(MihomoUI.cardStroke, lineWidth: 1)
+        }
     }
 
     private var profileTablePane: some View {

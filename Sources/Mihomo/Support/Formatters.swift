@@ -15,9 +15,14 @@ enum Formatters {
     }()
 
     static func bytes(_ value: Int64) -> String {
+        if abs(value) < 1024 {
+            return "\(value) B"
+        }
         let formatter = ByteCountFormatter()
         formatter.countStyle = .binary
         formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
+        formatter.includesActualByteCount = false
+        formatter.zeroPadsFractionDigits = false
         return formatter.string(fromByteCount: value)
     }
 

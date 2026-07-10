@@ -2,14 +2,19 @@ import AppKit
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    var openMainWindow: (() -> Void)?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        MainWindowPresenter.presentExisting()
-        return false
+        if MainWindowPresenter.presentExisting() {
+            return false
+        }
+        openMainWindow?()
+        return openMainWindow == nil
     }
 }
 
@@ -33,12 +38,13 @@ struct MihomoApp: App {
                 .onOpenURL { url in
                     Task { await store.handleDeepLink(url) }
                 }
+                .background(MainWindowOpenBridge(openWindow: openWindow, appDelegate: appDelegate))
         }
         .defaultSize(width: 1180, height: 780)
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
-            CommandMenu("Mihomo") {
+            CommandMenu("控制") {
                 Button("显示主窗口") {
                     MainWindowPresenter.present(openWindow: openWindow)
                 }
@@ -160,5 +166,20 @@ struct MihomoApp: App {
             Text(store.menuBarTitle)
         }
         .menuBarExtraStyle(.menu)
+    }
+}
+
+private struct MainWindowOpenBridge: View {
+    let openWindow: OpenWindowAction
+    let appDelegate: AppDelegate
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onAppear {
+                appDelegate.openMainWindow = {
+                    MainWindowPresenter.present(openWindow: openWindow)
+                }
+            }
     }
 }
