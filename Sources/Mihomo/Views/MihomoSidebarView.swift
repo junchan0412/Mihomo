@@ -12,36 +12,36 @@ struct MihomoSidebarView: View {
             brandHeader
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
                     sidebarGroup(title: "常规", sections: mainSections)
                     sidebarGroup(title: "引擎", sections: engineSections)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 4)
+                .padding(.horizontal, 10)
+                .padding(.top, 2)
             }
 
             statusFooter
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(.bar)
     }
 
     private var brandHeader: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(Color.accentColor.opacity(0.12))
                 Text("M")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color.accentColor)
             }
-            .frame(width: 40, height: 40)
+            .frame(width: 36, height: 36)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Mihomo")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                 Text(appVersion)
                     .font(MihomoUI.Fonts.caption)
                     .foregroundStyle(.secondary)
@@ -49,9 +49,9 @@ struct MihomoSidebarView: View {
 
             Spacer()
         }
-        .padding(.top, 15)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 12)
+        .padding(.top, 12)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
     }
 
     private var appVersion: String {
@@ -61,7 +61,7 @@ struct MihomoSidebarView: View {
     }
 
     private func sidebarGroup(title: String? = nil, sections: [AppSection]) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             if let title {
                 Text(title)
                     .font(MihomoUI.Fonts.caption)
@@ -83,7 +83,7 @@ struct MihomoSidebarView: View {
     }
 
     private var statusFooter: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             sidebarStatus("系统代理", isOn: store.systemProxyEnabled, activeColor: .green)
             sidebarStatus("TUN", isOn: store.settings.tunEnabled, activeColor: .purple)
             sidebarStatus("核心", isOn: store.isCoreRunning, activeColor: .red)
@@ -96,7 +96,7 @@ struct MihomoSidebarView: View {
         HStack(spacing: 8) {
             Circle()
                 .fill(isOn ? activeColor : Color.secondary.opacity(0.35))
-                .frame(width: 7, height: 7)
+                .frame(width: 6, height: 6)
             Text(title)
         }
     }
@@ -111,16 +111,16 @@ private struct SidebarSectionButton: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: section.systemImage)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .symbolRenderingMode(.hierarchical)
-                    .frame(width: 20)
+                    .frame(width: 18)
                 Text(section.sidebarTitle)
                     .font(MihomoUI.Fonts.sidebar)
                     .lineLimit(1)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 12)
-            .frame(height: 34)
+            .padding(.horizontal, 10)
+            .frame(height: 30)
             .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
             .background(
                 RoundedRectangle(cornerRadius: 8)

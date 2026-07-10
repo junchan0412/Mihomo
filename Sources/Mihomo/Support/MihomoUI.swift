@@ -17,7 +17,7 @@ enum MihomoUI {
         static let metric: Font = .system(size: 20, weight: .semibold)
         static let metricLarge: Font = .system(size: 24, weight: .semibold)
         static let caption: Font = .system(size: 11, weight: .medium)
-        static let sidebar: Font = .system(size: 14, weight: .medium)
+        static let sidebar: Font = .system(size: 13, weight: .medium)
     }
 
     static var cardFill: Color {

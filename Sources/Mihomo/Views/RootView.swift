@@ -6,7 +6,7 @@ struct RootView: View {
     var body: some View {
         NavigationSplitView {
             MihomoSidebarView(selection: $store.selectedSection)
-                .navigationSplitViewColumnWidth(min: 248, ideal: 276, max: 300)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 236, max: 260)
         } detail: {
             DetailSwitchView(section: store.selectedSection)
                 .id(store.selectedSection)
@@ -24,10 +24,12 @@ struct RootView: View {
                         store.selectedSection = .logs
                     }
                 )
-                .frame(width: 420, alignment: .leading)
+                .frame(width: 260, alignment: .leading)
             }
 
             ToolbarItemGroup(placement: .primaryAction) {
+                GlobalQuickControlsView()
+
                 Picker("模式", selection: Binding(
                     get: { store.currentMode },
                     set: { mode in Task { await store.setMode(mode) } }
@@ -37,9 +39,7 @@ struct RootView: View {
                     Text("直连").tag("direct")
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 184)
-
-                GlobalQuickControlsView()
+                .frame(width: 150)
             }
         }
         .background(WindowIdentifierView(identifier: AppWindowIdentifier.main))
@@ -124,14 +124,6 @@ private struct GlobalQuickControlsView: View {
     var body: some View {
         HStack(spacing: 6) {
             ToolbarStateButton(
-                title: "核心",
-                systemImage: store.isCoreRunning ? "stop.fill" : "play.fill",
-                isOn: store.isCoreRunning
-            ) {
-                Task { await store.toggleCore() }
-            }
-
-            ToolbarStateButton(
                 title: "代理",
                 systemImage: "network",
                 isOn: store.systemProxyEnabled
@@ -158,7 +150,7 @@ private struct ToolbarStateButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Image(systemName: systemImage)
                     .imageScale(.small)
                 Circle()
@@ -167,11 +159,11 @@ private struct ToolbarStateButton: View {
                 Text(title)
             }
             .font(MihomoUI.Fonts.bodyMedium)
-            .frame(minWidth: 58)
+            .frame(minWidth: title == "代理" ? 54 : 46)
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
-        .help("\(title)\(isOn ? "已启用" : "未启用")")
+        .help("\(title == "代理" ? "系统代理" : title)\(isOn ? "已启用" : "未启用")")
     }
 }
 
