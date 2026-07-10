@@ -1,11 +1,11 @@
 # Mihomo macOS 原生客户端开发报告（第四版）
 
 生成日期：2026-07-11
-报告定位：基于 `v1.8.75`（`e199595`）基线记录本轮完整重构。第四版重点跟进高频状态隔离、后台日志批量落盘、Controller/WebSocket 稳定性、原生 Settings 信息架构、Toolbar accessibility、设置 schema v3 迁移、Activity 大型 View 拆分，以及 production release gate 验证。
+报告定位：基于 `v1.8.75`（`e199595`）基线记录本轮完整重构，并以 `v1.8.76` 对外发布。第四版重点跟进高频状态隔离、后台日志批量落盘、Controller/WebSocket 稳定性、原生 Settings 信息架构、Toolbar accessibility、设置 schema v3 迁移、Activity 大型 View 拆分，以及 production release gate 验证。
 
 ## 1. 当前结论
 
-当前项目已经推进到以 v1.8.75 为基线的系统性重构完成阶段。主 App 继续采用 SwiftUI 为主、AppKit 为辅的架构，形成概览、网络安全、活动、策略、配置、规则、资源、高级工具、日志、诊断等主工作台；设置使用独立原生 Settings 窗口；特权操作由 XPC Helper 承担；配置生成、资源更新、Profile 编辑、备份同步、应用内更新等高级能力均保留。
+当前项目已经推进到 v1.8.76 系统性重构发布阶段。主 App 继续采用 SwiftUI 为主、AppKit 为辅的架构，形成概览、网络安全、活动、策略、配置、规则、资源、高级工具、日志、诊断等主工作台；设置使用独立原生 Settings 窗口；特权操作由 XPC Helper 承担；配置生成、资源更新、Profile 编辑、备份同步、应用内更新等高级能力均保留。
 
 本轮重构后，连接、速率、流量样本、WebSocket 状态和日志不再通过单一 `AppStore.objectWillChange` 扩散到所有页面；日志写盘改为 actor 串行批量处理；Controller 非法 endpoint、非 HTTP 响应和缺失连接 ID 均有明确降级；WebSocket 增加 heartbeat；设置、必要网络选项与高级工具完成边界重排；主工具栏恢复核心启停、系统代理和 TUN 快捷控制；Activity 由 1,093 行单文件拆为 4 个职责文件。项目已经具备稳定自用和扩大测试范围的基础，但正式公开分发仍需继续完成 Developer ID、公证和更多真实网络接管场景验证：
 
@@ -373,7 +373,7 @@ v1.5.0 / M2 发布候选完成状态：
 | v1.8.70 | 完成活动页维护性拆分：将连接详情窗口、tab、inspector、流量 tile 和详情行从 `ActivityView.swift` 拆入 `ConnectionDetailPanelView.swift`；`ActivityView.swift` 从 387 行降至 223 行，新增详情窗口文件 165 行；maintainability audit warning 6 -> 5，over-max 继续为 0 个。 | 使用 `./script/maintainability_audit.sh --output dist/maintainability/maintainability-v1.8.70.md --summary dist/maintainability/maintainability-v1.8.70.summary.tsv` 验证 110 个 Swift 文件、5 个 warning 文件、0 个 over-max 文件，最大文件为 `HelperNetworkTools.swift` 384 行；使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test --filter AppKitAccessibilityTests` 验证 2 个 AppKit bridge 测试；通过完整 `swift test` 73 个 XCTest、`git diff --check`、`./script/ci_release_gate.sh`、`./script/package_release.sh 1.8.70`、`./script/release_smoke_test.sh 1.8.70` 和 `./script/update_replacement_smoke.sh 1.8.70`；`dist/releases/Mihomo-1.8.70-provenance.md` 已记录 manifest 验签和 artifact checksums；发布包 SHA-256 为 `fbb42730294497ee6eb1cb39c5002e905f6eb8896450b1aa9e896763e04741db`。 |
 | v1.8.71 | 完成 Helper 网络工具维护性拆分：将 TUN recovery 路由快照、默认路由恢复、utun 新增路由筛选和回滚描述从 `HelperNetworkTools.swift` 拆入 `HelperTunRecoveryTool.swift`；`HelperNetworkTools.swift` 从 384 行降至 222 行，新增 TUN recovery 文件 163 行；maintainability audit warning 5 -> 4，over-max 继续为 0 个。 | 使用 `./script/maintainability_audit.sh --output dist/maintainability/maintainability-v1.8.71.md --summary dist/maintainability/maintainability-v1.8.71.summary.tsv` 验证 111 个 Swift 文件、4 个 warning 文件、0 个 over-max 文件，最大文件为 `HelperService.swift` 374 行；使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test --filter HelperPathPolicyTests` 验证 6 个 Helper path/snapshot 测试；通过完整 `swift test` 73 个 XCTest、`git diff --check`、`./script/ci_release_gate.sh`、`./script/package_release.sh 1.8.71`、`./script/release_smoke_test.sh 1.8.71` 和 `./script/update_replacement_smoke.sh 1.8.71`；`dist/releases/Mihomo-1.8.71-provenance.md` 已记录 manifest 验签和 artifact checksums；发布包 SHA-256 为 `58da8bd78337549c9c5c65ed17e62f85c93453425ff55423a0a3da8364700fad`。 |
 | v1.8.72 | 完成参考图 UI refresh：全局日志菜单移入标题右侧并加宽；新增 ClashMac 风格 `MihomoSidebarView` 和概览 dashboard helper；活动页收敛为单一连接表格面板并复用无边框 `AppKitTable`。maintainability audit 维持 113 个 Swift 文件、4 个 warning 文件、0 个 over-max 文件，最大文件为 `HelperService.swift` 374 行。 | 使用 `./script/maintainability_audit.sh --output dist/maintainability/maintainability-v1.8.72.md --summary dist/maintainability/maintainability-v1.8.72.summary.tsv` 验证维护性报告；使用 `DEVELOPER_DIR="/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer" swift test` 验证 73 个 XCTest；通过 `git diff --check`、`./script/ci_release_gate.sh`、`./script/package_release.sh 1.8.72`、`./script/release_smoke_test.sh 1.8.72` 和 `./script/update_replacement_smoke.sh 1.8.72`；`dist/releases/Mihomo-1.8.72-provenance.md` 已记录 manifest 验签和 artifact checksums；发布包 SHA-256 为 `d92723f8ae62c655d250d177b5d33bcc7c9422257b96247c0db8cc219dda9465`。 |
-| v1.8.75（重构基线） | 完成运行时、网络、UI/UX 与维护性重构：新增 `RuntimeActivityStore`、`LogStore` 和 `LogPersistenceWriter`，隔离连接/流量/日志高频通知并后台批量写盘；Controller endpoint 改为安全校验，WebSocket 增加 15 秒 heartbeat 和轮询降级，缺失连接 ID 使用确定性 fallback；设置移入原生 Settings 窗口，必要 DNS 选项归入网络设置，高级页改名“高级工具”；工具栏恢复核心/系统代理/TUN 独立按钮并修复 AX 标签复用；设置迁移按 v1→v2→v3 逐级执行；Activity 1,093 行单文件拆为 4 个职责文件；构建脚本从 Git tag 推导版本并打开工作区绝对 bundle。 | 使用指定 Xcode beta 完成 87 个 XCTest，0 failures；通过 `git diff --check`、`./script/build_and_run.sh --verify` 和 `./script/ci_release_gate.sh`；真实设置文件由 v2 自动迁移到 v3，第二次启动未重复迁移；AX tree 实测核心、系统代理、TUN 均为独立 Button 且 label/value/identifier 正确；maintainability audit 扫描 126 个 Swift 文件，7 个 warning、0 个 over-max。 |
+| v1.8.76（基于 v1.8.75） | 完成运行时、网络、UI/UX 与维护性重构：新增 `RuntimeActivityStore`、`LogStore` 和 `LogPersistenceWriter`，隔离连接/流量/日志高频通知并后台批量写盘；Controller endpoint 改为安全校验，WebSocket 增加 15 秒 heartbeat 和轮询降级，缺失连接 ID 使用确定性 fallback；设置移入原生 Settings 窗口，必要 DNS 选项归入网络设置，高级页改名“高级工具”；工具栏恢复核心/系统代理/TUN 独立按钮并修复 AX 标签复用；设置迁移按 v1→v2→v3 逐级执行；Activity 1,093 行单文件拆为 4 个职责文件；构建脚本从 Git tag 推导版本并打开工作区绝对 bundle。 | 使用指定 Xcode beta 完成 87 个 XCTest，0 failures；通过 `git diff --check`、`./script/build_and_run.sh --verify` 和 `./script/ci_release_gate.sh`；真实设置文件由 v2 自动迁移到 v3，第二次启动未重复迁移；AX tree 实测核心、系统代理、TUN 均为独立 Button 且 label/value/identifier 正确；maintainability audit 扫描 126 个 Swift 文件，7 个 warning、0 个 over-max。 |
 
 ## 11. 稳定性与性能审查记录
 
@@ -427,7 +427,7 @@ v1.4.2 完成状态：
 | 活动页渲染收敛 | 已实现 | 连接表格行在一次 body 内只计算一次。 |
 | UI 布局稳定性 | 已实现 | 策略启动空态、配置页可滚动和主窗口尺寸稳定修复纳入 1.4.2。 |
 
-## 13. v1.8.75 系统性重构记录
+## 13. v1.8.76 系统性重构记录
 
 ### 13.1 重构目标与边界
 
@@ -472,7 +472,7 @@ v1.4.2 完成状态：
 | --- | --- |
 | SwiftPM XCTest | 87 tests，0 failures |
 | Settings 实机迁移 | v2 自动保存为 v3；第二次启动迁移日志计数不增加 |
-| Bundle 身份 | `CFBundleShortVersionString=1.8.75`；基线构建验证为 `e199595`，提交后由脚本使用新 commit hash |
+| Bundle 身份 | 本地基线验证为 `CFBundleShortVersionString=1.8.75`；正式发布包使用 `1.8.76` 和 release commit hash |
 | 运行进程 | 确认为工作区 `dist/Mihomo.app/Contents/MacOS/Mihomo` |
 | Accessibility | AX tree 中核心、系统代理、TUN 分别为独立 Button，Description/Help/Value/ID 正确 |
 | 视觉 QA | 概览、活动页、独立 Settings 窗口和网络设置在暗色模式下无重叠、截断或布局回归 |

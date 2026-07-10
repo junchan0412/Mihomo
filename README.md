@@ -2,9 +2,9 @@
 
 Mihomo is a macOS-native SwiftUI-first controller for the mihomo core. This repository contains the MVP described in `Mihomo-macOS-development-report.md`: a professional desktop shell inspired by Surge's information architecture, while using mihomo as the runtime engine.
 
-## v1.8.75 Refactor
+## v1.8.76 Refactor Release
 
-The current refactor branch is based on tag `v1.8.75` (`e199595`) and focuses on runtime efficiency, network resilience, maintainability, and a lower-friction macOS user experience:
+Release `v1.8.76` is based on tag `v1.8.75` (`e199595`) plus the completed refactor and focuses on runtime efficiency, network resilience, maintainability, and a lower-friction macOS user experience:
 
 - High-frequency connection, traffic, WebSocket, and log state now lives in focused `RuntimeActivityStore` and `LogStore` objects instead of invalidating the entire `AppStore` UI tree.
 - App log persistence is serialized and batched by `LogPersistenceWriter`, with pending work flushed during app shutdown.
@@ -87,7 +87,7 @@ To run the maintainability report locally:
 ./script/maintainability_audit.sh
 ```
 
-The v1.8.75 refactor preserves the ClashMac-style dashboard while separating high-frequency runtime state, moving Settings into its native window, restoring Core/System Proxy/TUN toolbar controls, and splitting the Activity feature into focused files. The local maintainability report now shows 126 scanned Swift files, 7 warning files, 0 over-max files, and `HelperService.swift` as the largest file at 374 lines.
+The v1.8.76 refactor release preserves the ClashMac-style dashboard while separating high-frequency runtime state, moving Settings into its native window, restoring Core/System Proxy/TUN toolbar controls, and splitting the Activity feature into focused files. The local maintainability report now shows 126 scanned Swift files, 7 warning files, 0 over-max files, and `HelperService.swift` as the largest file at 374 lines.
 
 ## Network Takeover Smoke
 
