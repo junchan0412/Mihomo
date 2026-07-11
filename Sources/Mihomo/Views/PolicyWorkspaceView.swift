@@ -8,6 +8,7 @@ struct PolicyWorkspaceView: View {
     var isOffline: Bool
     var providerHistory: (ProviderItem) -> ProviderUpdateRecord?
     var refreshProvider: (ProviderItem) -> Void
+    var openProvider: (ProviderItem) -> Void
     var testGroup: (ProxyGroup) -> Void
     var openGroup: (ProxyGroup) -> Void
 
@@ -43,7 +44,7 @@ struct PolicyWorkspaceView: View {
     }
 
     private func providerRow(_ provider: ProviderItem) -> some View {
-        HStack(spacing: 14) {
+        Button { openProvider(provider) } label: { HStack(spacing: 14) {
             rowIcon("shippingbox.fill", color: .blue)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -61,10 +62,10 @@ struct PolicyWorkspaceView: View {
             Button { refreshProvider(provider) } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.borderless).disabled(isOffline).help("刷新 Provider")
             Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-        }
-        .padding(.horizontal, 16).frame(minHeight: 76)
-        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 14).stroke(MihomoUI.cardStroke) }
+        }}
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16).frame(minHeight: 74)
+        .background(.quaternary.opacity(0.32), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private func groupRow(_ group: ProxyGroup) -> some View {
@@ -89,9 +90,8 @@ struct PolicyWorkspaceView: View {
                     .buttonStyle(.borderless).disabled(isOffline).help("测速此组")
                 Image(systemName: "chevron.right").foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 16).frame(minHeight: 76)
-            .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 14).stroke(MihomoUI.cardStroke) }
+            .padding(.horizontal, 16).frame(minHeight: 82)
+            .background(.quaternary.opacity(0.32), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .contentShape(RoundedRectangle(cornerRadius: 14))
         }
         .buttonStyle(.plain)

@@ -8,6 +8,7 @@ struct PoliciesView: View {
     @State private var pendingAutomaticOverride: PolicyNodeRow?
     @State private var showingGroupEditor = false
     @State private var showingGroupDetail = false
+    @State private var selectedProvider: ProviderItem?
     @State private var groupEditorContent = ""
 
     private var displayGroups: [ProxyGroup] {
@@ -53,17 +54,6 @@ struct PoliciesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if displayGroups.isEmpty == false {
-                toolbar
-                PolicyStatusStrip(
-                    groupCount: displayGroups.count,
-                    nodeCount: displayGroups.reduce(0) { $0 + $1.all.count },
-                    selectedGroup: selectedGroup,
-                    delayStatus: store.delayTestStatus,
-                    failureSummary: store.delayTestFailureSummary,
-                    isOffline: isOfflinePolicyMode
-                )
-            }
             mainContent
         }
         .padding(.horizontal, MihomoUI.pageHorizontalPadding)
@@ -133,6 +123,40 @@ struct PoliciesView: View {
                 .padding(24).frame(minWidth: 620, minHeight: 480, alignment: .topLeading)
             }
         }
+        .sheet(item: $selectedProvider) { provider in
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(provider.name).font(.title2.weight(.semibold))
+                        Text("\(provider.providerType.isEmpty ? "Provider" : provider.providerType) · \(provider.memberNames.count) 个节点")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button { Task { await store.refreshProviderResource(provider) } } label: {
+                        Label("刷新", systemImage: "arrow.clockwise")
+                    }
+                }
+                Divider()
+                if provider.memberNames.isEmpty {
+                    ContentUnavailableView("没有节点信息", systemImage: "shippingbox", description: Text(provider.detail))
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 8) {
+                            ForEach(provider.memberNames, id: \.self) { name in
+                                HStack {
+                                    Image(systemName: "paperplane.fill").foregroundStyle(.cyan)
+                                    Text(name).lineLimit(1)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 14).frame(minHeight: 48)
+                                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(24).frame(minWidth: 620, minHeight: 480, alignment: .topLeading)
+        }
     }
 
     @ViewBuilder
@@ -176,7 +200,7 @@ struct PoliciesView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("策略")
                     .font(MihomoUI.Fonts.pageTitle)
-                Text(headerSubtitle)
+                Text("管理 Proxy Provider、策略组与当前节点")
                     .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -187,24 +211,26 @@ struct PoliciesView: View {
             Button {
                 openPolicyGroupEditor()
             } label: {
-                Label("编辑策略组", systemImage: "slider.horizontal.3")
+                Image(systemName: "slider.horizontal.3")
             }
+            .buttonStyle(.bordered).buttonBorderShape(.circle).help("编辑策略组")
             .disabled(store.activeProfile == nil)
 
             if store.proxyGroups.isEmpty == false {
                 Button {
                     Task { await store.testAllProxyDelays() }
                 } label: {
-                    Label("测速全部", systemImage: "speedometer")
+                    Image(systemName: "speedometer")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.bordered).buttonBorderShape(.circle).help("测速全部")
             }
 
             Button {
                 Task { await store.refreshController() }
             } label: {
-                Label("刷新", systemImage: "arrow.clockwise")
+                Image(systemName: "arrow.clockwise")
             }
+            .buttonStyle(.bordered).buttonBorderShape(.circle).help("刷新")
         }
     }
 
@@ -215,42 +241,6 @@ struct PoliciesView: View {
         return selectedGroup.map { "\($0.name) · 当前 \($0.now)" } ?? "启动 mihomo 并刷新 Controller"
     }
 
-    private var toolbar: some View {
-        HStack(spacing: 10) {
-            TextField("搜索策略组、当前节点或代理", text: $searchText)
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 340)
-
-            Spacer()
-
-            Button {
-                applySelectedNode()
-            } label: {
-                Label("使用节点", systemImage: "checkmark.circle")
-            }
-            .disabled(isOfflinePolicyMode || canApplySelectedNode == false)
-
-            Button {
-                if let selectedGroup, let selectedNodeRow {
-                    Task { await store.testProxyDelay(group: selectedGroup.name, proxy: selectedNodeRow.node.name) }
-                }
-            } label: {
-                Label("测速节点", systemImage: "speedometer")
-            }
-            .disabled(isOfflinePolicyMode || selectedGroup == nil || selectedNodeRow == nil)
-
-            Button {
-                if let selectedGroup {
-                    Task { await store.testGroupDelay(selectedGroup) }
-                }
-            } label: {
-                Label("测速此组", systemImage: "timer")
-            }
-            .disabled(isOfflinePolicyMode || selectedGroup == nil)
-
-        }
-    }
-
     private var content: some View {
         PolicyWorkspaceView(
             providers: store.providers.filter { $0.kind.caseInsensitiveCompare("Proxy") == .orderedSame },
@@ -259,6 +249,7 @@ struct PoliciesView: View {
             isOffline: isOfflinePolicyMode,
             providerHistory: { store.providerUpdateHistory(for: $0).first },
             refreshProvider: { provider in Task { await store.refreshProviderResource(provider) } },
+            openProvider: { selectedProvider = $0 },
             testGroup: { group in Task { await store.testGroupDelay(group) } },
             openGroup: { group in
                 selectedGroupID = group.id
