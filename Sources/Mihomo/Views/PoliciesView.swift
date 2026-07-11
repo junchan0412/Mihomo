@@ -138,7 +138,11 @@ struct PoliciesView: View {
                 }
                 Divider()
                 if provider.memberNames.isEmpty {
-                    ContentUnavailableView("没有节点信息", systemImage: "shippingbox", description: Text(provider.detail))
+                    ContentUnavailableView(
+                        "没有节点信息",
+                        systemImage: "shippingbox",
+                        description: Text("启动核心并刷新 Controller 后显示 Provider 节点。")
+                    )
                 } else {
                     ScrollView {
                         LazyVStack(spacing: 8) {

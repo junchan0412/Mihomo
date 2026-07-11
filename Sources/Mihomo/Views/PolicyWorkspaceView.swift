@@ -45,7 +45,7 @@ struct PolicyWorkspaceView: View {
 
     private func providerRow(_ provider: ProviderItem) -> some View {
         Button { openProvider(provider) } label: { HStack(spacing: 14) {
-            rowIcon("shippingbox.fill", color: .blue)
+            rowIcon("paperplane.fill", color: .cyan)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     Text(provider.name).font(.headline).lineLimit(1)
@@ -104,7 +104,9 @@ struct PolicyWorkspaceView: View {
 
     private func providerSubtitle(_ provider: ProviderItem) -> String {
         let count = provider.memberNames.count
-        return count > 0 ? "\(count) 个节点" : (provider.detail.isEmpty ? "远程代理集合" : provider.detail)
+        if count > 0 { return "\(count) 个节点" }
+        if provider.remoteURL != nil { return "远程 Provider · 节点数将在核心启动后显示" }
+        return "本地 Provider · 节点数将在核心启动后显示"
     }
 
     private func groupColor(_ group: ProxyGroup) -> Color {
