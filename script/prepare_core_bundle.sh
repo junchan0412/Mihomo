@@ -16,7 +16,7 @@ if [[ -z "$CORE_URL" ]] && command -v gh >/dev/null 2>&1; then
 fi
 
 if [[ -z "$CORE_URL" ]]; then
-  CORE_URL="https://github.com/MetaCubeX/mihomo/releases/download/v1.19.27/mihomo-darwin-arm64-v1.19.27.gz"
+  CORE_URL="https://github.com/MetaCubeX/mihomo/releases/download/v1.19.28/mihomo-darwin-arm64-v1.19.28.gz"
 fi
 
 mkdir -p "$VENDOR_DIR"

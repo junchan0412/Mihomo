@@ -6,6 +6,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case activity
     case policies
     case profiles
+    case overrides
     case rules
     case resources
     case advanced
@@ -25,6 +26,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .activity: return "活动"
         case .policies: return "策略"
         case .profiles: return "配置"
+        case .overrides: return "覆写"
         case .rules: return "规则"
         case .resources: return "资源"
         case .advanced: return "高级工具"
@@ -40,6 +42,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .activity: return "waveform.path.ecg"
         case .policies: return "switch.2"
         case .profiles: return "doc.text"
+        case .overrides: return "square.stack.3d.up"
         case .rules: return "list.bullet.rectangle"
         case .resources: return "shippingbox"
         case .advanced: return "wrench.and.screwdriver"

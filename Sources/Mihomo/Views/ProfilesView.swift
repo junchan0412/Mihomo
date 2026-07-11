@@ -163,12 +163,6 @@ struct ProfilesView: View {
 
                 Spacer()
 
-                Button {
-                    openWindow(id: "fragments-editor")
-                } label: {
-                    Label("覆写", systemImage: "slider.horizontal.3")
-                }
-
                 Button(role: .destructive) {
                     deleteSelectedProfile()
                 } label: {
@@ -182,20 +176,12 @@ struct ProfilesView: View {
 
     private var detailPane: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                ProfileSummaryPane(
-                    profile: selectedProfile,
-                    stats: selectedProfile.map { store.profileStats(for: $0) },
-                    editProfile: openProfileEditor
-                )
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-
-                ConfigFragmentsSummaryView {
-                    openWindow(id: "fragments-editor")
-                }
-                .environmentObject(store)
-                .frame(width: 380, alignment: .topLeading)
-            }
+            ProfileSummaryPane(
+                profile: selectedProfile,
+                stats: selectedProfile.map { store.profileStats(for: $0) },
+                editProfile: openProfileEditor
+            )
+            .frame(maxWidth: .infinity, alignment: .topLeading)
 
             ProfileQualityPane(report: store.profileQualityReport(for: selectedProfile))
         }

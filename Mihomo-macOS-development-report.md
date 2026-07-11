@@ -195,7 +195,7 @@ Activity 的 DNS 是导航入口，不是独立 DNS 实现：它应先把 `netwo
 DEVELOPER_DIR='/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer' swift test
 git diff --check
 ./script/maintainability_audit.sh
-APP_VERSION=1.8.77 ./script/build_and_run.sh --verify
+APP_VERSION=1.8.78 ./script/build_and_run.sh --verify
 ```
 
 高风险改动补充验证：
@@ -218,15 +218,15 @@ APP_VERSION=1.8.77 ./script/build_and_run.sh --verify
 5. 执行：
 
 ```bash
-./script/package_release.sh 1.8.77
-./script/release_smoke_test.sh 1.8.77
+./script/package_release.sh 1.8.78
+./script/release_smoke_test.sh 1.8.78
 ```
 
 6. 检查 zip、versioned manifest、latest manifest 和 provenance。
 7. 提交并 push branch。
-8. 创建 `v1.8.77` tag，不移动旧 tag。
+8. 创建 `v1.8.78` tag，不移动旧 tag。
 9. push tag。
-10. 创建 GitHub Release，上传 zip 与 `mihomo-update.json`，正文使用 `docs/releases/v1.8.77.md`。
+10. 创建 GitHub Release，上传 zip 与 `mihomo-update.json`，正文使用 `docs/releases/v1.8.78.md`。
 
 ## 11. 当前技术债务
 

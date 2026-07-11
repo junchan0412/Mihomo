@@ -101,8 +101,8 @@ struct AppSettings: Codable, Hashable {
         logRetentionDays: Int = 7,
         logMaxFileSizeMB: Int = 8,
         managedCoreEnabled: Bool? = nil,
-        managedCoreDownloadURL: String = "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.27/mihomo-darwin-arm64-v1.19.27.gz",
-        managedCoreSHA256: String = "",
+        managedCoreDownloadURL: String = "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.28/mihomo-darwin-arm64-v1.19.28.gz",
+        managedCoreSHA256: String = "40cdae2fab4b18df15f40eaa9dc3af70ab3d8be7f77164ae1e5f1af3a2a4fb44",
         launchDaemonEnabled: Bool = false,
         autoSetSystemDNS: Bool = false,
         systemDNSServers: [String] = ["1.1.1.1", "8.8.8.8"],
@@ -360,5 +360,4 @@ struct AppSettings: Codable, Hashable {
         return mihomoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .managed : .local
     }
 }
-
 

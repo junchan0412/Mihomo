@@ -155,13 +155,6 @@ struct MihomoApp: App {
         }
         .defaultSize(width: 520, height: 420)
 
-        WindowGroup("覆写管理", id: "fragments-editor") {
-            ConfigFragmentsWindowView()
-                .environmentObject(store)
-                .frame(minWidth: 760, minHeight: 560)
-        }
-        .defaultSize(width: 860, height: 640)
-
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(store)

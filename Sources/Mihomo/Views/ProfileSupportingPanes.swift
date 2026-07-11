@@ -85,12 +85,11 @@ struct ProfileSummaryPane: View {
     var editProfile: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
+        HStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 7) {
                 Label(profile?.name ?? "未选择配置", systemImage: "doc.text")
                     .font(.headline)
                     .lineLimit(1)
-                Spacer()
                 Button {
                     editProfile()
                 } label: {
@@ -98,32 +97,45 @@ struct ProfileSummaryPane: View {
                 }
                 .disabled(profile == nil)
             }
+            .frame(width: 140, alignment: .leading)
 
             if profile == nil {
                 Text("选择一个配置后查看规则、策略组、节点和 Provider 统计。")
                     .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else if let error = stats?.errorMessage {
                 Text(error)
                     .foregroundStyle(.red)
                     .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
+                Divider().frame(height: 64)
+
+                HStack(spacing: 22) {
                     ProfileMetric(title: "规则", value: "\(stats?.ruleCount ?? 0)")
                     ProfileMetric(title: "策略组", value: "\(stats?.policyGroupCount ?? 0)")
                     ProfileMetric(title: "节点", value: "\(stats?.proxyCount ?? 0)")
                     ProfileMetric(title: "Provider", value: "\(statsProviderCount)")
                 }
+                .frame(width: 270)
 
-                HStack(spacing: 14) {
+                Divider().frame(height: 64)
+
+                HStack(spacing: 18) {
                     ProfileSmallFact(title: "类型", value: profile?.source == .remote ? "远程" : "本地")
                     ProfileSmallFact(title: "行数", value: "\(stats?.lineCount ?? 0)")
                     ProfileSmallFact(title: "大小", value: Formatters.bytes(Int64(stats?.fileSize ?? 0)))
                     ProfileSmallFact(title: "更新", value: profile.map { Formatters.shortDate.string(from: $0.updatedAt) } ?? "-")
                 }
+                .frame(width: 280)
             }
         }
-        .padding(12)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+        .padding(14)
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(MihomoUI.cardStroke, lineWidth: 1)
+        }
     }
 
     private var statsProviderCount: Int {
@@ -131,7 +143,8 @@ struct ProfileSummaryPane: View {
     }
 }
 
-struct ConfigFragmentsSummaryView: View {
+/* 覆写编辑器已迁移到独立主导航页面。 */
+private struct RemovedConfigFragmentsSummaryView: View {
     @EnvironmentObject private var store: AppStore
     @State private var selectedFragmentID: UUID?
     var openEditor: () -> Void
@@ -142,10 +155,17 @@ struct ConfigFragmentsSummaryView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("覆写列表", systemImage: "square.stack.3d.up")
                     .font(.headline)
+
+                HStack(spacing: 12) {
+                    Toggle("YAML", isOn: overrideBinding(\.yamlOverrideEnabled))
+                    Toggle("JS Transform", isOn: overrideBinding(\.jsOverrideEnabled))
+                }
+                .toggleStyle(.checkbox)
+
                 Spacer()
                 Button {
                     openEditor()
@@ -154,83 +174,16 @@ struct ConfigFragmentsSummaryView: View {
                 }
             }
 
-            HStack(spacing: 14) {
-                Toggle("YAML", isOn: overrideBinding(\.yamlOverrideEnabled))
-                Toggle("JS Transform", isOn: overrideBinding(\.jsOverrideEnabled))
-            }
-            .toggleStyle(.checkbox)
+            HStack(alignment: .top, spacing: 0) {
+                fragmentList
+                    .frame(width: 300, alignment: .topLeading)
+                    .frame(minHeight: 150, alignment: .topLeading)
 
-            VStack(spacing: 3) {
-                if store.configFragments.isEmpty {
-                    ContentUnavailableView("没有覆写", systemImage: "doc.badge.plus")
-                        .frame(maxWidth: .infinity, minHeight: 76)
-                } else {
-                    ForEach(store.configFragments.prefix(4)) { fragment in
-                        Button {
-                            selectedFragmentID = fragment.id
-                        } label: {
-                            HStack(spacing: 8) {
-                                Circle()
-                                    .fill(fragment.enabled ? Color.green : Color.secondary.opacity(0.45))
-                                    .frame(width: 7, height: 7)
-                                Text(fragment.name)
-                                    .font(MihomoUI.Fonts.bodyMedium)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text(fragment.kind.title)
-                                    .font(MihomoUI.Fonts.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 8)
-                            .frame(height: 30)
-                            .background(
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(selectedFragment?.id == fragment.id ? Color.accentColor.opacity(0.14) : Color.clear)
-                            )
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
+                Divider()
+                    .padding(.horizontal, 14)
 
-            Divider()
-
-            Label("覆写信息", systemImage: "info.circle")
-                .font(MihomoUI.Fonts.bodyMedium)
-
-            if let fragment = selectedFragment {
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack {
-                        Text(fragment.name)
-                            .font(MihomoUI.Fonts.bodyMedium)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(fragment.enabled ? "已启用" : "已停用")
-                            .font(MihomoUI.Fonts.caption)
-                            .foregroundStyle(fragment.enabled ? .green : .secondary)
-                    }
-                    Text("\(fragment.kind.title) · \(Formatters.shortDate.string(from: fragment.updatedAt))")
-                        .font(MihomoUI.Fonts.caption)
-                        .foregroundStyle(.secondary)
-                    Text(fragment.content)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(8)
-                        .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 6))
-                }
-            } else {
-                Text("新增覆写后，可在这里查看类型、状态与内容摘要。")
-                    .font(MihomoUI.Fonts.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack(spacing: 12) {
-                ProfileSmallFact(title: "片段", value: "\(store.configFragments.count)")
-                ProfileSmallFact(title: "已启用", value: "\(store.configFragments.filter(\.enabled).count)")
-                ProfileSmallFact(title: "禁用规则", value: "\(store.disabledRules.count)")
+                fragmentDetail
+                    .frame(maxWidth: .infinity, minHeight: 150, alignment: .topLeading)
             }
         }
         .padding(12)
@@ -241,6 +194,106 @@ struct ConfigFragmentsSummaryView: View {
         }
         .onAppear { ensureSelection() }
         .onChange(of: store.configFragments) { ensureSelection() }
+    }
+
+    private var fragmentList: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text("覆写片段")
+                    .font(MihomoUI.Fonts.bodyMedium)
+                Spacer()
+                Text("\(store.configFragments.count)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+
+            if store.configFragments.isEmpty {
+                VStack(spacing: 7) {
+                    Image(systemName: "doc.badge.plus")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                    Text("没有覆写")
+                        .font(.callout.weight(.medium))
+                    Text("点击“管理”添加 YAML 或 JS Transform。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: 112)
+            } else {
+                ForEach(store.configFragments.prefix(5)) { fragment in
+                    Button {
+                        selectedFragmentID = fragment.id
+                    } label: {
+                        HStack(spacing: 8) {
+                            Circle()
+                                .fill(fragment.enabled ? Color.green : Color.secondary.opacity(0.45))
+                                .frame(width: 7, height: 7)
+                            Text(fragment.name)
+                                .font(MihomoUI.Fonts.bodyMedium)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(fragment.kind.title)
+                                .font(MihomoUI.Fonts.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 9)
+                        .frame(height: 30)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(selectedFragment?.id == fragment.id ? Color.accentColor.opacity(0.14) : Color.clear)
+                        )
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var fragmentDetail: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Label("覆写信息", systemImage: "info.circle")
+                    .font(MihomoUI.Fonts.bodyMedium)
+                Spacer()
+                Text("已启用 \(store.configFragments.filter(\.enabled).count) · 禁用规则 \(store.disabledRules.count)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let fragment = selectedFragment {
+                HStack {
+                    Text(fragment.name)
+                        .font(.headline)
+                        .lineLimit(1)
+                    Text(fragment.kind.title)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(.quaternary.opacity(0.45), in: Capsule())
+                    Spacer()
+                    Text(fragment.enabled ? "已启用" : "已停用")
+                        .font(MihomoUI.Fonts.caption)
+                        .foregroundStyle(fragment.enabled ? .green : .secondary)
+                }
+                Text("更新于 \(Formatters.shortDate.string(from: fragment.updatedAt))")
+                    .font(MihomoUI.Fonts.caption)
+                    .foregroundStyle(.secondary)
+                Text(fragment.content)
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(4)
+                    .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
+                    .padding(9)
+                    .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 7))
+            } else {
+                Text("选择或新增覆写后，可在这里查看类型、状态与内容摘要。")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 112, alignment: .center)
+            }
+        }
     }
 
     private func overrideBinding(_ keyPath: WritableKeyPath<AppSettings, Bool>) -> Binding<Bool> {
@@ -263,40 +316,5 @@ struct ConfigFragmentsSummaryView: View {
             return
         }
         selectedFragmentID = store.configFragments.first?.id
-    }
-}
-
-private struct ProfileMetric: View {
-    var title: String
-    var value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title3.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 6)
-    }
-}
-
-private struct ProfileSmallFact: View {
-    var title: String
-    var value: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

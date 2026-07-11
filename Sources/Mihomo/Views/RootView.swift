@@ -207,6 +207,8 @@ struct DetailSwitchView: View {
             PoliciesView()
         case .profiles:
             ProfilesView()
+        case .overrides:
+            OverridesView()
         case .rules:
             RulesView()
         case .resources:

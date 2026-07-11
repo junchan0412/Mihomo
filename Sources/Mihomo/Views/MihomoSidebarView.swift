@@ -4,7 +4,7 @@ struct MihomoSidebarView: View {
     @EnvironmentObject private var store: AppStore
     @Binding var selection: AppSection
 
-    private let mainSections: [AppSection] = [.overview, .activity, .policies, .rules, .profiles, .logs]
+    private let mainSections: [AppSection] = [.overview, .activity, .policies, .rules, .profiles, .overrides, .logs]
     private let engineSections: [AppSection] = [.networkSecurity, .resources, .advanced, .diagnostics]
 
     var body: some View {

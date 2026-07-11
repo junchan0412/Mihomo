@@ -18,4 +18,9 @@ final class SettingsPresentationTests: XCTestCase {
     func testNetworkWorkspaceKeepsDNSAsAFirstClassDestination() {
         XCTAssertEqual(NetworkWorkspaceTab.allCases.map(\.title), ["概览", "DNS", "恢复"])
     }
+
+    func testExistingRulePresentationUsesEditingMode() {
+        XCTAssertFalse(RuleEditorPresentation.add.isEditing)
+        XCTAssertTrue(RuleEditorPresentation.edit(7).isEditing)
+    }
 }

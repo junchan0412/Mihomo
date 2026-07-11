@@ -5,7 +5,7 @@ struct RulesView: View {
     @EnvironmentObject private var store: AppStore
     @State private var searchText = ""
     @State private var selectedRuleIndex: Int?
-    @State private var showingRuleEditor = false
+    @State private var editorPresentation: RuleEditorPresentation?
     @State private var editorOriginalIndex: Int?
     @State private var editorType = "MATCH"
     @State private var editorValue = ""
@@ -65,9 +65,9 @@ struct RulesView: View {
                 self.selectedRuleIndex = nil
             }
         }
-        .sheet(isPresented: $showingRuleEditor) {
+        .sheet(item: $editorPresentation) { presentation in
             RuleEditorSheet(
-                isEditing: editorOriginalIndex != nil,
+                isEditing: presentation.isEditing,
                 ruleTypes: ruleTypes,
                 ruleType: $editorType,
                 ruleValue: $editorValue,
@@ -164,19 +164,8 @@ struct RulesView: View {
     }
 
     private var ruleWorkspace: some View {
-        HStack(spacing: 0) {
-            ruleTable
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            Divider()
-
-            RuleInspectorPane(
-                entry: selectedEntry,
-                add: beginAddRule,
-                edit: beginEdit,
-                delete: deleteSelectedRule
-            )
-        }
+        ruleTable
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay { RoundedRectangle(cornerRadius: 10).stroke(.quaternary, lineWidth: 1) }
     }
@@ -262,7 +251,7 @@ struct RulesView: View {
         editorValue = ""
         editorPolicy = "DIRECT"
         editorNote = ""
-        showingRuleEditor = true
+        editorPresentation = .add
     }
 
     private func beginEdit(_ entry: RuleTableEntry) {
@@ -272,7 +261,7 @@ struct RulesView: View {
         editorValue = entry.value
         editorPolicy = entry.policy
         editorNote = entry.note
-        showingRuleEditor = true
+        editorPresentation = .edit(entry.rule.index)
     }
 
     private func saveRuleEditor() {
@@ -308,41 +297,5 @@ struct RulesView: View {
         text.components(separatedBy: CharacterSet(charactersIn: ",\n"))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { $0.isEmpty == false }
-    }
-}
-
-struct RuleTableEntry: Identifiable, Hashable {
-    var rule: RuleItem
-    var type: String
-    var value: String
-    var policy: String
-    var options: [String]
-
-    var id: String { rule.id }
-    var note: String { options.joined(separator: ", ") }
-    var searchText: String {
-        [rule.content, type, value, policy, note, "\(rule.index)", "\(rule.hitCount)"].joined(separator: " ")
-    }
-
-    init(rule: RuleItem) {
-        self.rule = rule
-        let parts = rule.content.split(separator: ",", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        if parts.count >= 3 {
-            type = parts[0]
-            value = parts[1]
-            policy = parts[2]
-            options = Array(parts.dropFirst(3))
-        } else if parts.count == 2 {
-            type = parts[0]
-            value = ""
-            policy = parts[1]
-            options = []
-        } else {
-            type = parts.first ?? "MATCH"
-            value = ""
-            policy = "DIRECT"
-            options = []
-        }
     }
 }

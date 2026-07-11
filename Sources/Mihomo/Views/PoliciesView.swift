@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct PoliciesView: View {
@@ -8,6 +7,7 @@ struct PoliciesView: View {
     @State private var searchText = ""
     @State private var pendingAutomaticOverride: PolicyNodeRow?
     @State private var showingGroupEditor = false
+    @State private var showingGroupDetail = false
     @State private var groupEditorContent = ""
 
     private var displayGroups: [ProxyGroup] {
@@ -120,6 +120,18 @@ struct PoliciesView: View {
             )
             .environmentObject(store)
             .frame(minWidth: 900, minHeight: 620)
+        }
+        .sheet(isPresented: $showingGroupDetail) {
+            if let selectedGroup {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(selectedGroup.name).font(.title2.weight(.semibold))
+                    Text("\(selectedGroup.type) · \(selectedGroup.all.count) 个候选").foregroundStyle(.secondary)
+                    ScrollView {
+                        PolicyNodeCardGrid(rows: nodeRows, isOffline: isOfflinePolicyMode, selectedNodeID: $selectedNodeID, activate: handleNodeDoubleClick)
+                    }
+                }
+                .padding(24).frame(minWidth: 620, minHeight: 480, alignment: .topLeading)
+            }
         }
     }
 
@@ -240,60 +252,20 @@ struct PoliciesView: View {
     }
 
     private var content: some View {
-        HStack(spacing: 0) {
-            PolicyGroupList(
-                groups: visibleGroups,
-                iconImages: store.policyGroupIconImages,
-                selectedGroupID: $selectedGroupID
-            )
-            .frame(width: 300)
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(selectedGroup?.name ?? "节点")
-                            .font(.headline)
-                        Text(selectedGroup.map { "\($0.type) · \($0.all.count) 个候选" } ?? "没有策略组")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    if let selectedGroup, selectedGroup.now.isEmpty == false {
-                        Label(selectedGroup.now, systemImage: "checkmark.circle.fill")
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.green)
-                            .lineLimit(1)
-                    }
-                }
-
-                AppKitTable(
-                    rows: nodeRows,
-                    selection: $selectedNodeID,
-                    columns: [
-                        .init(title: "节点", width: 280, textColor: currentNodeColor) { $0.displayName },
-                        .init(title: "类型", width: 110, textColor: currentNodeColor) { $0.node.type },
-                        .init(title: "延迟", width: 90, textColor: currentNodeColor) { $0.delayText }
-                    ],
-                    onDoubleClick: handleNodeDoubleClick,
-                    hasHorizontalScroller: false
-                )
-                .overlay {
-                    if nodeRows.isEmpty {
-                        ContentUnavailableView("没有候选节点", systemImage: "switch.2")
-                    }
-                }
+        PolicyWorkspaceView(
+            providers: store.providers.filter { $0.kind.caseInsensitiveCompare("Proxy") == .orderedSame },
+            groups: visibleGroups,
+            iconImages: store.policyGroupIconImages,
+            isOffline: isOfflinePolicyMode,
+            providerHistory: { store.providerUpdateHistory(for: $0).first },
+            refreshProvider: { provider in Task { await store.refreshProviderResource(provider) } },
+            testGroup: { group in Task { await store.testGroupDelay(group) } },
+            openGroup: { group in
+                selectedGroupID = group.id
+                ensureNodeSelection(in: group)
+                showingGroupDetail = true
             }
-            .padding(.leading, 14)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .frame(minHeight: 420, maxHeight: .infinity)
-        .overlay {
-            if visibleGroups.isEmpty {
-                ContentUnavailableView("没有策略组", systemImage: "switch.2", description: Text("当前配置没有可显示的策略组。"))
-            }
-        }
+        )
     }
 
     private func nodes(for group: ProxyGroup) -> [PolicyNodeRow] {
@@ -341,10 +313,6 @@ struct PoliciesView: View {
                 }
             }
         )
-    }
-
-    private func currentNodeColor(_ row: PolicyNodeRow) -> NSColor? {
-        row.isCurrent ? .systemGreen : nil
     }
 
     private func handleNodeDoubleClick(_ row: PolicyNodeRow) {
