@@ -23,6 +23,13 @@ final class SettingsPresentationTests: XCTestCase {
         XCTAssertEqual(NetworkWorkspaceTab.allCases.map(\.title), ["概览", "DNS", "恢复"])
     }
 
+    func testMenuBarModeLettersMatchOutboundModes() {
+        XCTAssertEqual(MenuBarPresentation.modeLetter(for: "rule"), "R")
+        XCTAssertEqual(MenuBarPresentation.modeLetter(for: "direct"), "D")
+        XCTAssertEqual(MenuBarPresentation.modeLetter(for: "global"), "G")
+        XCTAssertEqual(MenuBarPresentation.modeLetter(for: "unknown"), "R")
+    }
+
     func testExistingRulePresentationUsesEditingMode() {
         XCTAssertFalse(RuleEditorPresentation.add.isEditing)
         XCTAssertTrue(RuleEditorPresentation.edit(7).isEditing)

@@ -65,9 +65,7 @@ struct SoftwareUpdateWindowView: View {
 
                 Divider()
 
-                Text(update.notes?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                     ? update.notes ?? ""
-                     : "此版本包含稳定性、交互与安全更新。")
+                Text(releaseNotesText(update.notes))
                     .font(.body)
                     .lineSpacing(5)
                     .textSelection(.enabled)
@@ -90,6 +88,11 @@ struct SoftwareUpdateWindowView: View {
                 .frame(maxWidth: .infinity, minHeight: 250)
                 .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 14))
         }
+    }
+
+    private func releaseNotesText(_ notes: String?) -> String {
+        let value = notes?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? "此版本包含稳定性、交互与安全更新。" : value
     }
 
     private var footer: some View {
