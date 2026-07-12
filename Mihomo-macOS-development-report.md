@@ -204,7 +204,7 @@ Activity 的 DNS 是连接工作区内的只读观测视图，数据来自最近
 DEVELOPER_DIR='/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer' swift test
 git diff --check
 ./script/maintainability_audit.sh
-APP_VERSION=1.8.79 ./script/build_and_run.sh --verify
+APP_VERSION=1.8.80 ./script/build_and_run.sh --verify
 ```
 
 高风险改动补充验证：
@@ -227,15 +227,15 @@ APP_VERSION=1.8.79 ./script/build_and_run.sh --verify
 5. 执行：
 
 ```bash
-./script/package_release.sh 1.8.79
-./script/release_smoke_test.sh 1.8.79
+./script/package_release.sh 1.8.80
+./script/release_smoke_test.sh 1.8.80
 ```
 
 6. 检查 zip、versioned manifest、latest manifest 和 provenance。
 7. 提交并 push branch。
-8. 创建 `v1.8.79` tag，不移动旧 tag。
+8. 创建 `v1.8.80` tag，不移动旧 tag。
 9. push tag。
-10. 创建 GitHub Release，上传 zip 与 `mihomo-update.json`，正文使用 `docs/releases/v1.8.79.md`。
+10. 创建 GitHub Release，上传 zip 与 `mihomo-update.json`，正文使用 `docs/releases/v1.8.80.md`。
 
 ## 11. 当前技术债务
 
