@@ -2,6 +2,20 @@ import Foundation
 import MihomoShared
 
 struct HelperAuditService {
+    private let appBundleURL: URL
+    private let appVersion: String
+    private let appBuild: String
+
+    init(
+        appBundleURL: URL = Bundle.main.bundleURL,
+        appVersion: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
+        appBuild: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+    ) {
+        self.appBundleURL = appBundleURL
+        self.appVersion = appVersion
+        self.appBuild = appBuild
+    }
+
     func localAuditResults(helperStatus: String) -> [DiagnosticResult] {
         [
             bundleLayoutResult(),
@@ -11,6 +25,15 @@ struct HelperAuditService {
             serviceStatusResult(helperStatus: helperStatus),
             notarizationResult()
         ]
+    }
+
+    func runtimeBindingResult(helperVersion: HelperOperationResult) -> DiagnosticResult {
+        HelperRuntimeBindingAudit.evaluate(
+            currentAppURL: appBundleURL,
+            currentVersion: appVersion,
+            currentBuild: appBuild,
+            payload: helperVersion.payload
+        )
     }
 
     private func bundleLayoutResult() -> DiagnosticResult {
@@ -47,7 +70,7 @@ struct HelperAuditService {
     private func appSignatureResult() -> DiagnosticResult {
         signatureResult(
             title: "App 签名",
-            url: Bundle.main.bundleURL,
+            url: appBundleURL,
             expectedIdentifier: MihomoHelperConstants.appBundleIdentifier,
             deep: true
         )
@@ -114,14 +137,42 @@ struct HelperAuditService {
     }
 
     private var helperExecutableURL: URL {
-        Bundle.main.bundleURL
+        appBundleURL
             .appendingPathComponent("Contents/Library/LaunchServices", isDirectory: true)
             .appendingPathComponent(MihomoHelperConstants.helperExecutableName)
     }
 
     private var daemonPlistURL: URL {
-        Bundle.main.bundleURL
+        appBundleURL
             .appendingPathComponent("Contents/Library/LaunchDaemons", isDirectory: true)
             .appendingPathComponent(MihomoHelperConstants.daemonPlistName)
+    }
+}
+
+enum HelperRuntimeBindingAudit {
+    static func evaluate(
+        currentAppURL: URL,
+        currentVersion: String,
+        currentBuild: String,
+        payload: [String: String]
+    ) -> DiagnosticResult {
+        let expectedPath = currentAppURL.standardizedFileURL.resolvingSymlinksInPath().path
+        let rawActualPath = payload["authorizedAppBundle"] ?? ""
+        let actualPath = rawActualPath.isEmpty ? "" : URL(fileURLWithPath: rawActualPath)
+            .standardizedFileURL
+            .resolvingSymlinksInPath()
+            .path
+        let actualVersion = payload["authorizedAppVersion"] ?? ""
+        let actualBuild = payload["authorizedAppBuild"] ?? ""
+        let pathMatches = actualPath == expectedPath
+        let versionMatches = currentVersion.isEmpty || actualVersion.isEmpty || actualVersion == currentVersion
+        let buildMatches = currentBuild.isEmpty || actualBuild.isEmpty || actualBuild == currentBuild
+
+        let state: DiagnosticState = pathMatches && versionMatches && buildMatches ? .ok : .warning
+        return DiagnosticResult(
+            title: "Helper 运行绑定",
+            detail: "当前 App：\(expectedPath)\nHelper 授权 App：\(actualPath.isEmpty ? "-" : actualPath)\n当前版本：\(currentVersion.isEmpty ? "-" : currentVersion) (\(currentBuild.isEmpty ? "-" : currentBuild))\nHelper 版本：\(actualVersion.isEmpty ? "-" : actualVersion) (\(actualBuild.isEmpty ? "-" : actualBuild))",
+            state: state
+        )
     }
 }

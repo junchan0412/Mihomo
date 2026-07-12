@@ -44,11 +44,40 @@ final class RuntimeConfigBuilderTests: XCTestCase {
             disabledRules: ["DOMAIN-SUFFIX,example.com,Auto"]
         )
 
-        XCTAssertTrue(generated.contains("mixed-port: 7891"))
+        XCTAssertTrue(generated.contains("mixed-port: 9999"))
         XCTAssertTrue(generated.contains("socks-port: 7892"))
         XCTAssertTrue(generated.contains("tun:"))
         XCTAssertTrue(generated.contains("rule-providers:"))
         XCTAssertFalse(generated.contains("DOMAIN-SUFFIX,example.com,Auto"))
         XCTAssertTrue(generated.contains("MATCH,DIRECT"))
+    }
+
+    func testYAMLOverrideTakesPriorityOverProfileAndAppDefaults() throws {
+        let profile = """
+        mixed-port: 9000
+        dns:
+          enable: true
+          enhanced-mode: redir-host
+        """
+        let fragment = ConfigFragment(
+            name: "Runtime preferences",
+            kind: .yaml,
+            enabled: true,
+            content: """
+            mixed-port: 9100
+            dns:
+              enhanced-mode: fake-ip
+            """
+        )
+        let settings = AppSettings(mixedPort: 7890, dnsEnhancedMode: "normal", dnsNameservers: ["system"])
+
+        let generated = try RuntimeConfigBuilder().build(
+            profileContent: profile,
+            settings: settings,
+            fragments: [fragment]
+        )
+
+        XCTAssertTrue(generated.contains("mixed-port: 9100"))
+        XCTAssertTrue(generated.contains("enhanced-mode: fake-ip"))
     }
 }

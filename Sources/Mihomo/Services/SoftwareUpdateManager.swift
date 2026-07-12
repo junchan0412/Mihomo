@@ -29,6 +29,12 @@ struct AppUpdateCheckResult: Hashable {
     var currentBuild: String
 }
 
+struct PreparedUpdatePackage {
+    var candidate: URL
+    var installScript: URL
+    var tempRoot: URL
+}
+
 final class SoftwareUpdateManager {
     static let githubLatestManifestURL = URL(string: "https://github.com/junchan0412/Mihomo/releases/latest/download/mihomo-update.json")!
     static let githubReleasesPage = URL(string: "https://github.com/junchan0412/Mihomo/releases/latest")!
@@ -49,7 +55,7 @@ final class SoftwareUpdateManager {
         var request = URLRequest(url: manifestURL)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("Mihomo", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await NetworkClient.data(for: request)
         try validateHTTP(response: response, data: data)
         try validateManifestSignature(data)
         let decoder = JSONDecoder()
@@ -68,16 +74,30 @@ final class SoftwareUpdateManager {
     func installUpdate(_ manifest: AppUpdateManifest, manifestURL: URL) async throws -> String {
         let packageURL = try resolvedPackageURL(manifest.url, manifestURL: manifestURL)
         let tempRoot = AppPaths.runtimeDirectory.appendingPathComponent("app-update-\(UUID().uuidString)", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
+
+            let (downloaded, response) = try await NetworkClient.download(from: packageURL)
+            try validateHTTP(response: response, data: Data())
+            let zipURL = tempRoot.appendingPathComponent(packageURL.lastPathComponent.isEmpty ? "update.zip" : packageURL.lastPathComponent)
+            if FileManager.default.fileExists(atPath: zipURL.path) {
+                try FileManager.default.removeItem(at: zipURL)
+            }
+            try FileManager.default.copyItem(at: downloaded, to: zipURL)
+
+            let prepared = try prepareDownloadedUpdatePackage(zipURL: zipURL, manifest: manifest, tempRoot: tempRoot)
+            try launchInstallScript(script: prepared.installScript, candidate: prepared.candidate, tempRoot: prepared.tempRoot)
+        } catch {
+            try? FileManager.default.removeItem(at: tempRoot)
+            throw error
+        }
+        return "更新 \(manifest.version) 已验证，Mihomo 将退出并由安装器替换应用。"
+    }
+
+    func prepareDownloadedUpdatePackage(zipURL: URL, manifest: AppUpdateManifest, tempRoot: URL) throws -> PreparedUpdatePackage {
         let unpackRoot = tempRoot.appendingPathComponent("unpack", isDirectory: true)
         try FileManager.default.createDirectory(at: unpackRoot, withIntermediateDirectories: true)
 
-        let (downloaded, response) = try await URLSession.shared.download(from: packageURL)
-        try validateHTTP(response: response, data: Data())
-        let zipURL = tempRoot.appendingPathComponent(packageURL.lastPathComponent.isEmpty ? "update.zip" : packageURL.lastPathComponent)
-        if FileManager.default.fileExists(atPath: zipURL.path) {
-            try FileManager.default.removeItem(at: zipURL)
-        }
-        try FileManager.default.copyItem(at: downloaded, to: zipURL)
         try validateSHA256(fileURL: zipURL, expected: manifest.sha256)
 
         let unzip = try Shell.run("/usr/bin/unzip", ["-q", zipURL.path, "-d", unpackRoot.path])
@@ -88,8 +108,7 @@ final class SoftwareUpdateManager {
         let candidate = try locateAppBundle(in: unpackRoot)
         try validateCandidateBundle(candidate, manifest: manifest)
         let script = try writeInstallScript(tempRoot: tempRoot)
-        try launchInstallScript(script: script, candidate: candidate, tempRoot: tempRoot)
-        return "更新 \(manifest.version) 已验证，Mihomo 将退出并由安装器替换应用。"
+        return PreparedUpdatePackage(candidate: candidate, installScript: script, tempRoot: tempRoot)
     }
 
     private func resolvedPackageURL(_ value: String, manifestURL: URL) throws -> URL {
@@ -206,7 +225,7 @@ final class SoftwareUpdateManager {
         throw updateError("更新包中没有 Mihomo.app。")
     }
 
-    private func writeInstallScript(tempRoot: URL) throws -> URL {
+    func writeInstallScript(tempRoot: URL) throws -> URL {
         let script = tempRoot.appendingPathComponent("install-update.sh")
         let body = """
         #!/bin/sh
@@ -216,7 +235,25 @@ final class SoftwareUpdateManager {
         temp="$3"
         backup="${current}.previous-update"
 
-        while /usr/bin/pgrep -x "Mihomo" >/dev/null 2>&1; do
+        restore_backup() {
+          /bin/rm -rf "$current"
+          if [ -e "$backup" ]; then
+            /bin/mv "$backup" "$current"
+          fi
+        }
+
+        is_current_app_running() {
+          executable="$current/Contents/MacOS/Mihomo"
+          for pid in $(/usr/bin/pgrep -x "Mihomo" 2>/dev/null || true); do
+            command=$(/bin/ps -p "$pid" -o command= 2>/dev/null || true)
+            case "$command" in
+              "$executable"|"$executable "*) return 0 ;;
+            esac
+          done
+          return 1
+        }
+
+        while is_current_app_running; do
           /bin/sleep 0.2
         done
 
@@ -225,14 +262,14 @@ final class SoftwareUpdateManager {
           /bin/mv "$current" "$backup"
         fi
 
-        /usr/bin/ditto "$candidate" "$current"
+        if ! /usr/bin/ditto "$candidate" "$current"; then
+          restore_backup
+          exit 1
+        fi
         /usr/bin/xattr -dr com.apple.quarantine "$current" >/dev/null 2>&1 || true
 
         if ! /usr/bin/codesign --verify --deep --strict "$current" >/dev/null 2>&1; then
-          /bin/rm -rf "$current"
-          if [ -e "$backup" ]; then
-            /bin/mv "$backup" "$current"
-          fi
+          restore_backup
           exit 1
         fi
 

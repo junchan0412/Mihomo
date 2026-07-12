@@ -27,6 +27,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
     var onDoubleClick: ((Row) -> Void)?
     var hasHorizontalScroller: Bool
     var allowsParentScrollPassthrough: Bool
+    var borderType: NSBorderType
 
     init(
         rows: [Row],
@@ -34,7 +35,8 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         columns: [AppKitTableColumn<Row>],
         onDoubleClick: ((Row) -> Void)? = nil,
         hasHorizontalScroller: Bool = true,
-        allowsParentScrollPassthrough: Bool = false
+        allowsParentScrollPassthrough: Bool = false,
+        borderType: NSBorderType = .bezelBorder
     ) {
         self.rows = rows
         self._selection = selection
@@ -42,6 +44,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         self.onDoubleClick = onDoubleClick
         self.hasHorizontalScroller = hasHorizontalScroller
         self.allowsParentScrollPassthrough = allowsParentScrollPassthrough
+        self.borderType = borderType
     }
 
     func makeCoordinator() -> Coordinator {
@@ -49,7 +52,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
     }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let tableView = NSTableView()
+        let tableView = AppKitAccessibleTableView()
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
         tableView.target = context.coordinator
@@ -59,15 +62,20 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         tableView.allowsMultipleSelection = false
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.selectionHighlightStyle = .regular
-        tableView.rowHeight = 26
-        tableView.intercellSpacing = NSSize(width: 0, height: 2)
+        tableView.rowHeight = 28
+        tableView.intercellSpacing = NSSize(width: 0, height: 1)
+        tableView.backgroundColor = .textBackgroundColor
+        tableView.onActivateSelection = { [weak coordinator = context.coordinator, weak tableView] in
+            guard let coordinator, let tableView else { return }
+            coordinator.activateSelection(on: tableView)
+        }
 
         let scrollView = AppKitTableScrollView()
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = hasHorizontalScroller
         scrollView.allowsParentScrollPassthrough = allowsParentScrollPassthrough
         scrollView.autohidesScrollers = true
-        scrollView.borderType = .bezelBorder
+        scrollView.borderType = borderType
         scrollView.documentView = tableView
 
         context.coordinator.configureColumns(on: tableView)
@@ -78,6 +86,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         guard let tableView = scrollView.documentView as? NSTableView else { return }
         context.coordinator.parent = self
         scrollView.hasHorizontalScroller = hasHorizontalScroller
+        scrollView.borderType = borderType
         (scrollView as? AppKitTableScrollView)?.allowsParentScrollPassthrough = allowsParentScrollPassthrough
         context.coordinator.configureColumns(on: tableView)
         context.coordinator.reloadDataIfNeeded(on: tableView)
@@ -110,8 +119,10 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? makeCell(identifier: identifier)
             let currentRow = parent.rows[row]
             let column = parent.columns[columnIndex]
-            cell.textField?.stringValue = column.value(currentRow)
+            let value = column.value(currentRow)
+            cell.textField?.stringValue = value
             cell.textField?.textColor = column.textColor?(currentRow) ?? .labelColor
+            cell.setAccessibilityLabel("\(column.title)：\(value)")
             return cell
         }
 
@@ -122,7 +133,11 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         }
 
         @objc func doubleClicked(_ sender: NSTableView) {
-            let row = sender.clickedRow >= 0 ? sender.clickedRow : sender.selectedRow
+            activateSelection(on: sender)
+        }
+
+        func activateSelection(on tableView: NSTableView) {
+            let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
             guard row >= 0, row < parent.rows.count else { return }
             parent.selection = parent.rows[row].id
             parent.onDoubleClick?(parent.rows[row])
@@ -149,6 +164,8 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
 
         func configureColumns(on tableView: NSTableView) {
             let nextSignature = parent.columns.map { "\($0.title):\($0.width)" }
+            tableView.setAccessibilityLabel("数据表：\(parent.columns.map(\.title).joined(separator: "、"))")
+            tableView.setAccessibilityHelp("使用方向键选择行；支持详情的表格可按 Return、Enter 或空格打开所选行。")
             guard nextSignature != columnSignature else { return }
 
             tableView.tableColumns.forEach { tableView.removeTableColumn($0) }
@@ -158,6 +175,8 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
                 tableColumn.width = column.width
                 tableColumn.minWidth = min(column.width, 80)
                 tableColumn.resizingMask = .userResizingMask
+                tableColumn.headerCell.font = .systemFont(ofSize: 12, weight: .semibold)
+                tableColumn.headerCell.textColor = .secondaryLabelColor
                 tableView.addTableColumn(tableColumn)
             }
             columnSignature = nextSignature
@@ -204,8 +223,9 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             let textField = NSTextField(labelWithString: "")
             textField.lineBreakMode = .byTruncatingTail
             textField.usesSingleLineMode = true
-            textField.font = .systemFont(ofSize: NSFont.systemFontSize)
+            textField.font = .systemFont(ofSize: 13)
             textField.translatesAutoresizingMaskIntoConstraints = false
+            textField.setAccessibilityElement(false)
 
             cell.textField = textField
             cell.addSubview(textField)
@@ -218,6 +238,19 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
 
             return cell
         }
+    }
+}
+
+final class AppKitAccessibleTableView: NSTableView {
+    var onActivateSelection: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        let isActivationKey = event.keyCode == 36 || event.keyCode == 76 || event.charactersIgnoringModifiers == " "
+        if isActivationKey, selectedRow >= 0, let onActivateSelection {
+            onActivateSelection()
+            return
+        }
+        super.keyDown(with: event)
     }
 }
 

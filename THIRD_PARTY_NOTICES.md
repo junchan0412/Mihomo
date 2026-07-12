@@ -14,4 +14,5 @@ This document is a lightweight release SBOM and license notice for bundled or co
 Release smoke checks:
 
 - `script/release_smoke_test.sh <version>` validates the packaged app signature, bundle identifier, update manifest, Ed25519 metadata, latest manifest parity, and zip SHA-256.
+- Release app bundles include this file at `Mihomo.app/Contents/Resources/THIRD_PARTY_NOTICES.md`; smoke tests fail if it is missing from the bundle or zip.
 - GitHub Release assets should include `Mihomo-<version>-macOS-arm64.zip`, `Mihomo-<version>-update.json`, and `mihomo-update.json`.

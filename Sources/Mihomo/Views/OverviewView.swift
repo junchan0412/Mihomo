@@ -2,146 +2,135 @@ import SwiftUI
 
 struct OverviewView: View {
     @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var activityStore: RuntimeActivityStore
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: MihomoUI.sectionSpacing) {
                 header
-                networkTakeoverSection
-                runtimeSection
-                recentLogsSection
+                summaryStrip
+                mainDashboardGrid
+                secondaryDashboardGrid
+                trafficTimelinePanel
             }
-            .padding(24)
+            .padding(.horizontal, MihomoUI.pageHorizontalPadding)
+            .padding(.vertical, MihomoUI.pageVerticalPadding)
             .frame(maxWidth: .infinity, alignment: .topLeading)
         }
+        .background(MihomoUI.pageBackground)
         .navigationTitle("概览")
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("概览")
-                    .font(.largeTitle.bold())
-                Text(store.activeProfile?.name ?? "没有启用的配置")
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            quickActions
-        }
-    }
-
-    private var networkTakeoverSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("网络接管")
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(greeting)
+                .font(MihomoUI.Fonts.pageTitle)
+            Text(store.activeProfile?.name ?? "没有启用的配置")
+                .font(MihomoUI.Fonts.pageSubtitle)
                 .foregroundStyle(.secondary)
-
-            if let advisory = store.networkModeAdvisory {
-                Label(advisory, systemImage: "exclamationmark.triangle.fill")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
-            }
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 12)], spacing: 12) {
-                TakeoverCard(
-                    title: "系统代理",
-                    subtitle: "将 HTTP / SOCKS 流量交给 mihomo mixed-port。",
-                    state: store.networkTakeoverState(for: .systemProxy),
-                    systemImage: "network",
-                    tint: .blue,
-                    isOn: systemProxyBinding
-                )
-
-                TakeoverCard(
-                    title: "TUN 模式",
-                    subtitle: "写入运行配置并通过 Helper 捕获 DNS 与路由回滚快照。",
-                    state: store.networkTakeoverState(for: .tun),
-                    systemImage: "lock.shield",
-                    tint: .purple,
-                    isOn: tunBinding
-                )
-
-                TakeoverCard(
-                    title: "系统 DNS",
-                    subtitle: "核心启动时临时设置 DNS，停止或退出时恢复。",
-                    state: store.networkTakeoverState(for: .systemDNS),
-                    systemImage: "globe",
-                    tint: .green,
-                    isOn: autoDNSBinding
-                )
-            }
+                .lineLimit(1)
         }
     }
 
-    private var runtimeSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("运行状态")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 12)], spacing: 12) {
-                OverviewMetricTile(title: "核心", value: store.coreStatus, systemImage: "cpu", state: store.isCoreRunning ? .ok : .idle)
-                OverviewMetricTile(title: "Controller", value: store.coreVersion, systemImage: "point.3.connected.trianglepath.dotted", state: store.coreVersion == "未知" ? .warning : .ok)
-                OverviewMetricTile(title: "出站模式", value: modeTitle(store.currentMode), systemImage: "arrow.triangle.branch", state: .ok)
-                OverviewMetricTile(title: "活动连接", value: "\(store.connections.count)", systemImage: "link", state: store.connections.isEmpty ? .idle : .ok)
-            }
+    private var summaryStrip: some View {
+        HStack(spacing: 0) {
+            OverviewSummaryMetric(title: "当前下载", value: totalDownloadText, systemImage: "arrow.down.circle", tint: .blue)
+            OverviewDivider()
+            OverviewSummaryMetric(title: "当前上传", value: totalUploadText, systemImage: "arrow.up.circle", tint: .red)
+            OverviewDivider()
+            OverviewSummaryMetric(title: "连接数", value: "\(activityStore.connections.count)", systemImage: "link", tint: .cyan)
+            OverviewDivider()
+            OverviewSummaryMetric(title: "访问目标", value: "\(uniqueTargetCount)", systemImage: "location.north.circle", tint: .purple)
         }
-    }
-
-    private var quickActions: some View {
-        HStack(spacing: 8) {
-            Button {
-                Task { await store.refreshController() }
-            } label: {
-                Label("刷新", systemImage: "arrow.clockwise")
-            }
-
-            Button {
-                Task { await store.runDiagnostics() }
-            } label: {
-                Label("运行诊断", systemImage: "stethoscope")
-            }
-        }
-    }
-
-    private var recentLogsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("最近日志")
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            RecentLogList(logs: Array(store.logs.suffix(10)))
-        }
-    }
-
-    private var systemProxyBinding: Binding<Bool> {
-        Binding(
-            get: { store.systemProxyEnabled },
-            set: { _ in Task { await store.toggleSystemProxy() } }
+        .padding(.vertical, 16)
+        .padding(.horizontal, 18)
+        .background(
+            MihomoUI.cardFill,
+            in: RoundedRectangle(cornerRadius: MihomoUI.cornerRadius, style: .continuous)
         )
+        .overlay {
+            RoundedRectangle(cornerRadius: MihomoUI.cornerRadius, style: .continuous)
+                .stroke(MihomoUI.cardStroke, lineWidth: 1)
+        }
     }
 
-    private var tunBinding: Binding<Bool> {
-        Binding(
-            get: { store.settings.tunEnabled },
-            set: { enabled in Task { await store.setTunEnabled(enabled) } }
-        )
-    }
-
-    private var autoDNSBinding: Binding<Bool> {
-        Binding(
-            get: { store.settings.autoSetSystemDNS },
-            set: { enabled in
-                var updated = store.settings
-                updated.autoSetSystemDNS = enabled
-                Task { await store.saveSettings(updated) }
+    private var mainDashboardGrid: some View {
+        HStack(alignment: .top, spacing: MihomoUI.cardSpacing) {
+            OverviewPanel(title: "流量趋势", systemImage: "chart.line.uptrend.xyaxis", tint: .blue) {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 36) {
+                        TrafficRateLabel(title: "↓", value: Formatters.rate(activityStore.downloadRate), total: totalDownloadText, tint: .blue)
+                        TrafficRateLabel(title: "↑", value: Formatters.rate(activityStore.uploadRate), total: totalUploadText, tint: .red)
+                    }
+                    TrafficGraphView(samples: activityStore.trafficSamples)
+                        .frame(minHeight: 220)
+                }
             }
-        )
+            .frame(minHeight: 314)
+
+            VStack(spacing: MihomoUI.cardSpacing) {
+                OverviewSideStat(title: "活跃连接", value: "\(activityStore.connections.count)", detail: "当前会话", systemImage: "link", tint: .cyan)
+                OverviewSideStat(title: "核心状态", value: store.coreStatus, detail: activityStore.eventStreamStatus, systemImage: "cpu", tint: .purple)
+                OverviewSideStat(title: "出站模式", value: modeTitle(store.currentMode), detail: store.isCoreRunning ? "运行中" : "未运行", systemImage: "arrow.triangle.branch", tint: .red)
+            }
+            .frame(width: 318)
+        }
+    }
+
+    private var secondaryDashboardGrid: some View {
+        HStack(alignment: .top, spacing: MihomoUI.cardSpacing) {
+            OverviewPanel(title: "流量分布", systemImage: "arrow.triangle.branch", tint: .indigo) {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(totalTrafficText)
+                        .font(MihomoUI.Fonts.metricLarge)
+                    TrafficDistributionBar(directBytes: directTrafficBytes, proxyBytes: proxyTrafficBytes)
+                    HStack(spacing: 22) {
+                        DistributionLegend(title: "直连", value: Formatters.bytes(directTrafficBytes), tint: .cyan)
+                        DistributionLegend(title: "代理", value: Formatters.bytes(proxyTrafficBytes), tint: .indigo)
+                    }
+                }
+            }
+            .frame(minHeight: 206)
+
+            OverviewPanel(title: "策略组", systemImage: "square.grid.2x2", tint: .purple) {
+                if store.proxyGroups.isEmpty {
+                    Text("暂无数据")
+                        .font(MihomoUI.Fonts.sectionTitle)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 126, alignment: .center)
+                } else {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(store.proxyGroups.prefix(4)) { group in
+                            HStack {
+                                Text(group.name)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(group.now.isEmpty ? "-" : group.now)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .font(MihomoUI.Fonts.bodyMedium)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            }
+            .frame(minHeight: 206)
+        }
+    }
+
+    private var trafficTimelinePanel: some View {
+        OverviewPanel(title: "流量时间轴", systemImage: "chart.bar", tint: .indigo) {
+            HStack(alignment: .bottom, spacing: 5) {
+                ForEach(timelineSamples.indices, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.accentColor.opacity(0.45))
+                        .frame(height: timelineHeight(for: timelineSamples[index]))
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 106, maxHeight: 106, alignment: .bottomLeading)
+        }
+        .frame(minHeight: 168)
     }
 
     private func modeTitle(_ mode: String) -> String {
@@ -151,190 +140,54 @@ struct OverviewView: View {
         default: return "规则"
         }
     }
-}
 
-private struct TakeoverCard: View {
-    var title: String
-    var subtitle: String
-    var state: NetworkTakeoverState
-    var systemImage: String
-    var tint: Color
-    @Binding var isOn: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                Image(systemName: systemImage)
-                    .font(.title3)
-                    .foregroundStyle(tint)
-                    .frame(width: 24)
-
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(title)
-                        .font(.headline)
-                    Text(subtitle)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: 10)
-
-                Toggle(title, isOn: $isOn)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-            }
-
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(healthColor)
-                    .frame(width: 8, height: 8)
-                Text(state.actualState)
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(state.health == .inactive ? .secondary : .primary)
-                Spacer()
-            }
-
-            Divider()
-
-            VStack(alignment: .leading, spacing: 5) {
-                takeoverLine("期望", state.desiredState)
-                takeoverLine("最近", state.lastOperation)
-                takeoverLine("恢复", state.recoveryAction)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, minHeight: 188, alignment: .topLeading)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
-    }
-
-    private var healthColor: Color {
-        switch state.health {
-        case .ok: return .green
-        case .warning: return .orange
-        case .failed: return .red
-        case .inactive: return .secondary
+    private var greeting: String {
+        switch Calendar.current.component(.hour, from: Date()) {
+        case 5..<12: return "早上好，网络状态一目了然。"
+        case 12..<18: return "下午好，保持连接稳定顺畅。"
+        default: return "晚上好，随时掌握网络状态。"
         }
     }
 
-    private func takeoverLine(_ title: String, _ value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .frame(width: 30, alignment: .leading)
-            Text(value)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+    private var totalDownloadBytes: Int64 {
+        activityStore.totalDownloadBytes
     }
-}
 
-private enum MetricState {
-    case ok
-    case warning
-    case idle
-
-    var color: Color {
-        switch self {
-        case .ok: return .green
-        case .warning: return .orange
-        case .idle: return .secondary
-        }
+    private var totalUploadBytes: Int64 {
+        activityStore.totalUploadBytes
     }
-}
 
-private struct OverviewMetricTile: View {
-    var title: String
-    var value: String
-    var systemImage: String
-    var state: MetricState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: systemImage)
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Circle()
-                    .fill(state.color)
-                    .frame(width: 8, height: 8)
-            }
-            Text(title)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title3.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 112, alignment: .leading)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+    private var totalDownloadText: String {
+        Formatters.bytes(totalDownloadBytes)
     }
-}
 
-private struct RecentLogList: View {
-    var logs: [LogEntry]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if logs.isEmpty {
-                ContentUnavailableView("暂无日志", systemImage: "terminal")
-                    .frame(maxWidth: .infinity, minHeight: 220)
-            } else {
-                ForEach(logs) { entry in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(Formatters.logTime.string(from: entry.date))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 58, alignment: .leading)
-                        Text(entry.level.uppercased())
-                            .font(.caption.monospaced())
-                            .foregroundStyle(.secondary)
-                            .frame(width: 58, alignment: .leading)
-                        Text(entry.message)
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    Divider()
-                }
-            }
-        }
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+    private var totalUploadText: String {
+        Formatters.bytes(totalUploadBytes)
     }
-}
 
-struct StatusCard: View {
-    let title: String
-    let value: String
-    let systemImage: String
-    let isGood: Bool
+    private var totalTrafficText: String {
+        Formatters.bytes(totalDownloadBytes + totalUploadBytes)
+    }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: systemImage)
-                    .font(.title3)
-                Spacer()
-                Circle()
-                    .fill(isGood ? Color.green : Color.secondary)
-                    .frame(width: 8, height: 8)
-            }
-            Text(title)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.title3.weight(.semibold))
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+    private var uniqueTargetCount: Int {
+        activityStore.uniqueTargetCount
+    }
+
+    private var directTrafficBytes: Int64 {
+        activityStore.directTrafficBytes
+    }
+
+    private var proxyTrafficBytes: Int64 {
+        activityStore.proxyTrafficBytes
+    }
+
+    private var timelineSamples: [TrafficSample] {
+        Array(activityStore.trafficSamples.suffix(28))
+    }
+
+    private func timelineHeight(for sample: TrafficSample) -> CGFloat {
+        let maxValue = max(timelineSamples.map { max($0.downloadRate, $0.uploadRate) }.max() ?? 1, 1)
+        let value = max(sample.downloadRate, sample.uploadRate)
+        return max(8, CGFloat(value) / CGFloat(maxValue) * 104)
     }
 }

@@ -5,7 +5,7 @@ struct RulesView: View {
     @EnvironmentObject private var store: AppStore
     @State private var searchText = ""
     @State private var selectedRuleIndex: Int?
-    @State private var showingRuleEditor = false
+    @State private var editorPresentation: RuleEditorPresentation?
     @State private var editorOriginalIndex: Int?
     @State private var editorType = "MATCH"
     @State private var editorValue = ""
@@ -46,7 +46,7 @@ struct RulesView: View {
             Divider()
 
             VStack(spacing: 10) {
-                ruleTable
+                ruleWorkspace
                 bottomBar
             }
             .padding(16)
@@ -65,9 +65,9 @@ struct RulesView: View {
                 self.selectedRuleIndex = nil
             }
         }
-        .sheet(isPresented: $showingRuleEditor) {
+        .sheet(item: $editorPresentation) { presentation in
             RuleEditorSheet(
-                isEditing: editorOriginalIndex != nil,
+                isEditing: presentation.isEditing,
                 ruleTypes: ruleTypes,
                 ruleType: $editorType,
                 ruleValue: $editorValue,
@@ -83,9 +83,9 @@ struct RulesView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("规则")
-                    .font(.title2.bold())
+                    .font(MihomoUI.Fonts.pageTitle)
                 Text("\(store.rules.count) 条规则，\(store.disabledRules.count) 条已禁用。")
-                    .font(.callout)
+                    .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
 
@@ -137,10 +137,10 @@ struct RulesView: View {
                 rows: filteredEntries,
                 selection: ruleSelectionBinding,
                 columns: [
-                    .init(title: "状态", width: 62, textColor: ruleTextColor) { $0.rule.disabled ? "禁用" : "启用" },
+                    .init(title: "", width: 40, textColor: ruleStateColor) { $0.rule.disabled ? "" : "✓" },
                     .init(title: "ID", width: 52, textColor: ruleTextColor) { "\($0.rule.index)" },
                     .init(title: "类型", width: 124, textColor: ruleTextColor) { $0.type },
-                    .init(title: "值", width: 250, textColor: ruleTextColor) { $0.value.isEmpty ? "-" : $0.value },
+                    .init(title: "值", width: 280, textColor: ruleTextColor) { $0.displayValue.isEmpty ? "-" : $0.displayValue },
                     .init(title: "策略", width: 130, textColor: ruleTextColor) { $0.policy },
                     .init(title: "计数", width: 68, textColor: ruleTextColor) { "\($0.rule.hitCount)" },
                     .init(title: "注释", width: 140, textColor: ruleTextColor) { $0.note.isEmpty ? "-" : $0.note }
@@ -155,6 +155,13 @@ struct RulesView: View {
                 ContentUnavailableView("没有规则", systemImage: "list.bullet.rectangle")
             }
         }
+    }
+
+    private var ruleWorkspace: some View {
+        ruleTable
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay { RoundedRectangle(cornerRadius: 10).stroke(.quaternary, lineWidth: 1) }
     }
 
     private var bottomBar: some View {
@@ -190,8 +197,10 @@ struct RulesView: View {
             Button {
                 toggleSelectedRule()
             } label: {
-                Label(selectedEntry?.rule.disabled == true ? "启用" : "禁用", systemImage: selectedEntry?.rule.disabled == true ? "checkmark.circle" : "slash.circle")
+                Image(systemName: selectedEntry?.rule.disabled == true ? "checkmark.circle" : "slash.circle")
+                    .frame(width: 18)
             }
+            .help(selectedEntry?.rule.disabled == true ? "启用选中规则" : "禁用选中规则")
             .disabled(selectedRuleIndex == nil)
 
             Divider()
@@ -232,13 +241,17 @@ struct RulesView: View {
         entry.rule.disabled ? .secondaryLabelColor : nil
     }
 
+    private func ruleStateColor(_ entry: RuleTableEntry) -> NSColor? {
+        entry.rule.disabled ? .tertiaryLabelColor : .systemBlue
+    }
+
     private func beginAddRule() {
         editorOriginalIndex = nil
         editorType = "MATCH"
         editorValue = ""
         editorPolicy = "DIRECT"
         editorNote = ""
-        showingRuleEditor = true
+        editorPresentation = .add
     }
 
     private func beginEdit(_ entry: RuleTableEntry) {
@@ -247,8 +260,8 @@ struct RulesView: View {
         editorType = entry.type
         editorValue = entry.value
         editorPolicy = entry.policy
-        editorNote = entry.note
-        showingRuleEditor = true
+        editorNote = entry.optionsText
+        editorPresentation = .edit(entry.rule.index)
     }
 
     private func saveRuleEditor() {
@@ -284,108 +297,5 @@ struct RulesView: View {
         text.components(separatedBy: CharacterSet(charactersIn: ",\n"))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { $0.isEmpty == false }
-    }
-}
-
-private struct RuleEditorSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    var isEditing: Bool
-    var ruleTypes: [String]
-    @Binding var ruleType: String
-    @Binding var ruleValue: String
-    @Binding var rulePolicy: String
-    @Binding var ruleNote: String
-    var save: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(isEditing ? "编辑规则" : "添加规则")
-                .font(.title3.bold())
-
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                GridRow {
-                    Text("类型")
-                        .foregroundStyle(.secondary)
-                    Picker("类型", selection: $ruleType) {
-                        ForEach(ruleTypes, id: \.self) { type in
-                            Text(type).tag(type)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                }
-                GridRow {
-                    Text("值")
-                        .foregroundStyle(.secondary)
-                    TextField(ruleType == "MATCH" ? "MATCH 可为空" : "域名、IP、Provider 或进程名", text: $ruleValue)
-                        .disabled(ruleType == "MATCH")
-                }
-                GridRow {
-                    Text("策略")
-                        .foregroundStyle(.secondary)
-                    TextField("DIRECT / REJECT / 策略组", text: $rulePolicy)
-                }
-                GridRow {
-                    Text("注释")
-                        .foregroundStyle(.secondary)
-                    TextField("no-resolve 等附加参数，逗号分隔", text: $ruleNote)
-                }
-            }
-            .textFieldStyle(.roundedBorder)
-
-            HStack {
-                Spacer()
-                Button("取消") {
-                    dismiss()
-                }
-                Button("保存") {
-                    save()
-                    dismiss()
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(rulePolicy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(20)
-        .onChange(of: ruleType) {
-            if ruleType == "MATCH" {
-                ruleValue = ""
-            }
-        }
-    }
-}
-
-private struct RuleTableEntry: Identifiable, Hashable {
-    var rule: RuleItem
-    var type: String
-    var value: String
-    var policy: String
-    var options: [String]
-
-    var id: String { rule.id }
-    var note: String { options.joined(separator: ", ") }
-    var searchText: String {
-        [rule.content, type, value, policy, note, "\(rule.index)", "\(rule.hitCount)"].joined(separator: " ")
-    }
-
-    init(rule: RuleItem) {
-        self.rule = rule
-        let parts = rule.content.split(separator: ",", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        if parts.count >= 3 {
-            type = parts[0]
-            value = parts[1]
-            policy = parts[2]
-            options = Array(parts.dropFirst(3))
-        } else if parts.count == 2 {
-            type = parts[0]
-            value = ""
-            policy = parts[1]
-            options = []
-        } else {
-            type = parts.first ?? "MATCH"
-            value = ""
-            policy = "DIRECT"
-            options = []
-        }
     }
 }

@@ -2,14 +2,19 @@ import AppKit
 import SwiftUI
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    var openMainWindow: (() -> Void)?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        MainWindowPresenter.presentExisting()
-        return false
+        if MainWindowPresenter.presentExisting() {
+            return false
+        }
+        openMainWindow?()
+        return openMainWindow == nil
     }
 }
 
@@ -23,6 +28,8 @@ struct MihomoApp: App {
         WindowGroup("Mihomo", id: "main") {
             RootView()
                 .environmentObject(store)
+                .environmentObject(store.logStore)
+                .environmentObject(store.activityStore)
                 .frame(minWidth: 1080, minHeight: 700)
                 .task {
                     await store.bootstrap()
@@ -33,12 +40,13 @@ struct MihomoApp: App {
                 .onOpenURL { url in
                     Task { await store.handleDeepLink(url) }
                 }
+                .background(MainWindowOpenBridge(openWindow: openWindow, appDelegate: appDelegate))
         }
         .defaultSize(width: 1180, height: 780)
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
-            CommandMenu("Mihomo") {
+            CommandMenu("控制") {
                 Button("显示主窗口") {
                     MainWindowPresenter.present(openWindow: openWindow)
                 }
@@ -98,7 +106,7 @@ struct MihomoApp: App {
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
 
-                Button(store.logsPaused ? "继续日志" : "暂停日志") {
+                Button("切换日志暂停") {
                     store.toggleLogPause()
                 }
                 .keyboardShortcut("p", modifiers: [.command, .option])
@@ -135,6 +143,7 @@ struct MihomoApp: App {
         Window("连接详情", id: "connection-detail") {
             ConnectionDetailPanelView()
                 .environmentObject(store)
+                .environmentObject(store.activityStore)
                 .frame(minWidth: 340, minHeight: 420)
         }
         .defaultSize(width: 380, height: 520)
@@ -146,19 +155,37 @@ struct MihomoApp: App {
         }
         .defaultSize(width: 520, height: 420)
 
-        WindowGroup("覆写管理", id: "fragments-editor") {
-            ConfigFragmentsWindowView()
-                .environmentObject(store)
-                .frame(minWidth: 760, minHeight: 560)
-        }
-        .defaultSize(width: 860, height: 640)
-
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(store)
+                .environmentObject(store.logStore)
         } label: {
-            Text(store.menuBarTitle)
+            MenuBarStatusLabel(store: store, activityStore: store.activityStore)
         }
         .menuBarExtraStyle(.menu)
+    }
+}
+
+private struct MenuBarStatusLabel: View {
+    @ObservedObject var store: AppStore
+    @ObservedObject var activityStore: RuntimeActivityStore
+
+    var body: some View {
+        Text(store.menuBarTitle)
+    }
+}
+
+private struct MainWindowOpenBridge: View {
+    let openWindow: OpenWindowAction
+    let appDelegate: AppDelegate
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onAppear {
+                appDelegate.openMainWindow = {
+                    MainWindowPresenter.present(openWindow: openWindow)
+                }
+            }
     }
 }

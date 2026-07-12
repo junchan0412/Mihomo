@@ -4,6 +4,7 @@ set -euo pipefail
 MODE="${1:-run}"
 APP_NAME="Mihomo"
 HELPER_NAME="MihomoHelper"
+JS_WORKER_NAME="MihomoJSWorker"
 BUNDLE_ID="dev.codex.Mihomo"
 HELPER_LABEL="dev.codex.Mihomo.Helper"
 MIN_SYSTEM_VERSION="14.0"
@@ -14,8 +15,14 @@ if [[ -z "${DEVELOPER_DIR:-}" && -d "$DEFAULT_DEVELOPER_DIR" ]]; then
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_VERSION="${APP_VERSION:-0.7.0-dev}"
+DEFAULT_APP_VERSION="$(git -C "$ROOT_DIR" describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)"
+APP_VERSION="${APP_VERSION:-${DEFAULT_APP_VERSION:-0.0.0}}"
 APP_BUILD="${APP_BUILD:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%d%H%M%S)}"
+CODESIGN_IDENTITY="${MIHOMO_CODESIGN_IDENTITY:--}"
+CODESIGN_OPTIONS="${MIHOMO_CODESIGN_OPTIONS:-}"
+if [[ "$CODESIGN_IDENTITY" != "-" && -z "$CODESIGN_OPTIONS" ]]; then
+  CODESIGN_OPTIONS="runtime"
+fi
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
@@ -37,14 +44,17 @@ cd "$ROOT_DIR"
 if [[ "${RELEASE_BUILD:-0}" == "1" ]]; then
   swift build -c release --product "$APP_NAME"
   swift build -c release --product "$HELPER_NAME"
+  swift build -c release --product "$JS_WORKER_NAME"
   BUILD_DIR="$(swift build -c release --show-bin-path)"
 else
   swift build --product "$APP_NAME"
   swift build --product "$HELPER_NAME"
+  swift build --product "$JS_WORKER_NAME"
   BUILD_DIR="$(swift build --show-bin-path)"
 fi
 BUILD_BINARY="$BUILD_DIR/$APP_NAME"
 BUILD_HELPER="$BUILD_DIR/$HELPER_NAME"
+BUILD_JS_WORKER="$BUILD_DIR/$JS_WORKER_NAME"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_LAUNCH_SERVICES" "$APP_LAUNCH_DAEMONS" "$APP_CORE"
@@ -52,6 +62,8 @@ cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 cp "$BUILD_HELPER" "$HELPER_BINARY"
 chmod +x "$HELPER_BINARY"
+cp "$BUILD_JS_WORKER" "$APP_RESOURCES/$JS_WORKER_NAME"
+chmod +x "$APP_RESOURCES/$JS_WORKER_NAME"
 
 if [[ -x "$ROOT_DIR/vendor/mihomo" ]]; then
   cp "$ROOT_DIR/vendor/mihomo" "$APP_CORE/mihomo"
@@ -59,6 +71,10 @@ if [[ -x "$ROOT_DIR/vendor/mihomo" ]]; then
 elif [[ -f "$ROOT_DIR/vendor/mihomo.gz" ]]; then
   /usr/bin/gzip -dc "$ROOT_DIR/vendor/mihomo.gz" >"$APP_CORE/mihomo"
   chmod +x "$APP_CORE/mihomo"
+fi
+
+if [[ -f "$ROOT_DIR/THIRD_PARTY_NOTICES.md" ]]; then
+  cp "$ROOT_DIR/THIRD_PARTY_NOTICES.md" "$APP_RESOURCES/THIRD_PARTY_NOTICES.md"
 fi
 
 cat >"$HELPER_PLIST" <<PLIST
@@ -126,19 +142,29 @@ if command -v codesign >/dev/null 2>&1; then
     local identifier="$1"
     local path="$2"
     [[ -e "$path" ]] || return 0
-    /usr/bin/codesign --force --sign - --timestamp=none --identifier "$identifier" "$path" >/dev/null
+    local args=(--force --sign "$CODESIGN_IDENTITY" --identifier "$identifier")
+    if [[ "$CODESIGN_IDENTITY" == "-" ]]; then
+      args+=(--timestamp=none)
+    else
+      args+=(--timestamp)
+    fi
+    if [[ -n "$CODESIGN_OPTIONS" ]]; then
+      args+=(--options "$CODESIGN_OPTIONS")
+    fi
+    /usr/bin/codesign "${args[@]}" "$path" >/dev/null
   }
 
   if [[ -x "$APP_CORE/mihomo" ]]; then
     sign_item "$BUNDLE_ID.core.mihomo" "$APP_CORE/mihomo"
   fi
+  sign_item "$BUNDLE_ID.js-worker" "$APP_RESOURCES/$JS_WORKER_NAME"
   sign_item "$HELPER_LABEL" "$HELPER_BINARY"
   sign_item "$BUNDLE_ID" "$APP_BUNDLE"
   /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE"
 fi
 
 open_app() {
-  /usr/bin/open -n -F -a "$APP_BUNDLE"
+  /usr/bin/open -n -F "$APP_BUNDLE"
 }
 
 case "$MODE" in
@@ -157,9 +183,13 @@ case "$MODE" in
     /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
     ;;
   --verify|verify)
-    open_app
-    sleep 1
-    pgrep -x "$APP_NAME" >/dev/null
+    if [[ "${SKIP_APP_LAUNCH:-0}" == "1" ]]; then
+      /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE"
+    else
+      open_app
+      sleep 1
+      pgrep -x "$APP_NAME" >/dev/null
+    fi
     ;;
   *)
     echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2

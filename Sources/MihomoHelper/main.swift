@@ -3,30 +3,39 @@ import Darwin
 import MihomoShared
 import Security
 
-private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
-    private let service = HelperService()
+private struct AuthorizedClient {
+    var appURL: URL
+    var userHomeDirectory: URL
+}
 
+private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
-        guard authorize(connection: connection) else {
+        guard let client = authorizedClient(connection: connection) else {
             return false
         }
         connection.exportedInterface = NSXPCInterface(with: MihomoHelperXPCProtocol.self)
-        connection.exportedObject = service
+        connection.exportedObject = HelperService(
+            appBundleURL: client.appURL,
+            userHomeDirectory: client.userHomeDirectory
+        )
         connection.resume()
         return true
     }
 
-    private func authorize(connection: NSXPCConnection) -> Bool {
+    private func authorizedClient(connection: NSXPCConnection) -> AuthorizedClient? {
         guard let executablePath = processPath(pid: connection.processIdentifier),
               executablePath.hasSuffix("/Contents/MacOS/Mihomo"),
               let appURL = appBundleURL(forExecutablePath: executablePath),
+              let helperAppURL = helperContainingAppBundleURL(),
+              appURLsMatch(appURL, helperAppURL),
               bundleIdentifier(appURL: appURL) == MihomoHelperConstants.appBundleIdentifier,
               codeSignatureIdentifier(appURL: appURL) == MihomoHelperConstants.appBundleIdentifier,
-              appSatisfiesCodeRequirement(appURL: appURL)
+              appSatisfiesCodeRequirement(appURL: appURL),
+              let homeDirectory = userHomeDirectory(pid: connection.processIdentifier)
         else {
-            return false
+            return nil
         }
-        return true
+        return AuthorizedClient(appURL: appURL.standardizedFileURL, userHomeDirectory: homeDirectory)
     }
 
     private func processPath(pid: pid_t) -> String? {
@@ -45,6 +54,15 @@ private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
             url.deleteLastPathComponent()
         }
         return nil
+    }
+
+    private func helperContainingAppBundleURL() -> URL? {
+        guard let executableURL = Bundle.main.executableURL else { return nil }
+        return appBundleURL(forExecutablePath: executableURL.path)
+    }
+
+    private func appURLsMatch(_ lhs: URL, _ rhs: URL) -> Bool {
+        lhs.standardizedFileURL.resolvingSymlinksInPath().path == rhs.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     private func bundleIdentifier(appURL: URL) -> String? {
@@ -86,6 +104,23 @@ private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
         else { return false }
 
         return SecStaticCodeCheckValidity(code, [], requirement) == errSecSuccess
+    }
+
+    private func userHomeDirectory(pid: pid_t) -> URL? {
+        var info = proc_bsdshortinfo()
+        let size = MemoryLayout<proc_bsdshortinfo>.stride
+        let result = withUnsafeMutablePointer(to: &info) { pointer in
+            pointer.withMemoryRebound(to: CChar.self, capacity: size) { buffer in
+                proc_pidinfo(pid, PROC_PIDT_SHORTBSDINFO, 0, buffer, Int32(size))
+            }
+        }
+        guard result == Int32(size),
+              let entry = getpwuid(info.pbsi_uid),
+              let home = entry.pointee.pw_dir
+        else {
+            return nil
+        }
+        return URL(fileURLWithPath: String(cString: home)).standardizedFileURL
     }
 }
 
