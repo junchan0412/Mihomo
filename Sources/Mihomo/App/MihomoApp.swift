@@ -171,11 +171,82 @@ struct MihomoApp: App {
 private struct MenuBarStatusLabel: View {
     @ObservedObject var store: AppStore
     @ObservedObject var activityStore: RuntimeActivityStore
+    @AppStorage("menuBar.showTrafficRates") private var showsTrafficRates = true
 
     var body: some View {
-        Image(systemName: "point.3.connected.trianglepath.dotted")
-            .symbolRenderingMode(.monochrome)
-        .accessibilityLabel("Mihomo · \(store.menuBarTitle)")
+        HStack(spacing: 4) {
+            MenuBarBrandMark(mode: store.currentMode)
+                .frame(width: 24, height: 18)
+
+            if showsTrafficRates {
+                VStack(alignment: .trailing, spacing: -2) {
+                    Text("↓ \(Formatters.rate(activityStore.downloadRate))")
+                    Text("↑ \(Formatters.rate(activityStore.uploadRate))")
+                }
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .lineLimit(1)
+                .fixedSize()
+            }
+        }
+        .accessibilityLabel("Mihomo · \(modeAccessibilityTitle) · \(store.menuBarTitle)")
+    }
+
+    private var modeAccessibilityTitle: String {
+        switch store.currentMode {
+        case "global": return "全局模式"
+        case "direct": return "直连模式"
+        default: return "规则模式"
+        }
+    }
+}
+
+private struct MenuBarBrandMark: View {
+    var mode: String
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Canvas { context, size in
+                var path = Path()
+                path.move(to: CGPoint(x: size.width * 0.12, y: size.height * 0.80))
+                path.addLine(to: CGPoint(x: size.width * 0.12, y: size.height * 0.25))
+                path.addQuadCurve(
+                    to: CGPoint(x: size.width * 0.50, y: size.height * 0.58),
+                    control: CGPoint(x: size.width * 0.12, y: size.height * 0.05)
+                )
+                path.addQuadCurve(
+                    to: CGPoint(x: size.width * 0.88, y: size.height * 0.25),
+                    control: CGPoint(x: size.width * 0.88, y: size.height * 0.05)
+                )
+                path.addLine(to: CGPoint(x: size.width * 0.88, y: size.height * 0.58))
+                context.stroke(
+                    path,
+                    with: .foreground,
+                    style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round)
+                )
+            }
+            .padding(.trailing, 4)
+
+            Text(modeLetter)
+                .font(.system(size: 7, weight: .bold, design: .rounded))
+                .foregroundStyle(Color(nsColor: .windowBackgroundColor))
+                .frame(width: 10, height: 10)
+                .background(.primary, in: RoundedRectangle(cornerRadius: 2.5, style: .continuous))
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var modeLetter: String {
+        MenuBarPresentation.modeLetter(for: mode)
+    }
+}
+
+enum MenuBarPresentation {
+    static func modeLetter(for mode: String) -> String {
+        switch mode.lowercased() {
+        case "global": return "G"
+        case "direct": return "D"
+        default: return "R"
+        }
     }
 }
 

@@ -6,6 +6,7 @@ struct SettingsRootView: View {
     @EnvironmentObject private var store: AppStore
     @State private var draft = AppSettings.default
     @State private var tab: SettingsTab = .general
+    @AppStorage("menuBar.showTrafficRates") private var showsMenuBarTrafficRates = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -106,6 +107,7 @@ struct SettingsRootView: View {
                 }
                 SettingsToggleRow("登录后自动打开 Mihomo", isOn: $draft.launchAtLogin)
                 SettingsToggleRow("轻量模式启动", isOn: $draft.lightweightMode)
+                SettingsToggleRow("菜单栏显示上传下载速率", isOn: $showsMenuBarTrafficRates)
                 SettingsRow("登录项状态") { Text(store.loginItemStatus).foregroundStyle(.secondary) }
             }
 

@@ -13,6 +13,7 @@ RELEASE_DIR="$ROOT_DIR/dist/releases"
 ZIP_PATH="$RELEASE_DIR/Mihomo-$VERSION-macOS-arm64.zip"
 MANIFEST_PATH="$RELEASE_DIR/Mihomo-$VERSION-update.json"
 LATEST_PATH="$RELEASE_DIR/mihomo-update.json"
+
 NOTICES_PATH="$APP_BUNDLE/Contents/Resources/THIRD_PARTY_NOTICES.md"
 JS_WORKER_PATH="$APP_BUNDLE/Contents/Resources/MihomoJSWorker"
 EXPECTED_BUNDLE_ID="dev.codex.Mihomo"
@@ -27,6 +28,12 @@ done
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required for release smoke test" >&2
+  exit 1
+fi
+
+notes="$(jq -r '.notes // ""' "$MANIFEST_PATH")"
+if [[ "$notes" == "Mihomo $VERSION" || ${#notes} -lt 40 ]]; then
+  echo "release manifest does not contain complete release notes" >&2
   exit 1
 fi
 
