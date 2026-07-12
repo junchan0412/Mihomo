@@ -191,6 +191,24 @@ final class ProviderResourceManagerTests: XCTestCase {
         XCTAssertEqual(record.message, "usable backup")
     }
 
+    @MainActor
+    func testProviderHistoryMatchingSurvivesNormalizedReloadedNames() {
+        let provider = ProviderItem(kind: "Rule", name: " Remote ", detail: "")
+        let store = AppStore()
+        store.providerUpdateHistory = [
+            ProviderUpdateRecord(
+                providerName: "remote",
+                providerKind: "rule",
+                action: "下载",
+                succeeded: true,
+                targetPath: "rule_providers/remote.yaml",
+                message: "ok"
+            )
+        ]
+
+        XCTAssertEqual(store.providerUpdateHistory(for: provider).count, 1)
+    }
+
     private func temporaryDirectory() -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("MihomoTests-\(UUID().uuidString)", isDirectory: true)

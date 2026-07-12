@@ -173,16 +173,8 @@ private struct MenuBarStatusLabel: View {
     @ObservedObject var activityStore: RuntimeActivityStore
 
     var body: some View {
-        Group {
-            if let icon = MihomoMenuBarIcon.image() {
-                Image(nsImage: icon)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 18, height: 18)
-            } else {
-                Image(systemName: "network")
-            }
-        }
+        Image(systemName: "point.3.connected.trianglepath.dotted")
+            .symbolRenderingMode(.monochrome)
         .accessibilityLabel("Mihomo · \(store.menuBarTitle)")
     }
 }

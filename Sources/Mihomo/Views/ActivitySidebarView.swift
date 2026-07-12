@@ -257,8 +257,12 @@ private struct ActivityConnectionFilterRow: View {
             .frame(height: 44)
             .background(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+                    .fill(isSelected ? Color.accentColor.opacity(0.20) : Color.clear)
             )
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isSelected ? Color.accentColor.opacity(0.42) : Color.clear, lineWidth: 1)
+            }
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(.plain)
