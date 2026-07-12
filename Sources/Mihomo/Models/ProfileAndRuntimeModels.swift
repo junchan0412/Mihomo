@@ -19,6 +19,67 @@ struct ConfigFragment: Identifiable, Codable, Hashable {
     var enabled: Bool
     var content: String
     var updatedAt = Date()
+    var appliesGlobally = true
+    var profileIDs: [UUID] = []
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case kind
+        case enabled
+        case content
+        case updatedAt
+        case appliesGlobally
+        case profileIDs
+    }
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        kind: ConfigFragmentKind,
+        enabled: Bool,
+        content: String,
+        updatedAt: Date = Date(),
+        appliesGlobally: Bool = true,
+        profileIDs: [UUID] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.kind = kind
+        self.enabled = enabled
+        self.content = content
+        self.updatedAt = updatedAt
+        self.appliesGlobally = appliesGlobally
+        self.profileIDs = profileIDs
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decode(String.self, forKey: .name)
+        kind = try container.decode(ConfigFragmentKind.self, forKey: .kind)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        content = try container.decode(String.self, forKey: .content)
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        appliesGlobally = try container.decodeIfPresent(Bool.self, forKey: .appliesGlobally) ?? true
+        profileIDs = try container.decodeIfPresent([UUID].self, forKey: .profileIDs) ?? []
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(enabled, forKey: .enabled)
+        try container.encode(content, forKey: .content)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(appliesGlobally, forKey: .appliesGlobally)
+        try container.encode(profileIDs, forKey: .profileIDs)
+    }
+
+    func applies(to profileID: UUID) -> Bool {
+        enabled && (appliesGlobally || profileIDs.contains(profileID))
+    }
 }
 
 struct RuleItem: Identifiable, Hashable {
@@ -142,6 +203,8 @@ struct EditablePolicyGroup: Identifiable, Hashable {
     var type: String
     var proxies: [String]
     var uses: [String]
+    var hidden: Bool = false
+    var icon: String? = nil
 }
 
 struct EditableProfileRule: Identifiable, Hashable {
@@ -171,6 +234,7 @@ struct ProxyNode: Identifiable, Hashable {
     var name: String
     var type: String
     var delay: Int?
+    var available: Bool? = nil
 }
 
 struct ProxyGroup: Identifiable, Hashable {
@@ -180,6 +244,7 @@ struct ProxyGroup: Identifiable, Hashable {
     var now: String
     var all: [ProxyNode]
     var icon: String?
+    var hidden: Bool = false
 }
 
 struct PolicyTableRow: Identifiable, Hashable {
@@ -215,6 +280,24 @@ struct TrafficSample: Identifiable, Hashable {
     var date = Date()
     var uploadRate: Int64
     var downloadRate: Int64
+}
+
+struct PolicyTrafficSample: Identifiable, Hashable {
+    var id = UUID()
+    var date = Date()
+    var policy: String
+    var process: String = "未知进程"
+    var host: String = "未知主机"
+    var uploadBytes: Int64
+    var downloadBytes: Int64
+}
+
+struct PolicyTrafficTotals: Identifiable, Hashable {
+    var policy: String
+    var uploadBytes: Int64
+    var downloadBytes: Int64
+
+    var id: String { policy }
 }
 
 struct LogEntry: Identifiable, Hashable {

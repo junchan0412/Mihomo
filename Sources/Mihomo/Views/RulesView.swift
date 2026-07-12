@@ -94,12 +94,6 @@ struct RulesView: View {
             searchField
 
             Button {
-                beginAddRule()
-            } label: {
-                Label("新建规则", systemImage: "plus")
-            }
-
-            Button {
                 store.refreshConfigArtifacts()
             } label: {
                 Label("刷新", systemImage: "arrow.clockwise")
@@ -143,10 +137,10 @@ struct RulesView: View {
                 rows: filteredEntries,
                 selection: ruleSelectionBinding,
                 columns: [
-                    .init(title: "状态", width: 62, textColor: ruleTextColor) { $0.rule.disabled ? "禁用" : "启用" },
+                    .init(title: "", width: 40, textColor: ruleStateColor) { $0.rule.disabled ? "" : "✓" },
                     .init(title: "ID", width: 52, textColor: ruleTextColor) { "\($0.rule.index)" },
                     .init(title: "类型", width: 124, textColor: ruleTextColor) { $0.type },
-                    .init(title: "值", width: 250, textColor: ruleTextColor) { $0.value.isEmpty ? "-" : $0.value },
+                    .init(title: "值", width: 280, textColor: ruleTextColor) { $0.displayValue.isEmpty ? "-" : $0.displayValue },
                     .init(title: "策略", width: 130, textColor: ruleTextColor) { $0.policy },
                     .init(title: "计数", width: 68, textColor: ruleTextColor) { "\($0.rule.hitCount)" },
                     .init(title: "注释", width: 140, textColor: ruleTextColor) { $0.note.isEmpty ? "-" : $0.note }
@@ -203,8 +197,10 @@ struct RulesView: View {
             Button {
                 toggleSelectedRule()
             } label: {
-                Label(selectedEntry?.rule.disabled == true ? "启用" : "禁用", systemImage: selectedEntry?.rule.disabled == true ? "checkmark.circle" : "slash.circle")
+                Image(systemName: selectedEntry?.rule.disabled == true ? "checkmark.circle" : "slash.circle")
+                    .frame(width: 18)
             }
+            .help(selectedEntry?.rule.disabled == true ? "启用选中规则" : "禁用选中规则")
             .disabled(selectedRuleIndex == nil)
 
             Divider()
@@ -245,6 +241,10 @@ struct RulesView: View {
         entry.rule.disabled ? .secondaryLabelColor : nil
     }
 
+    private func ruleStateColor(_ entry: RuleTableEntry) -> NSColor? {
+        entry.rule.disabled ? .tertiaryLabelColor : .systemBlue
+    }
+
     private func beginAddRule() {
         editorOriginalIndex = nil
         editorType = "MATCH"
@@ -260,7 +260,7 @@ struct RulesView: View {
         editorType = entry.type
         editorValue = entry.value
         editorPolicy = entry.policy
-        editorNote = entry.note
+        editorNote = entry.optionsText
         editorPresentation = .edit(entry.rule.index)
     }
 

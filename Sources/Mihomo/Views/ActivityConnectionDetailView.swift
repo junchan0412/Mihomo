@@ -20,11 +20,13 @@ enum ActivityConnectionDetailTab: String, CaseIterable, Identifiable {
 }
 struct ConnectionTableRow: Identifiable, Hashable {
     var connection: ConnectionItem
+    var isActive = true
 
     var id: String { connection.id }
 
     var idText: String {
-        "● \(connection.id)"
+        let compact = connection.id.count > 6 ? String(connection.id.suffix(6)) : connection.id
+        return "● \(compact)"
     }
 
     var timeText: String {
@@ -73,7 +75,7 @@ struct ConnectionTableRow: Identifiable, Hashable {
     }
 
     var statusColor: NSColor {
-        .systemGreen
+        isActive ? .systemGreen : .systemYellow
     }
 
     private static func durationText(from interval: TimeInterval) -> String {

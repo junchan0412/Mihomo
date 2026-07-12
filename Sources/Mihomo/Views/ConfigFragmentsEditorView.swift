@@ -7,6 +7,8 @@ struct ConfigFragmentsEditorView: View {
     @State private var fragmentKind: ConfigFragmentKind = .yaml
     @State private var fragmentEnabled = true
     @State private var fragmentContent = ""
+    @State private var fragmentAppliesGlobally = true
+    @State private var fragmentProfileIDs: Set<UUID> = []
     @State private var isCreating = false
 
     private var selectedFragment: ConfigFragment? {
@@ -137,6 +139,45 @@ struct ConfigFragmentsEditorView: View {
             }
             .textFieldStyle(.roundedBorder)
 
+            VStack(alignment: .leading, spacing: 10) {
+                Label("作用范围", systemImage: "scope")
+                    .font(MihomoUI.Fonts.bodyMedium)
+                Picker("作用范围", selection: $fragmentAppliesGlobally) {
+                    Text("全部配置").tag(true)
+                    Text("指定配置").tag(false)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 320)
+
+                if fragmentAppliesGlobally == false {
+                    VStack(spacing: 0) {
+                        ForEach(store.profiles) { profile in
+                            Button {
+                                if fragmentProfileIDs.contains(profile.id) {
+                                    fragmentProfileIDs.remove(profile.id)
+                                } else {
+                                    fragmentProfileIDs.insert(profile.id)
+                                }
+                            } label: {
+                                HStack {
+                                    Image(systemName: fragmentProfileIDs.contains(profile.id) ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(fragmentProfileIDs.contains(profile.id) ? Color.accentColor : Color.secondary)
+                                    Text(profile.name).lineLimit(1)
+                                    Spacer()
+                                }
+                                .contentShape(Rectangle())
+                                .padding(.vertical, 7)
+                            }
+                            .buttonStyle(.plain)
+                            if profile.id != store.profiles.last?.id { Divider() }
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+
             VStack(alignment: .leading, spacing: 7) {
                 HStack {
                     Text("内容")
@@ -177,7 +218,7 @@ struct ConfigFragmentsEditorView: View {
                     save()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(fragmentContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(saveDisabled)
             }
         }
         .padding(18)
@@ -210,6 +251,8 @@ struct ConfigFragmentsEditorView: View {
                 fragmentKind = .yaml
                 fragmentEnabled = true
                 fragmentContent = ""
+                fragmentAppliesGlobally = true
+                fragmentProfileIDs = []
             }
             return
         }
@@ -217,6 +260,8 @@ struct ConfigFragmentsEditorView: View {
         fragmentKind = fragment.kind
         fragmentEnabled = fragment.enabled
         fragmentContent = fragment.content
+        fragmentAppliesGlobally = fragment.appliesGlobally
+        fragmentProfileIDs = Set(fragment.profileIDs)
     }
 
     private func beginCreating() {
@@ -226,6 +271,8 @@ struct ConfigFragmentsEditorView: View {
         fragmentKind = .yaml
         fragmentEnabled = true
         fragmentContent = ""
+        fragmentAppliesGlobally = true
+        fragmentProfileIDs = []
     }
 
     private func save() {
@@ -238,6 +285,8 @@ struct ConfigFragmentsEditorView: View {
             )
             if var created = store.configFragments.last {
                 created.enabled = fragmentEnabled
+                created.appliesGlobally = fragmentAppliesGlobally
+                created.profileIDs = Array(fragmentProfileIDs)
                 store.updateConfigFragment(created)
                 selectedFragmentID = created.id
             }
@@ -249,7 +298,14 @@ struct ConfigFragmentsEditorView: View {
         fragment.kind = fragmentKind
         fragment.enabled = fragmentEnabled
         fragment.content = fragmentContent
+        fragment.appliesGlobally = fragmentAppliesGlobally
+        fragment.profileIDs = Array(fragmentProfileIDs)
         store.updateConfigFragment(fragment)
+    }
+
+    private var saveDisabled: Bool {
+        fragmentContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || (fragmentAppliesGlobally == false && fragmentProfileIDs.isEmpty)
     }
 
     private func deleteSelection() {
@@ -277,12 +333,16 @@ private struct ConfigFragmentListRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(fragment.name)
                     .lineLimit(1)
-                Text("\(fragment.kind.title) · \(fragment.enabled ? "已启用" : "已停用")")
+                Text("\(fragment.kind.title) · \(fragment.enabled ? "已启用" : "已停用") · \(scopeText)")
                     .font(MihomoUI.Fonts.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
         }
         .padding(.vertical, 3)
+    }
+
+    private var scopeText: String {
+        fragment.appliesGlobally ? "全局" : "\(fragment.profileIDs.count) 个配置"
     }
 }

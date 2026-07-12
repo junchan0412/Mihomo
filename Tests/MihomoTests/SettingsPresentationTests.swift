@@ -10,9 +10,13 @@ final class SettingsPresentationTests: XCTestCase {
         XCTAssertTrue(AppSection.allCases.map(\.title).contains("高级工具"))
     }
 
-    func testActivityDNSNavigatesToNetworkInsteadOfAdvancedTools() {
-        XCTAssertEqual(ActivityModuleTab.dns.destinationSection, .networkSecurity)
-        XCTAssertNotEqual(ActivityModuleTab.dns.destinationSection, .advanced)
+    func testActivityModulesKeepDNSAndTrafficInsideConnectionWorkspace() {
+        XCTAssertEqual(ActivityModuleTab.allCases.map(\.title), ["最近的请求", "活动连接", "DNS", "流量统计"])
+    }
+
+    func testLogCategoriesOmitUnsupportedScriptType() {
+        XCTAssertEqual(LogCategory.allCases.map(\.title), ["全部", "常规", "网络切换", "DHCP"])
+        XCTAssertFalse(LogCategory.allCases.map(\.title).contains("脚本"))
     }
 
     func testNetworkWorkspaceKeepsDNSAsAFirstClassDestination() {
@@ -22,5 +26,30 @@ final class SettingsPresentationTests: XCTestCase {
     func testExistingRulePresentationUsesEditingMode() {
         XCTAssertFalse(RuleEditorPresentation.add.isEditing)
         XCTAssertTrue(RuleEditorPresentation.edit(7).isEditing)
+    }
+
+    func testRuleOptionsAreDisplayedWithValueInsteadOfAsNote() {
+        let entry = RuleTableEntry(rule: RuleItem(index: 3, content: "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve", disabled: false))
+
+        XCTAssertEqual(entry.displayValue, "10.0.0.0/8 (no-resolve)")
+        XCTAssertEqual(entry.optionsText, "no-resolve")
+        XCTAssertTrue(entry.note.isEmpty)
+    }
+
+    func testConfigFragmentScopeRoundTripsAndFiltersProfiles() throws {
+        let selectedID = UUID()
+        let fragment = ConfigFragment(
+            name: "Scoped",
+            kind: .yaml,
+            enabled: true,
+            content: "mixed-port: 7890",
+            appliesGlobally: false,
+            profileIDs: [selectedID]
+        )
+        let decoded = try JSONDecoder().decode(ConfigFragment.self, from: JSONEncoder().encode(fragment))
+
+        XCTAssertFalse(decoded.appliesGlobally)
+        XCTAssertTrue(decoded.applies(to: selectedID))
+        XCTAssertFalse(decoded.applies(to: UUID()))
     }
 }

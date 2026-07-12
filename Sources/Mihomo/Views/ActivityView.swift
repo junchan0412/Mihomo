@@ -10,16 +10,27 @@ struct ActivityView: View {
     @State private var selectedFilterID = ActivityConnectionFilter.allID
     @State private var moduleTab: ActivityModuleTab = .recent
     @State private var detailTab: ActivityConnectionDetailTab = .general
+    @State private var dnsFilter: ActivityDNSFilter = .all
+    @State private var trafficGrouping: ActivityTrafficGrouping = .policy
+
+    private var connectionSource: [ConnectionItem] {
+        switch moduleTab {
+        case .recent:
+            return activityStore.recentConnections
+        case .active, .dns, .traffic:
+            return activityStore.connections
+        }
+    }
 
     private var sidebarItems: [ActivityConnectionFilter] {
-        ActivityConnectionFilter.items(for: activityStore.connections, grouping: grouping)
+        ActivityConnectionFilter.items(for: connectionSource, grouping: grouping)
     }
 
     private var scopedConnections: [ConnectionItem] {
         guard let selectedFilter = sidebarItems.first(where: { $0.id == selectedFilterID }) else {
-            return activityStore.connections
+            return connectionSource
         }
-        return activityStore.connections.filter { selectedFilter.matches($0) }
+        return connectionSource.filter { selectedFilter.matches($0) }
     }
 
     private var filteredConnections: [ConnectionItem] {
@@ -57,7 +68,12 @@ struct ActivityView: View {
                     return lhs.id.localizedStandardCompare(rhs.id) == .orderedDescending
                 }
             }
-            .map(ConnectionTableRow.init(connection:))
+            .map { connection in
+                ConnectionTableRow(
+                    connection: connection,
+                    isActive: activityStore.connections.contains { $0.id == connection.id }
+                )
+            }
     }
 
     private var selectedConnection: ConnectionItem? {
@@ -67,45 +83,37 @@ struct ActivityView: View {
         return row.connection
     }
 
+    private var selectedConnectionIsActive: Bool {
+        guard let selectedConnection else { return false }
+        return activityStore.connections.contains { $0.id == selectedConnection.id }
+    }
+
+    private var moduleItemCount: Int {
+        switch moduleTab {
+        case .recent, .active:
+            return tableRows.count
+        case .dns:
+            return Set(activityStore.recentConnections.map(\.host).filter { !$0.isEmpty }).count
+        case .traffic:
+            return activityStore.trafficTotals(
+                since: Calendar.current.startOfDay(for: Date()),
+                key: trafficGrouping.sampleKeyPath
+            ).count
+        }
+    }
+
     var body: some View {
         let rows = tableRows
 
         HStack(spacing: 0) {
-            ActivityConnectionSidebar(
-                grouping: $grouping,
-                selectedFilterID: $selectedFilterID,
-                items: sidebarItems
-            )
-            .frame(width: 260)
+            moduleSidebar
+                .frame(width: 248)
 
             Divider()
 
             VStack(spacing: 0) {
-                connectionHeader(rowCount: rows.count)
-
-                connectionTable(rows: rows)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                activityActionBar
-
-                if let selectedConnection {
-                    ConnectionInlineDetailView(
-                        connection: selectedConnection,
-                        tab: $detailTab,
-                        close: { connection in
-                            selectedRowID = nil
-                            Task { await store.closeConnection(connection.id) }
-                        },
-                        focusRule: { connection in
-                            store.focusRule(for: connection)
-                        },
-                        focusResources: {
-                            store.selectedSection = .resources
-                        }
-                    )
-                    .frame(height: 292)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
+                connectionHeader(rowCount: moduleItemCount)
+                moduleContent(rows: rows)
             }
         }
         .background(MihomoUI.pageBackground)
@@ -128,11 +136,27 @@ struct ActivityView: View {
         }
     }
 
+    @ViewBuilder
+    private var moduleSidebar: some View {
+        switch moduleTab {
+        case .recent, .active:
+            ActivityConnectionSidebar(
+                grouping: $grouping,
+                selectedFilterID: $selectedFilterID,
+                items: sidebarItems
+            )
+        case .dns:
+            ActivityDNSSidebar(selection: $dnsFilter)
+        case .traffic:
+            ActivityTrafficSidebar(selection: $trafficGrouping)
+        }
+    }
+
     private func connectionHeader(rowCount: Int) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 14) {
                 moduleTabs
-                    .frame(maxWidth: 720, alignment: .leading)
+                    .frame(minWidth: 480, maxWidth: 720, alignment: .leading)
 
                 connectionSearchField
 
@@ -162,14 +186,45 @@ struct ActivityView: View {
 
     private var moduleTabs: some View {
         ActivityModuleTabs(selection: moduleTab) { tab in
-            if let destination = tab.destinationSection {
-                if tab == .dns {
-                    store.networkWorkspaceTab = .dns
-                }
-                store.selectedSection = destination
-            } else if tab.isEnabled {
-                moduleTab = tab
+            moduleTab = tab
+            selectedRowID = nil
+            filterText = ""
+        }
+    }
+
+    @ViewBuilder
+    private func moduleContent(rows: [ConnectionTableRow]) -> some View {
+        switch moduleTab {
+        case .recent, .active:
+            connectionTable(rows: rows)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            activityActionBar
+            if let selectedConnection {
+                ConnectionInlineDetailView(
+                    connection: selectedConnection,
+                    tab: $detailTab,
+                    close: { connection in
+                        selectedRowID = nil
+                        Task { await store.closeConnection(connection.id) }
+                    },
+                    focusRule: { store.focusRule(for: $0) },
+                    focusResources: { store.selectedSection = .resources }
+                )
+                .frame(height: 292)
             }
+        case .dns:
+            ActivityDNSView(
+                connections: activityStore.recentConnections.isEmpty
+                    ? activityStore.connections
+                    : activityStore.recentConnections,
+                filter: dnsFilter,
+                searchText: filterText
+            )
+        case .traffic:
+            ActivityTrafficStatisticsView(
+                grouping: trafficGrouping,
+                searchText: filterText
+            )
         }
     }
 
@@ -200,11 +255,15 @@ struct ActivityView: View {
 
     private var activityActionBar: some View {
         HStack(spacing: 8) {
-            Button("清空") {
+            Button(moduleTab == .recent ? "清空记录" : "关闭全部") {
                 selectedRowID = nil
-                Task { await store.closeAllConnections() }
+                if moduleTab == .recent {
+                    activityStore.clearRecentConnections()
+                } else {
+                    Task { await store.closeAllConnections() }
+                }
             }
-            .disabled(activityStore.connections.isEmpty)
+            .disabled(connectionSource.isEmpty)
 
             Button("重新载入") {
                 Task { await store.refreshController() }
@@ -215,7 +274,7 @@ struct ActivityView: View {
                 selectedRowID = nil
                 Task { await store.closeConnection(selectedConnection.id) }
             }
-            .disabled(selectedConnection == nil)
+            .disabled(!selectedConnectionIsActive)
 
             Button("查看规则") {
                 guard let selectedConnection else { return }
@@ -252,11 +311,11 @@ struct ActivityView: View {
             rows: rows,
             selection: $selectedRowID,
             columns: [
-                .init(title: "ID", width: 92, textColor: { $0.statusColor }) { $0.idText },
+                .init(title: "ID", width: 74, textColor: { $0.statusColor }) { $0.idText },
                 .init(title: "时间", width: 86) { $0.timeText },
-                .init(title: "客户端", width: 220) { $0.clientText },
+                .init(title: "客户端", width: 150) { $0.clientText },
                 .init(title: "规则", width: 220) { $0.ruleText },
-                .init(title: "策略", width: 220) { $0.policyText },
+                .init(title: "策略", width: 150) { $0.policyText },
                 .init(title: "上传", width: 78) { $0.uploadText },
                 .init(title: "下载", width: 78) { $0.downloadText },
                 .init(title: "时长", width: 78) { $0.durationText },
@@ -269,5 +328,14 @@ struct ActivityView: View {
             hasHorizontalScroller: true,
             borderType: .noBorder
         )
+        .overlay {
+            if rows.isEmpty {
+                ContentUnavailableView(
+                    moduleTab == .recent ? "暂无最近请求" : "暂无活动连接",
+                    systemImage: "network",
+                    description: Text(moduleTab == .recent ? "新的连接请求会显示在这里。" : "核心当前没有活动连接。")
+                )
+            }
+        }
     }
 }

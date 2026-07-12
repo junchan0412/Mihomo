@@ -35,12 +35,13 @@ struct ProfileQualityAnalyzer {
         var issues: [ProfileQualityIssue] = []
         let originalContent = profileContent
         var transformedContent = profileContent
-        let enabledJSFragments = fragments.filter { $0.enabled && $0.kind == .javascript }
-        let enabledYAMLFragments = fragments.filter { $0.enabled && $0.kind == .yaml }
+        let applicableFragments = fragments.filter { $0.applies(to: profile.id) }
+        let enabledJSFragments = applicableFragments.filter { $0.kind == .javascript }
+        let enabledYAMLFragments = applicableFragments.filter { $0.kind == .yaml }
 
         if settings.jsOverrideEnabled {
             do {
-                transformedContent = try jsOverrideRunner.apply(fragments: fragments, to: profileContent)
+                transformedContent = try jsOverrideRunner.apply(fragments: applicableFragments, to: profileContent)
             } catch {
                 issues.append(.init(
                     severity: .error,
@@ -87,7 +88,7 @@ struct ProfileQualityAnalyzer {
             generatedConfig = try runtimeConfigBuilder.build(
                 profileContent: transformedContent,
                 settings: settings,
-                fragments: fragments,
+                fragments: applicableFragments,
                 disabledRules: disabledRules
             )
         } catch {
@@ -303,20 +304,32 @@ struct ProfileQualityAnalyzer {
         migrationLog: [String],
         generatedConfig: String
     ) -> ProfileQualityReport {
-        let score = max(0, issues.reduce(100) { result, issue in
-            switch issue.severity {
-            case .error: return result - 20
-            case .warning: return result - 8
-            case .info: return result - 2
-            }
-        })
+        var seenIssues = Set<String>()
+        let uniqueIssues = issues.filter { issue in
+            let key = "\(issue.severity.rawValue)\u{1f}\(issue.title)\u{1f}\(issue.detail)"
+            return seenIssues.insert(key).inserted
+        }
+        .sorted { lhs, rhs in
+            severityRank(lhs.severity) > severityRank(rhs.severity)
+        }
+
+        let errorCount = uniqueIssues.filter { $0.severity == .error }.count
+        let warningCount = uniqueIssues.filter { $0.severity == .warning }.count
+        let rawScore = max(0, 100 - min(80, errorCount * 22) - min(36, warningCount * 6))
+        let score: Int
+        if errorCount > 0 {
+            score = min(59, rawScore)
+        } else {
+            score = rawScore
+        }
+
         let headline: String
-        if issues.contains(where: { $0.severity == .error }) {
+        if errorCount > 0 {
             headline = "需要修复后再启用"
-        } else if score >= 90 {
+        } else if warningCount == 0 {
             headline = "配置质量良好"
-        } else if score >= 70 {
-            headline = "有可优化项"
+        } else if score >= 80 {
+            headline = "有少量可优化项"
         } else {
             headline = "建议先检查配置"
         }
@@ -324,12 +337,23 @@ struct ProfileQualityAnalyzer {
         return ProfileQualityReport(
             score: score,
             headline: headline,
-            issues: issues,
+            issues: uniqueIssues,
             runtimeItems: runtimeItems,
             sourceItems: sourceItems,
             diffLayers: diffLayers,
             migrationLog: migrationLog,
             generatedConfig: generatedConfig
         )
+    }
+
+    private func severityRank(_ severity: ProfileQualitySeverity) -> Int {
+        switch severity {
+        case .error:
+            return 3
+        case .warning:
+            return 2
+        case .info:
+            return 1
+        }
     }
 }

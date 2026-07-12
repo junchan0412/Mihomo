@@ -144,6 +144,7 @@ final class ConfigFragmentStore {
                     map[field].map { "\(field): \($0)" }
                 }
             let count = usage[name, default: 0]
+            let memberNames = kind == "Proxy" ? cachedProxyNames(path: path, providerName: name) : []
             if count > 0 {
                 pieces.append(kind == "Rule" ? "rules: \(count)" : "uses: \(count)")
             }
@@ -156,10 +157,28 @@ final class ConfigFragmentStore {
                 path: path,
                 behavior: behavior,
                 interval: interval,
-                ruleCount: count
+                ruleCount: count,
+                memberNames: memberNames
             )
         }
         .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+
+    private func cachedProxyNames(path: String?, providerName: String) -> [String] {
+        let relativePath = path?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fallback = "proxy_providers/\(ProviderResourceManager.safeResourceFileName(providerName, pathExtension: "yaml"))"
+        let value = relativePath?.isEmpty == false ? relativePath! : fallback
+        guard !value.hasPrefix("/"), !value.split(separator: "/").contains("..") else { return [] }
+        let fileURL = value.split(separator: "/").filter { $0 != "." }.reduce(AppPaths.runtimeDirectory) {
+            $0.appendingPathComponent(String($1))
+        }
+        guard let content = try? String(contentsOf: fileURL, encoding: .utf8),
+              let root = yamlRoot(content),
+              let proxies = root["proxies"] as? [Any]
+        else { return [] }
+        return proxies.compactMap { item in
+            (item as? [String: Any])?["name"].map(String.init(describing:))
+        }
     }
 
     private func ruleProviderUsage(from rules: [String]) -> [String: Int] {
@@ -232,4 +251,3 @@ final class ConfigFragmentStore {
         return block.isEmpty ? nil : block.joined(separator: "\n")
     }
 }
-

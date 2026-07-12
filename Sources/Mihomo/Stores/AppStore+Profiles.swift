@@ -295,7 +295,8 @@ extension AppStore {
                 type: group.type,
                 now: "",
                 all: proxyNodes + providerNodes,
-                icon: nil
+                icon: group.icon,
+                hidden: group.hidden
             )
         }
     }

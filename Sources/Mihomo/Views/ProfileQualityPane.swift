@@ -13,27 +13,36 @@ struct ProfileQualityPane: View {
         VStack(alignment: .leading, spacing: 14) {
             qualityHeader
 
-            Picker("配置质量内容", selection: $section) {
-                ForEach(ProfileQualitySection.allCases) { item in
-                    Label(item.title, systemImage: item.systemImage)
-                        .tag(item)
+            VStack(spacing: 0) {
+                Picker("配置质量内容", selection: $section) {
+                    ForEach(ProfileQualitySection.allCases) { item in
+                        Label(item.title, systemImage: item.systemImage)
+                            .tag(item)
+                    }
                 }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .frame(maxWidth: 520)
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 520)
+                .padding(12)
 
-            Group {
-                switch section {
-                case .overview:
-                    overviewContent
-                case .sources:
-                    sourceContent
-                case .layers:
-                    layerContent
+                Divider()
+
+                Group {
+                    switch section {
+                    case .overview:
+                        overviewContent
+                    case .sources:
+                        sourceContent
+                    case .layers:
+                        layerContent
+                    }
                 }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .transition(.opacity)
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .animation(.easeInOut(duration: 0.16), value: section)
         }
         .padding(16)
         .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -85,7 +94,7 @@ struct ProfileQualityPane: View {
     }
 
     private var overviewContent: some View {
-        HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
             QualityPanel(title: "需要关注", systemImage: "exclamationmark.triangle") {
                 if report.issues.isEmpty {
                     Label("未发现阻断项", systemImage: "checkmark.circle.fill")
@@ -102,8 +111,10 @@ struct ProfileQualityPane: View {
                     Text("暂无运行时检查项")
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(report.runtimeItems.prefix(8)) { item in
-                        RuntimeInspectorCell(item: item)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 14)], alignment: .leading, spacing: 12) {
+                        ForEach(report.runtimeItems.prefix(9)) { item in
+                            RuntimeInspectorCell(item: item)
+                        }
                     }
                 }
             }
@@ -134,8 +145,6 @@ struct ProfileQualityPane: View {
                 }
             }
         }
-        .padding(12)
-        .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var layerContent: some View {
@@ -154,8 +163,6 @@ struct ProfileQualityPane: View {
                 }
             }
         }
-        .padding(12)
-        .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var scoreColor: Color {

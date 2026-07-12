@@ -24,9 +24,7 @@ enum ActivityModuleTab: String, CaseIterable, Identifiable {
     case recent
     case active
     case dns
-    case devices
     case traffic
-    case logs
 
     var id: String { rawValue }
 
@@ -35,24 +33,10 @@ enum ActivityModuleTab: String, CaseIterable, Identifiable {
         case .recent: return "最近的请求"
         case .active: return "活动连接"
         case .dns: return "DNS"
-        case .devices: return "设备"
         case .traffic: return "流量统计"
-        case .logs: return "日志簿"
         }
     }
 
-    var isEnabled: Bool {
-        self != .devices
-    }
-
-    var destinationSection: AppSection? {
-        switch self {
-        case .dns: return .networkSecurity
-        case .traffic: return .overview
-        case .logs: return .logs
-        case .recent, .active, .devices: return nil
-        }
-    }
 }
 
 struct ActivityModuleTabs: View {
@@ -77,7 +61,6 @@ struct ActivityModuleTabs: View {
                         )
                 }
                 .buttonStyle(.plain)
-                .disabled(!tab.isEnabled)
                 .help(tab.title)
             }
         }

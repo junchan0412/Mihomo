@@ -108,7 +108,7 @@ extension AppStore {
     }
 
     func resetRuleHitStatistics() {
-        ruleHitBaselines = currentRuleHitCounts()
+        ruleHitBaselines = ruleHitTotals
         updateRuleProviderHitStatistics()
         appendLog("info", "规则使用计数已重置")
     }
@@ -142,36 +142,20 @@ extension AppStore {
     }
 
     func updateRuleProviderHitStatistics() {
-        let ruleHits = currentRuleHitCounts()
+        ingestNewConnectionHits()
 
         let updatedRules = rules.map { rule in
             var updated = rule
             let key = ruleHitKey(content: rule.content)
             let resetBaseline = ruleHitBaselines[key, default: 0]
-            updated.hitCount = max(0, ruleHits[key, default: 0] - resetBaseline)
+            updated.hitCount = max(0, ruleHitTotals[key, default: 0] - resetBaseline)
             return updated
         }
         publishIfChanged(\.rules, updatedRules)
 
-        let ruleProviderHits = connections.reduce(into: [String: Int]()) { result, connection in
-            guard connection.ruleType.uppercased() == "RULE-SET",
-                  connection.rulePayload.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-            else { return }
-            result[connection.rulePayload, default: 0] += 1
-        }
-
         let updatedProviders = providers.map { provider in
             var updated = provider
-            if provider.kind == "Rule" {
-                updated.hitCount = ruleProviderHits[provider.name, default: 0]
-            } else if provider.memberNames.isEmpty == false {
-                let members = Set(provider.memberNames)
-                updated.hitCount = connections.filter { connection in
-                    connection.chain
-                        .components(separatedBy: " -> ")
-                        .contains { members.contains($0) }
-                }.count
-            }
+            updated.hitCount = providerHitTotals[provider.id, default: 0]
             return updated
         }
         publishIfChanged(\.providers, updatedProviders)
@@ -187,12 +171,45 @@ extension AppStore {
         }
     }
 
-    private func currentRuleHitCounts() -> [String: Int] {
-        connections.reduce(into: [String: Int]()) { result, connection in
+    private func ingestNewConnectionHits() {
+        let providerMembers = Dictionary(uniqueKeysWithValues: providers.map { provider in
+            (provider.id, Set(provider.memberNames))
+        })
+
+        for connection in connections {
+            let identity = connectionHitIdentity(connection)
+            guard observedConnectionHitIDs.insert(identity).inserted else { continue }
+
             let key = ruleHitKey(type: connection.ruleType, payload: connection.rulePayload)
-            guard key.isEmpty == false else { return }
-            result[key, default: 0] += 1
+            if key.isEmpty == false {
+                ruleHitTotals[key, default: 0] += 1
+            }
+
+            for provider in providers {
+                if provider.kind == "Rule" {
+                    if connection.ruleType.caseInsensitiveCompare("RULE-SET") == .orderedSame,
+                       connection.rulePayload == provider.name {
+                        providerHitTotals[provider.id, default: 0] += 1
+                    }
+                } else if let members = providerMembers[provider.id], members.isEmpty == false {
+                    let chain = connection.chain.components(separatedBy: " -> ")
+                    if chain.contains(where: { members.contains($0) }) {
+                        providerHitTotals[provider.id, default: 0] += 1
+                    }
+                }
+            }
         }
+
+        if observedConnectionHitIDs.count > 50_000 {
+            observedConnectionHitIDs = Set(connections.map(connectionHitIdentity))
+        }
+    }
+
+    private func connectionHitIdentity(_ connection: ConnectionItem) -> String {
+        if let start = connection.start {
+            return "\(connection.id)@\(start.timeIntervalSince1970)"
+        }
+        return connection.id
     }
 
     private func ruleHitKey(content: String) -> String {

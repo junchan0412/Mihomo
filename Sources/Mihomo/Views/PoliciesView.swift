@@ -10,6 +10,9 @@ struct PoliciesView: View {
     @State private var showingGroupDetail = false
     @State private var selectedProvider: ProviderItem?
     @State private var groupEditorContent = ""
+    @State private var expandedGroupIDs: Set<String> = []
+    @State private var hideUnavailableNodes = false
+    @State private var showHiddenGroups = false
 
     private var displayGroups: [ProxyGroup] {
         store.proxyGroups.isEmpty ? store.offlineProxyGroups : store.proxyGroups
@@ -20,9 +23,10 @@ struct PoliciesView: View {
     }
 
     private var visibleGroups: [ProxyGroup] {
+        let groups = displayGroups.filter { showHiddenGroups || !$0.hidden }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.isEmpty == false else { return displayGroups }
-        return displayGroups.filter { group in
+        guard query.isEmpty == false else { return groups }
+        return groups.filter { group in
             group.name.localizedCaseInsensitiveContains(query)
                 || group.now.localizedCaseInsensitiveContains(query)
                 || group.type.localizedCaseInsensitiveContains(query)
@@ -65,14 +69,15 @@ struct PoliciesView: View {
                 store.refreshConfigArtifacts()
             }
             ensureSelection()
-            Task { await store.preloadPolicyGroupIcons() }
+            Task { await store.preloadPolicyGroupIcons(for: displayGroups) }
         }
         .onChange(of: store.proxyGroups) {
             ensureSelection()
-            Task { await store.preloadPolicyGroupIcons() }
+            Task { await store.preloadPolicyGroupIcons(for: displayGroups) }
         }
         .onChange(of: store.offlineProxyGroups) {
             ensureSelection()
+            Task { await store.preloadPolicyGroupIcons(for: displayGroups) }
         }
         .onChange(of: searchText) {
             ensureSelection()
@@ -141,7 +146,7 @@ struct PoliciesView: View {
                     ContentUnavailableView(
                         "没有节点信息",
                         systemImage: "shippingbox",
-                        description: Text("启动核心并刷新 Controller 后显示 Provider 节点。")
+                        description: Text("尚未读取到本地 Provider 节点缓存；可直接刷新 Provider，不需要先启动核心。")
                     )
                 } else {
                     ScrollView {
@@ -213,28 +218,36 @@ struct PoliciesView: View {
             Spacer()
 
             Button {
-                openPolicyGroupEditor()
+                toggleAllGroups()
+            } label: {
+                Image(systemName: allGroupsExpanded ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .help(allGroupsExpanded ? "折叠全部策略组" : "展开全部策略组")
+            .disabled(visibleGroups.isEmpty)
+
+            Button {
+                Task { await store.testAllProxyDelays() }
+            } label: {
+                Image(systemName: "speedometer")
+            }
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .help("一键延迟测试")
+            .disabled(store.proxyGroups.isEmpty)
+
+            Menu {
+                Toggle("隐藏不可用的节点", isOn: $hideUnavailableNodes)
+                Toggle("显示隐藏的策略组", isOn: $showHiddenGroups)
             } label: {
                 Image(systemName: "slider.horizontal.3")
             }
-            .buttonStyle(.bordered).buttonBorderShape(.circle).help("编辑策略组")
-            .disabled(store.activeProfile == nil)
-
-            if store.proxyGroups.isEmpty == false {
-                Button {
-                    Task { await store.testAllProxyDelays() }
-                } label: {
-                    Image(systemName: "speedometer")
-                }
-                .buttonStyle(.bordered).buttonBorderShape(.circle).help("测速全部")
-            }
-
-            Button {
-                Task { await store.refreshController() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.bordered).buttonBorderShape(.circle).help("刷新")
+            .menuStyle(.button)
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .fixedSize()
+            .help("筛选策略和节点")
         }
     }
 
@@ -255,11 +268,19 @@ struct PoliciesView: View {
             refreshProvider: { provider in Task { await store.refreshProviderResource(provider) } },
             openProvider: { selectedProvider = $0 },
             testGroup: { group in Task { await store.testGroupDelay(group) } },
-            openGroup: { group in
+            expandedGroupIDs: $expandedGroupIDs,
+            selectedNodeID: $selectedNodeID,
+            nodesForGroup: nodes(for:),
+            toggleGroup: { group in
                 selectedGroupID = group.id
                 ensureNodeSelection(in: group)
-                showingGroupDetail = true
-            }
+                if expandedGroupIDs.contains(group.id) {
+                    expandedGroupIDs.remove(group.id)
+                } else {
+                    expandedGroupIDs.insert(group.id)
+                }
+            },
+            activateNode: handleNodeDoubleClick
         )
     }
 
@@ -271,7 +292,22 @@ struct PoliciesView: View {
                 || group.name.localizedCaseInsensitiveContains(query)
         }
         let visibleNodes = nodes.isEmpty && query.isEmpty == false ? group.all : nodes
-        return visibleNodes.map { PolicyNodeRow(group: group, node: $0) }
+        return visibleNodes
+            .filter { !hideUnavailableNodes || $0.available != false }
+            .map { PolicyNodeRow(group: group, node: $0) }
+    }
+
+    private var allGroupsExpanded: Bool {
+        !visibleGroups.isEmpty && visibleGroups.allSatisfy { expandedGroupIDs.contains($0.id) }
+    }
+
+    private func toggleAllGroups() {
+        let ids = Set(visibleGroups.map(\.id))
+        if allGroupsExpanded {
+            expandedGroupIDs.subtract(ids)
+        } else {
+            expandedGroupIDs.formUnion(ids)
+        }
     }
 
     private func ensureSelection() {

@@ -25,9 +25,15 @@ struct RuleTableEntry: Identifiable, Hashable {
     var options: [String]
 
     var id: String { rule.id }
-    var note: String { options.joined(separator: ", ") }
+    var optionsText: String { options.joined(separator: ", ") }
+    var displayValue: String {
+        guard !options.isEmpty else { return value }
+        let base = value.isEmpty ? "-" : value
+        return "\(base) (\(optionsText))"
+    }
+    var note: String { "" }
     var searchText: String {
-        [rule.content, type, value, policy, note, "\(rule.index)", "\(rule.hitCount)"].joined(separator: " ")
+        [rule.content, type, value, policy, optionsText, "\(rule.index)", "\(rule.hitCount)"].joined(separator: " ")
     }
 
     init(rule: RuleItem) {

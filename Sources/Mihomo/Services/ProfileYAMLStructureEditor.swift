@@ -98,7 +98,9 @@ struct ProfileYAMLStructureEditor {
             name: name,
             type: map["type"] as? String ?? "select",
             proxies: (map["proxies"] as? [Any] ?? []).compactMap { $0 as? String },
-            uses: (map["use"] as? [Any] ?? []).compactMap { $0 as? String }
+            uses: (map["use"] as? [Any] ?? []).compactMap { $0 as? String },
+            hidden: map["hidden"] as? Bool ?? false,
+            icon: map["icon"] as? String
         )
     }
 
@@ -118,6 +120,12 @@ struct ProfileYAMLStructureEditor {
         }
         if uses.isEmpty == false {
             map["use"] = uses
+        }
+        if group.hidden {
+            map["hidden"] = true
+        }
+        if let icon = group.icon?.trimmingCharacters(in: .whitespacesAndNewlines), icon.isEmpty == false {
+            map["icon"] = icon
         }
         return map
     }

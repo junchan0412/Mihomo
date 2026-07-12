@@ -35,7 +35,8 @@ View 负责布局、绑定和短生命周期交互状态，不直接实现下载
 | 页面 | 职责 | 不应承载 |
 | --- | --- | --- |
 | Overview | 运行摘要与高频入口 | 复杂设置 |
-| Activity | 连接、流量、日志入口 | DNS 配置逻辑 |
+| Activity | 最近请求、活动连接、DNS 观测与流量统计 | DNS 配置逻辑、独立日志 |
+| Logs | App/Core 日志筛选、表格浏览与落盘入口 | 连接工作区、脚本事件 |
 | Policies | 策略组浏览、节点切换、GUI 策略组编辑入口 | Controller 实现 |
 | Rules | 规则浏览、命中、GUI 编辑 | YAML 文件 IO |
 | Profiles | Profile、覆写、质量与来源 | 网络接管 |
@@ -59,7 +60,7 @@ View 负责布局、绑定和短生命周期交互状态，不直接实现下载
 
 高频连接、流量和日志不直接堆在 AppStore：
 
-- `RuntimeActivityStore`：连接、速率、流量样本与 event stream 状态。
+- `RuntimeActivityStore`：活动连接、最近请求、速率、分组流量样本与 event stream 状态。
 - `LogStore`：可见日志、暂停缓冲与增量发布。
 - `LogPersistenceWriter`：串行、批量持久化，避免每条日志触发磁盘 IO。
 
@@ -116,6 +117,10 @@ YAML 覆写 > JS Transform > Profile 配置 > 应用默认
 
 ### 3.3 配置质量
 
+质量总览、字段来源与合并层级共享一个连续分段容器。问题区与运行时摘要纵向排列，避免等高双栏在问题较少时产生大片空白。出站检查将 inline `proxies` 和 `proxy-providers` 视为等价来源，只有两者同时为空才发出警告。
+
+覆写片段支持全局作用域和指定 Profile 作用域；Runtime 构建、Profile 保存与质量分析必须使用同一套 `applies(to:)` 过滤规则。
+
 质量面板有三个视角：
 
 - 质量总览：评分、问题与最终 Runtime 摘要。
@@ -140,7 +145,9 @@ YAML 覆写 > JS Transform > Profile 配置 > 应用默认
 
 系统代理与 TUN 在交互上互斥。系统 DNS 可以独立启用，但必须使用独立快照。任何恢复逻辑都不能复用其他模式的 snapshot。
 
-Activity 的 DNS 是导航入口，不是独立 DNS 实现：它应先把 `networkWorkspaceTab` 设为 `.dns`，再切换 `selectedSection`。
+Activity 的 DNS 是连接工作区内的只读观测视图，数据来自最近连接中的域名、目标地址和来源信息；它不能跳转到 Network/Settings，也不能承担运行时 DNS 或 macOS 系统 DNS 的配置职责。Activity 顶部分段只保留“最近的请求 / 活动连接 / DNS / 流量统计”，设备与日志簿不属于该工作区。
+
+独立 Logs 页面按“全部 / 常规 / 网络切换 / DHCP”筛选 App 与 core 事件，并使用“时间 / 分类 / 标题 / 详情”表格展示。Mihomo 没有脚本事件模型，因此不得为了模仿其他客户端而添加脚本分类。
 
 ## 5. 资源更新模型
 
@@ -157,6 +164,8 @@ Activity 的 DNS 是导航入口，不是独立 DNS 实现：它应先把 `netwo
 ## 6. GUI 结构编辑
 
 ### 6.1 策略组
+
+策略页离线数据来自 Profile 结构和 Provider 本地缓存，不以 Controller 运行状态作为展示前提。策略组在当前页面展开节点，并保留 `hidden`、`icon` 与节点 `available` 元数据；页面级操作只提供折叠/展开、全量测速和筛选。
 
 策略页“编辑策略组”加载当前 Profile 原文，使用 `ProfileStructureEditorView` 和 `ProfileYAMLStructureEditor` 修改：
 

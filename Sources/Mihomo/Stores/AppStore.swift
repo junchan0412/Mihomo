@@ -129,6 +129,9 @@ final class AppStore: ObservableObject {
     var pendingLogEntries: [LogEntry] = []
     var logFlushTask: Task<Void, Never>?
     var ruleHitBaselines: [String: Int] = [:]
+    var ruleHitTotals: [String: Int] = [:]
+    var providerHitTotals: [String: Int] = [:]
+    var observedConnectionHitIDs: Set<String> = []
     var availableUpdateManifestURL: URL?
     var lastNetworkOperations: [NetworkTakeoverKind: String] = [:]
     var lastNetworkTakeoverRefreshAt = Date.distantPast

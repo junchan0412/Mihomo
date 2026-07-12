@@ -223,14 +223,15 @@ final class ProfileStore {
         disabledRules: Set<String>
     ) throws -> URL {
         try AppPaths.ensureBaseDirectories()
+        let applicableFragments = fragments.filter { $0.applies(to: profile.id) }
         var profileContent = try loadProfileContent(profile, settings: settings)
         if settings.jsOverrideEnabled {
-            profileContent = try jsOverrideRunner.apply(fragments: fragments, to: profileContent)
+            profileContent = try jsOverrideRunner.apply(fragments: applicableFragments, to: profileContent)
         }
         let content = try runtimeConfigBuilder.build(
             profileContent: profileContent,
             settings: settings,
-            fragments: fragments,
+            fragments: applicableFragments,
             disabledRules: disabledRules
         )
         try content.write(to: AppPaths.runtimeCandidateConfigFile, atomically: true, encoding: .utf8)

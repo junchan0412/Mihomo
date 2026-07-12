@@ -25,9 +25,6 @@ extension ProfileQualityAnalyzer {
             }
         }
 
-        if snapshot.proxyNames.isEmpty {
-            issues.append(.init(severity: .warning, title: "节点为空", detail: "Profile 未声明任何 proxies，启动后可能没有可用出站。"))
-        }
         if snapshot.rules.isEmpty {
             issues.append(.init(severity: .warning, title: "规则为空", detail: "Profile 未声明 rules，Rule 模式下可能无法按预期分流。"))
         }
@@ -127,6 +124,16 @@ extension ProfileQualityAnalyzer {
         settings: AppSettings
     ) -> [ProfileQualityIssue] {
         var issues: [ProfileQualityIssue] = []
+
+        let inlineProxyCount = arrayCount(root["proxies"])
+        let proxyProviderCount = (root["proxy-providers"] as? YAMLMap)?.count ?? 0
+        if inlineProxyCount == 0 && proxyProviderCount == 0 {
+            issues.append(.init(
+                severity: .warning,
+                title: "没有可用出站来源",
+                detail: "最终 runtime config 的 proxies 与 proxy-providers 都为空；仅此情况下才可能没有可用代理出站。"
+            ))
+        }
 
         issues.append(contentsOf: validatePort(root["mixed-port"], title: "mixed-port"))
         if let socksPort = root["socks-port"] {

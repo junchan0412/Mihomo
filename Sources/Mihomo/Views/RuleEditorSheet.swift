@@ -38,7 +38,7 @@ struct RuleEditorSheet: View {
                     TextField("DIRECT / REJECT / 策略组", text: $rulePolicy)
                 }
                 GridRow {
-                    Text("注释")
+                    Text("参数")
                         .foregroundStyle(.secondary)
                     TextField("no-resolve 等附加参数，逗号分隔", text: $ruleNote)
                 }

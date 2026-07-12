@@ -2,6 +2,33 @@ import XCTest
 @testable import Mihomo
 
 final class ProfileQualityAnalyzerTests: XCTestCase {
+    func testProviderOnlyProfileDoesNotWarnAboutMissingOutboundSource() {
+        let profile = ProfileItem(
+            id: UUID(), name: "Provider Only", source: .local,
+            location: "/tmp/provider-only.yaml", fileName: "provider-only.yaml", updatedAt: Date()
+        )
+        let content = """
+        proxy-providers:
+          remote:
+            type: http
+            url: https://example.com/nodes.yaml
+            path: ./proxy_providers/remote.yaml
+        proxy-groups:
+          - name: Auto
+            type: select
+            use:
+              - remote
+        rules:
+          - MATCH,Auto
+        """
+
+        let report = ProfileQualityAnalyzer().analyze(
+            profile: profile, profileContent: content, settings: AppSettings(), fragments: [], disabledRules: []
+        )
+
+        XCTAssertFalse(report.issues.contains { $0.title == "没有可用出站来源" })
+    }
+
     func testRuntimeSourceItemsIdentifyConfigPriorityAndAppDefaults() {
         let profile = ProfileItem(
             id: UUID(),

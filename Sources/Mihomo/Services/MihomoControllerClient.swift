@@ -35,7 +35,8 @@ struct MihomoControllerClient {
                 return ProxyNode(
                     name: proxyName,
                     type: proxy?["type"] as? String ?? "proxy",
-                    delay: delay
+                    delay: delay,
+                    available: proxy?["alive"] as? Bool
                 )
             }
             return ProxyGroup(
@@ -43,7 +44,8 @@ struct MihomoControllerClient {
                 type: detail["type"] as? String ?? "select",
                 now: detail["now"] as? String ?? "",
                 all: nodes,
-                icon: detail["icon"] as? String
+                icon: detail["icon"] as? String,
+                hidden: detail["hidden"] as? Bool ?? false
             )
         }
         .sorted { lhs, rhs in

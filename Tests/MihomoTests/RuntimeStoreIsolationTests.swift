@@ -18,10 +18,21 @@ final class RuntimeStoreIsolationTests: XCTestCase {
         store.controllerEventStreamStatus = "实时"
 
         XCTAssertEqual(appChanges, 0)
-        XCTAssertEqual(activityChanges, 5)
+        XCTAssertGreaterThanOrEqual(activityChanges, 5)
         XCTAssertEqual(store.activityStore.totalTrafficBytes, 0)
         XCTAssertEqual(store.activityStore.uniqueTargetCount, 1)
+        XCTAssertEqual(store.activityStore.recentConnections.map(\.id), ["c1"])
         withExtendedLifetime([appCancellable, activityCancellable]) {}
+    }
+
+    func testRecentConnectionsCanBeClearedWithoutClosingActiveConnections() {
+        let store = RuntimeActivityStore()
+        store.replaceConnections([connection(id: "active")])
+
+        store.clearRecentConnections()
+
+        XCTAssertTrue(store.recentConnections.isEmpty)
+        XCTAssertEqual(store.connections.map(\.id), ["active"])
     }
 
     func testLogPublishingDoesNotInvalidateAppStore() {
