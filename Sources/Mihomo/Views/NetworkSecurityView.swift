@@ -80,7 +80,7 @@ struct NetworkSecurityView: View {
             Text("普通代理优先使用系统代理；需要透明接管更多应用时再开启 TUN。两者会自动互斥。")
                 .foregroundStyle(.secondary)
 
-            HStack(alignment: .top, spacing: 14) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 14)], alignment: .leading, spacing: 14) {
                 takeoverCard(
                     title: "系统代理",
                     subtitle: "适合大多数浏览器与遵循 macOS 代理设置的应用。",

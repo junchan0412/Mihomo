@@ -123,7 +123,7 @@ extension AppStore {
     func updateAllExternalResources() async {
         refreshConfigArtifacts()
         let providerItems = providers
-        let maxConcurrent = max(1, min(settings.profileRefreshMaxConcurrent, 8))
+        let maxConcurrent = max(1, min(settings.resourceUpdateMaxConcurrent, 12))
         var succeeded = 0
         var failed = 0
         var completed = 0

@@ -8,8 +8,8 @@ struct PolicyWorkspaceView: View {
     var isOffline: Bool
     var providerHistory: (ProviderItem) -> ProviderUpdateRecord?
     var refreshProvider: (ProviderItem) -> Void
-    var openProvider: (ProviderItem) -> Void
     var testGroup: (ProxyGroup) -> Void
+    @Binding var expandedProviderIDs: Set<String>
     @Binding var expandedGroupIDs: Set<String>
     @Binding var selectedNodeID: String?
     var nodesForGroup: (ProxyGroup) -> [PolicyNodeRow]
@@ -48,28 +48,61 @@ struct PolicyWorkspaceView: View {
     }
 
     private func providerRow(_ provider: ProviderItem) -> some View {
-        Button { openProvider(provider) } label: { HStack(spacing: 14) {
-            rowIcon("paperplane.fill", color: .cyan)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(provider.name).font(.headline).lineLimit(1)
-                    Text(provider.providerType.isEmpty ? "PROVIDER" : provider.providerType.uppercased())
-                        .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+        VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Button {
+                    if expandedProviderIDs.contains(provider.id) { expandedProviderIDs.remove(provider.id) }
+                    else { expandedProviderIDs.insert(provider.id) }
+                } label: {
+                    HStack(spacing: 14) {
+                        rowIcon("paperplane.fill", color: .cyan)
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 8) {
+                                Text(provider.name).font(.headline).lineLimit(1)
+                                Text(provider.providerType.isEmpty ? "PROVIDER" : provider.providerType.uppercased())
+                                    .font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+                            }
+                            Text(providerSubtitle(provider)).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
                 }
-                Text(providerSubtitle(provider)).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                .buttonStyle(.plain)
+                if let record = providerHistory(provider) {
+                    Text(record.succeeded ? "已更新" : "更新失败")
+                        .font(.caption).foregroundStyle(record.succeeded ? Color.green : Color.red)
+                }
+                Button { refreshProvider(provider) } label: { Image(systemName: "arrow.clockwise") }
+                    .buttonStyle(.borderless).help("刷新 Provider")
+                Image(systemName: expandedProviderIDs.contains(provider.id) ? "chevron.down" : "chevron.right")
+                    .foregroundStyle(.tertiary)
             }
-            Spacer()
-            if let record = providerHistory(provider) {
-                Text(record.succeeded ? "已更新" : "更新失败")
-                    .font(.caption).foregroundStyle(record.succeeded ? Color.green : Color.red)
+            .padding(.horizontal, 16).frame(minHeight: 74)
+
+            if expandedProviderIDs.contains(provider.id) {
+                Divider().padding(.horizontal, 16)
+                if provider.memberNames.isEmpty {
+                    Text("尚未读取到本地节点缓存，可直接刷新 Provider。")
+                        .foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).padding(16)
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 10)], spacing: 10) {
+                        ForEach(provider.memberNames, id: \.self) { name in
+                            HStack(spacing: 9) {
+                                Image(systemName: "paperplane.fill").foregroundStyle(.cyan)
+                                Text(name).lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 12).frame(minHeight: 48)
+                            .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
+                        }
+                    }
+                    .padding(16)
+                }
             }
-            Button { refreshProvider(provider) } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.borderless).help("刷新 Provider")
-            Image(systemName: "chevron.right").foregroundStyle(.tertiary)
-        }}
-        .buttonStyle(.plain)
-        .padding(.horizontal, 16).frame(minHeight: 74)
+        }
         .background(.quaternary.opacity(0.32), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .animation(.easeInOut(duration: 0.18), value: expandedProviderIDs.contains(provider.id))
     }
 
     private func groupRow(_ group: ProxyGroup) -> some View {

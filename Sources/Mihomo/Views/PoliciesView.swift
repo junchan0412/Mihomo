@@ -8,7 +8,7 @@ struct PoliciesView: View {
     @State private var pendingAutomaticOverride: PolicyNodeRow?
     @State private var showingGroupEditor = false
     @State private var showingGroupDetail = false
-    @State private var selectedProvider: ProviderItem?
+    @State private var expandedProviderIDs: Set<String> = []
     @State private var groupEditorContent = ""
     @State private var expandedGroupIDs: Set<String> = []
     @State private var hideUnavailableNodes = false
@@ -128,44 +128,6 @@ struct PoliciesView: View {
                 .padding(24).frame(minWidth: 620, minHeight: 480, alignment: .topLeading)
             }
         }
-        .sheet(item: $selectedProvider) { provider in
-            VStack(alignment: .leading, spacing: 16) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(provider.name).font(.title2.weight(.semibold))
-                        Text("\(provider.providerType.isEmpty ? "Provider" : provider.providerType) · \(provider.memberNames.count) 个节点")
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button { Task { await store.refreshProviderResource(provider) } } label: {
-                        Label("刷新", systemImage: "arrow.clockwise")
-                    }
-                }
-                Divider()
-                if provider.memberNames.isEmpty {
-                    ContentUnavailableView(
-                        "没有节点信息",
-                        systemImage: "shippingbox",
-                        description: Text("尚未读取到本地 Provider 节点缓存；可直接刷新 Provider，不需要先启动核心。")
-                    )
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 8) {
-                            ForEach(provider.memberNames, id: \.self) { name in
-                                HStack {
-                                    Image(systemName: "paperplane.fill").foregroundStyle(.cyan)
-                                    Text(name).lineLimit(1)
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 14).frame(minHeight: 48)
-                                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(24).frame(minWidth: 620, minHeight: 480, alignment: .topLeading)
-        }
     }
 
     @ViewBuilder
@@ -266,8 +228,8 @@ struct PoliciesView: View {
             isOffline: isOfflinePolicyMode,
             providerHistory: { store.providerUpdateHistory(for: $0).first },
             refreshProvider: { provider in Task { await store.refreshProviderResource(provider) } },
-            openProvider: { selectedProvider = $0 },
             testGroup: { group in Task { await store.testGroupDelay(group) } },
+            expandedProviderIDs: $expandedProviderIDs,
             expandedGroupIDs: $expandedGroupIDs,
             selectedNodeID: $selectedNodeID,
             nodesForGroup: nodes(for:),

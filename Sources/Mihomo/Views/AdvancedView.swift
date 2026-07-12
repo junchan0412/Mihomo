@@ -76,6 +76,9 @@ struct AdvancedView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Label(store.helperStatus.localizedCaseInsensitiveContains("正常") ? "Helper 正常" : "检查 Helper", systemImage: "person.badge.key")
+                    .font(.callout)
+                    .foregroundStyle(store.helperStatus.localizedCaseInsensitiveContains("正常") ? Color.green : Color.secondary)
                 Button { Task { await store.runDiagnostics() } } label: {
                     Label("运行诊断", systemImage: "stethoscope")
                 }
@@ -87,9 +90,21 @@ struct AdvancedView: View {
             }
             .pickerStyle(.segmented)
             .frame(maxWidth: 650)
+            Text(tabDescription)
+                .font(.callout)
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, MihomoUI.pageHorizontalPadding)
         .padding(.vertical, 14)
+    }
+
+    private var tabDescription: String {
+        switch tab {
+        case .runtime: return "管理 Helper、LaunchDaemon 与自动化入口。"
+        case .data: return "维护 External UI、GeoIP 与 GeoSite 数据。"
+        case .backup: return "配置加密、备份和跨设备恢复。"
+        case .inspection: return "检查最终运行配置并导出诊断信息。"
+        }
     }
 
     private var helperGroup: some View {
