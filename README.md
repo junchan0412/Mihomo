@@ -85,7 +85,7 @@ git diff --check
 ./script/build_and_run.sh --verify
 ```
 
-当前测试集包含 99 个 XCTest，覆盖 Activity/日志展示、规则参数展示、覆写作用域、配置质量、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、Provider 更新与回滚、网络请求超时、Controller WebSocket 恢复、Helper 路径边界、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
+当前测试集包含 100 个 XCTest，覆盖 Activity/日志展示、规则参数与稳定命中计数、覆写作用域、配置质量、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、Provider 更新与回滚、网络请求超时、Controller WebSocket 恢复、Helper 路径边界、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
 
 网络恢复与辅助功能人工检查：
 

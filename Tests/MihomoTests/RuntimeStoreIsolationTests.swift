@@ -51,6 +51,39 @@ final class RuntimeStoreIsolationTests: XCTestCase {
         withExtendedLifetime([appCancellable, logCancellable]) {}
     }
 
+    func testRuleHitCountingIsStableAcrossRefreshAndReset() {
+        let store = AppStore()
+        store.rules = [RuleItem(index: 0, content: "DOMAIN,example.com,DIRECT", disabled: false)]
+        var first = connection(id: "connection-1")
+        first.ruleType = "DOMAIN"
+        first.rulePayload = "example.com"
+        first.start = Date(timeIntervalSince1970: 100)
+        store.connections = [first]
+
+        store.updateRuleProviderHitStatistics()
+        store.updateRuleProviderHitStatistics()
+        XCTAssertEqual(store.rules.first?.hitCount, 1, "重复刷新不得重复统计同一连接")
+
+        var second = connection(id: "connection-2")
+        second.ruleType = "DOMAIN"
+        second.rulePayload = "example.com"
+        second.start = Date(timeIntervalSince1970: 101)
+        store.connections = [first, second]
+        store.updateRuleProviderHitStatistics()
+        XCTAssertEqual(store.rules.first?.hitCount, 2, "新连接应继续累加")
+
+        store.resetRuleHitStatistics()
+        XCTAssertEqual(store.rules.first?.hitCount, 0, "重置后显示计数应归零")
+
+        var third = connection(id: "connection-3")
+        third.ruleType = "DOMAIN"
+        third.rulePayload = "example.com"
+        third.start = Date(timeIntervalSince1970: 102)
+        store.connections = [first, second, third]
+        store.updateRuleProviderHitStatistics()
+        XCTAssertEqual(store.rules.first?.hitCount, 1, "重置后的新连接应从零继续累加")
+    }
+
     private func connection(id: String) -> ConnectionItem {
         ConnectionItem(
             id: id,
