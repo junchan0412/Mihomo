@@ -75,8 +75,12 @@ struct PolicyWorkspaceView: View {
                 }
                 Button { refreshProvider(provider) } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.borderless).help("刷新 Provider")
-                Image(systemName: expandedProviderIDs.contains(provider.id) ? "chevron.down" : "chevron.right")
-                    .foregroundStyle(.tertiary)
+                Button { toggleProvider(provider) } label: {
+                    Image(systemName: expandedProviderIDs.contains(provider.id) ? "chevron.down" : "chevron.right")
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.borderless)
+                .help(expandedProviderIDs.contains(provider.id) ? "收起 Provider" : "展开 Provider")
             }
             .padding(.horizontal, 16).frame(minHeight: 74)
 
@@ -103,6 +107,11 @@ struct PolicyWorkspaceView: View {
         }
         .background(.quaternary.opacity(0.32), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .animation(.easeInOut(duration: 0.18), value: expandedProviderIDs.contains(provider.id))
+    }
+
+    private func toggleProvider(_ provider: ProviderItem) {
+        if expandedProviderIDs.contains(provider.id) { expandedProviderIDs.remove(provider.id) }
+        else { expandedProviderIDs.insert(provider.id) }
     }
 
     private func groupRow(_ group: ProxyGroup) -> some View {

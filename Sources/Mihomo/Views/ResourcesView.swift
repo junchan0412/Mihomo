@@ -9,7 +9,7 @@ struct ResourcesView: View {
     private var latestRecords: [String: ProviderUpdateRecord] {
         var records: [String: ProviderUpdateRecord] = [:]
         for record in store.providerUpdateHistory {
-            let key = "\(record.providerKind)-\(record.providerName)"
+            let key = store.providerHistoryKey(kind: record.providerKind, name: record.providerName)
             if records[key] == nil {
                 records[key] = record
             }
@@ -20,7 +20,7 @@ struct ResourcesView: View {
     private var allRows: [ExternalResourceRow] {
         let records = latestRecords
         return store.providers.map { provider in
-            ExternalResourceRow(provider: provider, latestRecord: records[provider.id])
+            ExternalResourceRow(provider: provider, latestRecord: records[store.providerHistoryKey(for: provider)])
         }
     }
 

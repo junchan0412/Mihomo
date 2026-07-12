@@ -61,8 +61,18 @@ extension AppStore {
 
     func providerUpdateHistory(for provider: ProviderItem) -> [ProviderUpdateRecord] {
         providerUpdateHistory.filter {
-            $0.providerKind == provider.kind && $0.providerName == provider.name
+            providerHistoryKey(kind: $0.providerKind, name: $0.providerName) == providerHistoryKey(for: provider)
         }
+    }
+
+    func providerHistoryKey(for provider: ProviderItem) -> String {
+        providerHistoryKey(kind: provider.kind, name: provider.name)
+    }
+
+    func providerHistoryKey(kind: String, name: String) -> String {
+        let normalizedKind = kind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return "\(normalizedKind)\u{1F}\(normalizedName)"
     }
 
     func latestProviderRollbackRecord(for provider: ProviderItem) -> ProviderUpdateRecord? {

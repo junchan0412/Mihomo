@@ -121,14 +121,27 @@ struct OverviewView: View {
 
     private var trafficTimelinePanel: some View {
         OverviewPanel(title: "流量时间轴", systemImage: "chart.bar", tint: .indigo) {
-            HStack(alignment: .bottom, spacing: 5) {
-                ForEach(timelineSamples.indices, id: \.self) { index in
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.accentColor.opacity(0.45))
-                        .frame(height: timelineHeight(for: timelineSamples[index]))
+            VStack(spacing: 8) {
+                HStack(alignment: .bottom, spacing: 4) {
+                    ForEach(Array(timelineSamples.enumerated()), id: \.element.id) { index, sample in
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(timelineColor(at: index))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: timelineHeight(for: sample))
+                            .help("\(timelineTimeFormatter.string(from: sample.date)) · ↓ \(Formatters.rate(sample.downloadRate)) · ↑ \(Formatters.rate(sample.uploadRate))")
+                    }
                 }
+                .frame(maxWidth: .infinity, minHeight: 82, maxHeight: 82, alignment: .bottomLeading)
+
+                HStack {
+                    ForEach(timelineAxisLabels, id: \.date) { label in
+                        Text(label.text)
+                        if label.date != timelineAxisLabels.last?.date { Spacer() }
+                    }
+                }
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity, minHeight: 106, maxHeight: 106, alignment: .bottomLeading)
         }
         .frame(minHeight: 168)
     }
@@ -182,7 +195,27 @@ struct OverviewView: View {
     }
 
     private var timelineSamples: [TrafficSample] {
-        Array(activityStore.trafficSamples.suffix(28))
+        Array(activityStore.trafficSamples.suffix(48))
+    }
+
+    private var timelineAxisLabels: [(date: Date, text: String)] {
+        guard timelineSamples.isEmpty == false else { return [] }
+        let indices = Set([0, timelineSamples.count / 2, timelineSamples.count - 1]).sorted()
+        return indices.map { (timelineSamples[$0].date, timelineTimeFormatter.string(from: timelineSamples[$0].date)) }
+    }
+
+    private var timelineTimeFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }
+
+    private func timelineColor(at index: Int) -> Color {
+        let progress = timelineSamples.count <= 1 ? 1 : Double(index) / Double(timelineSamples.count - 1)
+        if progress < 0.34 { return .cyan.opacity(0.55) }
+        if progress < 0.67 { return .blue.opacity(0.65) }
+        return .indigo.opacity(0.78)
     }
 
     private func timelineHeight(for sample: TrafficSample) -> CGFloat {
