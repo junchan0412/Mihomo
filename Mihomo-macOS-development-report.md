@@ -45,6 +45,10 @@ View 负责布局、绑定和短生命周期交互状态，不直接实现下载
 | Advanced | Helper、LaunchDaemon、Artifact、备份、安全、诊断 | 常用设置重复项 |
 | Settings | 通用、远程访问、高级默认值 | 备份与维护动作 |
 
+维护类页面统一使用“标题与状态 → 分段导航 → 单一内容列”的结构。网络使用自适应接管卡片；高级工具按运行、数据、备份、检查分区；诊断严格区分只读检查与有副作用的修复；设置只保存偏好，不重复放置维护动作。
+
+App 图标的矢量源位于 `Assets/`，构建前生成的 light/dark PNG、菜单栏模板图和 `Mihomo.icns` 位于 `Assets/Generated/`。`build_and_run.sh` 负责将这些资源复制到 App bundle，菜单栏图片必须设置 `isTemplate = true` 以适配系统外观。
+
 ### 2.2 AppStore
 
 `AppStore.swift` 保存共享低频状态和 service 实例。领域行为按 extension 拆分，例如：
@@ -151,6 +155,8 @@ Activity 的 DNS 是连接工作区内的只读观测视图，数据来自最近
 
 ## 5. 资源更新模型
 
+Profile 自动刷新和外部资源批量更新使用独立并发设置。`profileRefreshMaxConcurrent` 只控制远程 Profile；`resourceUpdateMaxConcurrent` 控制 Provider 批量更新，范围固定为 1–12。资源页允许即时调整，持久化仍统一经过 `saveSettings`。
+
 资源统一建模为 `ProviderItem`，通过 `ExternalResourceRow` 形成展示状态。
 
 更新规则：
@@ -204,7 +210,7 @@ Activity 的 DNS 是连接工作区内的只读观测视图，数据来自最近
 DEVELOPER_DIR='/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer' swift test
 git diff --check
 ./script/maintainability_audit.sh
-APP_VERSION=1.8.80 ./script/build_and_run.sh --verify
+APP_VERSION=1.8.81 ./script/build_and_run.sh --verify
 ```
 
 高风险改动补充验证：
@@ -227,15 +233,15 @@ APP_VERSION=1.8.80 ./script/build_and_run.sh --verify
 5. 执行：
 
 ```bash
-./script/package_release.sh 1.8.80
-./script/release_smoke_test.sh 1.8.80
+./script/package_release.sh 1.8.81
+./script/release_smoke_test.sh 1.8.81
 ```
 
 6. 检查 zip、versioned manifest、latest manifest 和 provenance。
 7. 提交并 push branch。
-8. 创建 `v1.8.80` tag，不移动旧 tag。
+8. 创建 `v1.8.81` tag，不移动旧 tag。
 9. push tag。
-10. 创建 GitHub Release，上传 zip 与 `mihomo-update.json`，正文使用 `docs/releases/v1.8.80.md`。
+10. 创建 GitHub Release，上传 zip 与 `mihomo-update.json`，正文使用 `docs/releases/v1.8.81.md`。
 
 ## 11. 当前技术债务
 

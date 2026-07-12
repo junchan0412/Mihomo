@@ -4,8 +4,8 @@ struct MihomoSidebarView: View {
     @EnvironmentObject private var store: AppStore
     @Binding var selection: AppSection
 
-    private let mainSections: [AppSection] = [.overview, .activity, .policies, .rules, .profiles, .overrides, .logs]
-    private let engineSections: [AppSection] = [.networkSecurity, .resources, .advanced, .diagnostics]
+    private let mainSections: [AppSection] = [.overview, .activity, .policies, .rules, .profiles, .overrides, .resources, .logs]
+    private let engineSections: [AppSection] = [.networkSecurity, .advanced, .diagnostics]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -31,14 +31,7 @@ struct MihomoSidebarView: View {
 
     private var brandHeader: some View {
         HStack(spacing: 10) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.accentColor.opacity(0.12))
-                Text("M")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Color.accentColor)
-            }
-            .frame(width: 36, height: 36)
+            AppBrandIcon(size: 36)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Mihomo")

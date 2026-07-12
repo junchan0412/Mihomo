@@ -2,98 +2,97 @@ import SwiftUI
 
 struct DiagnosticsView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var tab: DiagnosticWorkspaceTab = .overview
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                VStack(alignment: .leading) {
-                    Text("诊断")
-                        .font(MihomoUI.Fonts.pageTitle)
-                    Text("检查核心、运行配置、系统代理快照、TUN 状态、Controller 和日志。")
-                        .font(MihomoUI.Fonts.pageSubtitle)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Button("运行诊断") {
-                    Task { await store.runDiagnostics() }
-                }
-                .buttonStyle(.borderedProminent)
-
-                Button("导出诊断包") {
-                    store.exportDiagnosticBundle()
-                }
-
-                Button("修复系统代理") {
-                    Task { await store.repairSystemProxy() }
-                }
-
-                Button("恢复 DNS") {
-                    Task { await store.restoreSystemDNS() }
-                }
-
-                Button("修复 Helper") {
-                    Task { await store.repairHelperRegistration() }
-                }
-
-                Button("验证 TUN 权限") {
-                    Task { await store.verifyTunPrivileges() }
-                }
-
-                Button("回滚 TUN") {
-                    Task { await store.restoreTunRecovery() }
-                }
-            }
-
-            NetworkRepairCenterView()
-
-            Text(store.diagnosticExportStatus)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-
-            List(store.diagnostics) { item in
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: icon(for: item.state))
-                        .foregroundStyle(color(for: item.state))
-                        .frame(width: 22)
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(item.title)
-                            .font(.headline)
-                        Text(item.detail)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                        if item.title == "系统代理快照", item.state == .warning {
-                            Button {
-                                Task { await store.repairSystemProxy() }
-                            } label: {
-                                Label("恢复代理快照", systemImage: "wrench.and.screwdriver")
-                            }
-                            .buttonStyle(.bordered)
-                            .padding(.top, 4)
-                        }
-                        if item.title == "XPC Helper", item.state != .ok {
-                            Button {
-                                Task { await store.repairHelperRegistration() }
-                            } label: {
-                                Label("重建 Helper 注册", systemImage: "hammer")
-                            }
-                            .buttonStyle(.bordered)
-                            .padding(.top, 4)
-                        }
+                        Text("诊断").font(MihomoUI.Fonts.pageTitle)
+                        Text("先定位问题，再执行对应修复；导出内容会自动脱敏。")
+                            .font(MihomoUI.Fonts.pageSubtitle).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    Button { store.exportDiagnosticBundle() } label: {
+                        Label("导出诊断包", systemImage: "square.and.arrow.up")
+                    }
+                    Button { Task { await store.runDiagnostics() } } label: {
+                        Label("运行诊断", systemImage: "stethoscope")
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
-                .padding(.vertical, 5)
+                Picker("诊断分类", selection: $tab) {
+                    ForEach(DiagnosticWorkspaceTab.allCases) { item in
+                        Label(item.title, systemImage: item.systemImage).tag(item)
+                    }
+                }
+                .pickerStyle(.segmented).frame(maxWidth: 560)
             }
-            .overlay {
-                if store.diagnostics.isEmpty {
-                    ContentUnavailableView("尚未运行诊断", systemImage: "stethoscope", description: Text("运行诊断以验证第三个 MVP 的运行状态。"))
+            .padding(.horizontal, MihomoUI.pageHorizontalPadding).padding(.vertical, 14)
+            Divider()
+
+            ScrollView {
+                Group {
+                    switch tab {
+                    case .overview: overview
+                    case .results: results
+                    case .repair: NetworkRepairCenterView()
+                    }
+                }
+                .frame(maxWidth: 900, alignment: .topLeading)
+                .padding(MihomoUI.pageHorizontalPadding)
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+        }
+        .navigationTitle("诊断")
+    }
+
+    private var overview: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12)], spacing: 12) {
+                diagnosticMetric("通过", count: store.diagnostics.filter { $0.state == .ok }.count, color: .green, icon: "checkmark.circle.fill")
+                diagnosticMetric("警告", count: store.diagnostics.filter { $0.state == .warning }.count, color: .orange, icon: "exclamationmark.triangle.fill")
+                diagnosticMetric("失败", count: store.diagnostics.filter { $0.state == .failed }.count, color: .red, icon: "xmark.octagon.fill")
+            }
+            SettingsSection(title: "推荐流程", subtitle: "诊断不会直接修改系统状态。", systemImage: "list.number") {
+                SettingsRow("1") { Text("运行诊断并查看检查结果").foregroundStyle(.secondary) }
+                SettingsRow("2") { Text("仅对异常项目执行对应修复").foregroundStyle(.secondary) }
+                SettingsRow("3") { Text("仍无法解决时导出脱敏诊断包").foregroundStyle(.secondary) }
+            }
+            Text(store.diagnosticExportStatus).foregroundStyle(.secondary).textSelection(.enabled)
+        }
+    }
+
+    private var results: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if store.diagnostics.isEmpty {
+                ContentUnavailableView("尚未运行诊断", systemImage: "stethoscope", description: Text("点击“运行诊断”检查核心、配置、网络接管与 Helper。"))
+                    .frame(maxWidth: .infinity, minHeight: 280)
+            } else {
+                ForEach(store.diagnostics) { item in
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: icon(for: item.state)).foregroundStyle(color(for: item.state)).frame(width: 22)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.title).font(.headline)
+                            Text(item.detail).foregroundStyle(.secondary).textSelection(.enabled)
+                        }
+                        Spacer()
+                    }
+                    .padding(14)
+                    .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
                 }
             }
         }
-        .padding(.horizontal, MihomoUI.pageHorizontalPadding)
-        .padding(.vertical, MihomoUI.pageVerticalPadding)
-        .navigationTitle("诊断")
+    }
+
+    private func diagnosticMetric(_ title: String, count: Int, color: Color, icon: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).font(.title2).foregroundStyle(color)
+            VStack(alignment: .leading) { Text("\(count)").font(.title2.bold()); Text(title).foregroundStyle(.secondary) }
+            Spacer()
+        }
+        .padding(16).background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private func icon(for state: DiagnosticState) -> String {
@@ -109,6 +108,25 @@ struct DiagnosticsView: View {
         case .ok: return .green
         case .warning: return .orange
         case .failed: return .red
+        }
+    }
+}
+
+private enum DiagnosticWorkspaceTab: String, CaseIterable, Identifiable {
+    case overview, results, repair
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .overview: return "概览"
+        case .results: return "检查结果"
+        case .repair: return "修复中心"
+        }
+    }
+    var systemImage: String {
+        switch self {
+        case .overview: return "gauge.with.dots.needle.67percent"
+        case .results: return "list.bullet.clipboard"
+        case .repair: return "wrench.and.screwdriver"
         }
     }
 }

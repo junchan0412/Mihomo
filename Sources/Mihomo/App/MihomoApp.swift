@@ -151,9 +151,9 @@ struct MihomoApp: App {
         Window("软件更新", id: "software-update") {
             SoftwareUpdateWindowView()
                 .environmentObject(store)
-                .frame(minWidth: 460, minHeight: 360)
+                .frame(minWidth: 700, minHeight: 560)
         }
-        .defaultSize(width: 520, height: 420)
+        .defaultSize(width: 760, height: 640)
 
         MenuBarExtra {
             MenuBarView()
@@ -171,7 +171,12 @@ private struct MenuBarStatusLabel: View {
     @ObservedObject var activityStore: RuntimeActivityStore
 
     var body: some View {
-        Text(store.menuBarTitle)
+        HStack(spacing: 4) {
+            if let icon = MihomoMenuBarIcon.image() {
+                Image(nsImage: icon)
+            }
+            Text(store.menuBarTitle)
+        }
     }
 }
 

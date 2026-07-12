@@ -31,6 +31,7 @@ final class AppSettingsCodableTests: XCTestCase {
             launchAtLogin: true,
             restoreTunOnStop: false,
             profileRefreshMaxConcurrent: 4,
+            resourceUpdateMaxConcurrent: 7,
             delayTestConcurrency: 9,
             logRetentionDays: 14,
             logMaxFileSizeMB: 32,

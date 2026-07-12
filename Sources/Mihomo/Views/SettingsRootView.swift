@@ -19,7 +19,7 @@ struct SettingsRootView: View {
                     case .advanced: SettingsAdvancedPane(draft: $draft)
                     }
                 }
-                .frame(maxWidth: 780, alignment: .leading)
+                .frame(maxWidth: 860, alignment: .leading)
                 .padding(.horizontal, MihomoUI.pageHorizontalPadding)
                 .padding(.vertical, MihomoUI.pageVerticalPadding)
                 .frame(maxWidth: .infinity, alignment: .top)
@@ -50,6 +50,13 @@ struct SettingsRootView: View {
             }
             .pickerStyle(.segmented)
             .frame(maxWidth: 520)
+            HStack(spacing: 16) {
+                Label(store.settings.autoStartCore ? "自动启动" : "手动启动", systemImage: "power")
+                Label(store.settings.autoRefreshProfiles ? "订阅自动刷新" : "订阅手动刷新", systemImage: "clock.arrow.circlepath")
+                Label(store.settings.launchAtLogin ? "登录项已启用" : "登录项未启用", systemImage: "person.crop.circle.badge.clock")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
         .padding(.horizontal, MihomoUI.pageHorizontalPadding)
         .padding(.vertical, 14)
@@ -91,6 +98,11 @@ struct SettingsRootView: View {
                 }
                 SettingsRow("刷新并发数") {
                     TextField("2", value: $draft.profileRefreshMaxConcurrent, format: .number).frame(width: 140)
+                }
+                SettingsRow("资源更新并发数") {
+                    Stepper(value: $draft.resourceUpdateMaxConcurrent, in: 1...12) {
+                        Text("\(draft.resourceUpdateMaxConcurrent)").monospacedDigit().frame(width: 32)
+                    }
                 }
                 SettingsToggleRow("登录后自动打开 Mihomo", isOn: $draft.launchAtLogin)
                 SettingsToggleRow("轻量模式启动", isOn: $draft.lightweightMode)

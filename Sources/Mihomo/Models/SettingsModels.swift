@@ -26,6 +26,7 @@ struct AppSettings: Codable, Hashable {
     var launchAtLogin: Bool
     var restoreTunOnStop: Bool
     var profileRefreshMaxConcurrent: Int
+    var resourceUpdateMaxConcurrent: Int
     var delayTestConcurrency: Int
     var logRetentionDays: Int
     var logMaxFileSizeMB: Int
@@ -97,6 +98,7 @@ struct AppSettings: Codable, Hashable {
         launchAtLogin: Bool = false,
         restoreTunOnStop: Bool = true,
         profileRefreshMaxConcurrent: Int = 2,
+        resourceUpdateMaxConcurrent: Int = 4,
         delayTestConcurrency: Int = 6,
         logRetentionDays: Int = 7,
         logMaxFileSizeMB: Int = 8,
@@ -165,6 +167,7 @@ struct AppSettings: Codable, Hashable {
         self.launchAtLogin = launchAtLogin
         self.restoreTunOnStop = restoreTunOnStop
         self.profileRefreshMaxConcurrent = profileRefreshMaxConcurrent
+        self.resourceUpdateMaxConcurrent = resourceUpdateMaxConcurrent
         self.delayTestConcurrency = delayTestConcurrency
         self.logRetentionDays = logRetentionDays
         self.logMaxFileSizeMB = logMaxFileSizeMB
@@ -235,6 +238,7 @@ struct AppSettings: Codable, Hashable {
         case launchAtLogin
         case restoreTunOnStop
         case profileRefreshMaxConcurrent
+        case resourceUpdateMaxConcurrent
         case delayTestConcurrency
         case logRetentionDays
         case logMaxFileSizeMB
@@ -309,6 +313,7 @@ struct AppSettings: Codable, Hashable {
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? fallback.launchAtLogin
         restoreTunOnStop = try container.decodeIfPresent(Bool.self, forKey: .restoreTunOnStop) ?? fallback.restoreTunOnStop
         profileRefreshMaxConcurrent = try container.decodeIfPresent(Int.self, forKey: .profileRefreshMaxConcurrent) ?? fallback.profileRefreshMaxConcurrent
+        resourceUpdateMaxConcurrent = try container.decodeIfPresent(Int.self, forKey: .resourceUpdateMaxConcurrent) ?? fallback.resourceUpdateMaxConcurrent
         delayTestConcurrency = try container.decodeIfPresent(Int.self, forKey: .delayTestConcurrency) ?? fallback.delayTestConcurrency
         logRetentionDays = try container.decodeIfPresent(Int.self, forKey: .logRetentionDays) ?? fallback.logRetentionDays
         logMaxFileSizeMB = try container.decodeIfPresent(Int.self, forKey: .logMaxFileSizeMB) ?? fallback.logMaxFileSizeMB
@@ -360,4 +365,3 @@ struct AppSettings: Codable, Hashable {
         return mihomoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .managed : .local
     }
 }
-

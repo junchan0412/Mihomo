@@ -75,8 +75,25 @@ struct ResourcesView: View {
                 ResourceCountBadge(title: "Proxy", value: allRows.filter { $0.provider.kind == "Proxy" }.count)
                 ResourceCountBadge(title: "Rule", value: allRows.filter { $0.provider.kind == "Rule" }.count)
                 ResourceCountBadge(title: "未就绪", value: allRows.filter { $0.isReady == false }.count)
+                Divider().frame(height: 22)
+                Text("并发").foregroundStyle(.secondary)
+                Stepper(value: resourceConcurrency, in: 1...12) {
+                    Text("\(store.settings.resourceUpdateMaxConcurrent)").monospacedDigit().frame(width: 24)
+                }
+                .help("同时更新的 Provider 数量")
             }
         }
+    }
+
+    private var resourceConcurrency: Binding<Int> {
+        Binding(
+            get: { store.settings.resourceUpdateMaxConcurrent },
+            set: { value in
+                var updated = store.settings
+                updated.resourceUpdateMaxConcurrent = value
+                Task { await store.saveSettings(updated) }
+            }
+        )
     }
 
     private var resourceTablePane: some View {
