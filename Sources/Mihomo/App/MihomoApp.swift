@@ -46,6 +46,13 @@ struct MihomoApp: App {
         .windowResizability(.contentMinSize)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .appSettings) {
+                Button("设置...") {
+                    store.selectedSection = .settings
+                    MainWindowPresenter.present(openWindow: openWindow)
+                }
+                .keyboardShortcut(",", modifiers: [.command])
+            }
             CommandMenu("控制") {
                 Button("显示主窗口") {
                     MainWindowPresenter.present(openWindow: openWindow)
@@ -128,11 +135,6 @@ struct MihomoApp: App {
             }
         }
 
-        Settings {
-            SettingsRootView()
-                .environmentObject(store)
-        }
-
         WindowGroup("配置编辑器", id: "profile-editor") {
             ProfileEditorWindowView()
                 .environmentObject(store)
@@ -171,12 +173,17 @@ private struct MenuBarStatusLabel: View {
     @ObservedObject var activityStore: RuntimeActivityStore
 
     var body: some View {
-        HStack(spacing: 4) {
+        Group {
             if let icon = MihomoMenuBarIcon.image() {
                 Image(nsImage: icon)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: "network")
             }
-            Text(store.menuBarTitle)
         }
+        .accessibilityLabel("Mihomo · \(store.menuBarTitle)")
     }
 }
 

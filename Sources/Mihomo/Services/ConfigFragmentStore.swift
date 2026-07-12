@@ -172,12 +172,48 @@ final class ConfigFragmentStore {
         let fileURL = value.split(separator: "/").filter { $0 != "." }.reduce(AppPaths.runtimeDirectory) {
             $0.appendingPathComponent(String($1))
         }
-        guard let content = try? String(contentsOf: fileURL, encoding: .utf8),
-              let root = yamlRoot(content),
-              let proxies = root["proxies"] as? [Any]
-        else { return [] }
+        guard let content = try? String(contentsOf: fileURL, encoding: .utf8) else { return [] }
+        return Self.parseCachedProxyNames(content)
+    }
+
+    static func parseCachedProxyNames(_ content: String) -> [String] {
+        if let names = proxyNamesFromYAML(content), names.isEmpty == false { return names }
+        if let decoded = decodeSubscription(content) {
+            if let names = proxyNamesFromYAML(decoded), names.isEmpty == false { return names }
+            return proxyNamesFromShareLinks(decoded)
+        }
+        return proxyNamesFromShareLinks(content)
+    }
+
+    private static func proxyNamesFromYAML(_ content: String) -> [String]? {
+        guard let loaded = try? Yams.load(yaml: content),
+              let root = loaded as? [String: Any],
+              let proxies = root["proxies"] as? [Any] else { return nil }
         return proxies.compactMap { item in
             (item as? [String: Any])?["name"].map(String.init(describing:))
+        }
+    }
+
+    private static func decodeSubscription(_ content: String) -> String? {
+        var encoded = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        let remainder = encoded.count % 4
+        if remainder != 0 { encoded.append(String(repeating: "=", count: 4 - remainder)) }
+        guard let data = Data(base64Encoded: encoded, options: [.ignoreUnknownCharacters]) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func proxyNamesFromShareLinks(_ content: String) -> [String] {
+        let schemes = ["ss://", "ssr://", "vmess://", "vless://", "trojan://", "hysteria://", "hysteria2://", "tuic://", "anytls://", "socks5://", "http://", "https://"]
+        return content.components(separatedBy: .newlines).compactMap { rawLine in
+            let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard schemes.contains(where: line.hasPrefix) else { return nil }
+            if let fragment = line.split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false).dropFirst().first,
+               fragment.isEmpty == false {
+                return String(fragment).removingPercentEncoding ?? String(fragment)
+            }
+            return URL(string: line)?.host
         }
     }
 
