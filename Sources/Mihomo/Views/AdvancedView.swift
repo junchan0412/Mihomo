@@ -1,6 +1,6 @@
 import SwiftUI
 
-private enum AdvancedWorkspaceTab: String, CaseIterable, Identifiable {
+enum AdvancedWorkspaceTab: String, CaseIterable, Identifiable {
     case runtime
     case data
     case backup
@@ -12,7 +12,7 @@ private enum AdvancedWorkspaceTab: String, CaseIterable, Identifiable {
         case .runtime: return "运行工具"
         case .data: return "数据与界面"
         case .backup: return "备份与安全"
-        case .inspection: return "配置检查"
+        case .inspection: return "配置预览"
         }
     }
     var systemImage: String {
@@ -47,7 +47,6 @@ struct AdvancedView: View {
                         AdvancedProfileEncryptionGroup(draft: $draft)
                         AdvancedBackupGroup(draft: $draft)
                     case .inspection:
-                        diagnosticsGroup
                         AdvancedConfigPreviewGroup()
                     }
                 }
@@ -71,7 +70,7 @@ struct AdvancedView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("高级工具").font(MihomoUI.Fonts.pageTitle)
-                    Text("安装、维护、备份与排障工具。日常网络与运行设置不在此重复。")
+                    Text("管理系统级组件、数据工件、加密与备份；诊断和网络恢复使用各自专页。")
                         .font(MihomoUI.Fonts.pageSubtitle)
                         .foregroundStyle(.secondary)
                 }
@@ -79,9 +78,6 @@ struct AdvancedView: View {
                 Label(store.helperStatus.localizedCaseInsensitiveContains("正常") ? "Helper 正常" : "检查 Helper", systemImage: "person.badge.key")
                     .font(.callout)
                     .foregroundStyle(store.helperStatus.localizedCaseInsensitiveContains("正常") ? Color.green : Color.secondary)
-                Button { Task { await store.runDiagnostics() } } label: {
-                    Label("运行诊断", systemImage: "stethoscope")
-                }
             }
             Picker("工具分类", selection: $tab) {
                 ForEach(AdvancedWorkspaceTab.allCases) { item in
@@ -103,7 +99,7 @@ struct AdvancedView: View {
         case .runtime: return "管理 Helper、LaunchDaemon 与自动化入口。"
         case .data: return "维护 External UI、GeoIP 与 GeoSite 数据。"
         case .backup: return "配置加密、备份和跨设备恢复。"
-        case .inspection: return "检查最终运行配置并导出诊断信息。"
+        case .inspection: return "查看最终运行配置与配置来源，不执行诊断或网络修复。"
         }
     }
 
@@ -142,25 +138,6 @@ struct AdvancedView: View {
                         }
                     }
                     Button("卸载", role: .destructive) { Task { await store.uninstallLaunchDaemon() } }
-                }
-            }
-        }
-    }
-
-    private var diagnosticsGroup: some View {
-        SettingsSection(
-            title: "诊断与导出",
-            subtitle: "检查运行环境、配置与权限状态，必要时导出诊断包。",
-            systemImage: "stethoscope"
-        ) {
-            SettingsRow("状态") {
-                Text(store.advancedStatus).foregroundStyle(.secondary).textSelection(.enabled)
-            }
-            SettingsRow("操作") {
-                HStack {
-                    Button("运行诊断") { Task { await store.runDiagnostics() } }
-                    Button("导出诊断包") { store.exportDiagnosticBundle() }
-                    Button("刷新配置预览") { store.refreshConfigArtifacts() }
                 }
             }
         }

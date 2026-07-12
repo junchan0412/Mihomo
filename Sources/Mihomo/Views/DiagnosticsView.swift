@@ -37,7 +37,6 @@ struct DiagnosticsView: View {
                     switch tab {
                     case .overview: overview
                     case .results: results
-                    case .repair: NetworkRepairCenterView()
                     }
                 }
                 .frame(maxWidth: 900, alignment: .topLeading)
@@ -112,21 +111,19 @@ struct DiagnosticsView: View {
     }
 }
 
-private enum DiagnosticWorkspaceTab: String, CaseIterable, Identifiable {
-    case overview, results, repair
+enum DiagnosticWorkspaceTab: String, CaseIterable, Identifiable {
+    case overview, results
     var id: String { rawValue }
     var title: String {
         switch self {
         case .overview: return "概览"
         case .results: return "检查结果"
-        case .repair: return "修复中心"
         }
     }
     var systemImage: String {
         switch self {
         case .overview: return "gauge.with.dots.needle.67percent"
         case .results: return "list.bullet.clipboard"
-        case .repair: return "wrench.and.screwdriver"
         }
     }
 }

@@ -30,6 +30,24 @@ final class SettingsPresentationTests: XCTestCase {
         XCTAssertEqual(MenuBarPresentation.modeLetter(for: "unknown"), "R")
     }
 
+    func testTimelineRoutingMixUsesOnlyDirectAndProxySemantics() {
+        let mix = TimelineRoutingMix(directBytes: 3, proxyBytes: 1)
+
+        XCTAssertEqual(mix.directRatio, 0.75, accuracy: 0.001)
+        XCTAssertEqual(mix.proxyRatio, 0.25, accuracy: 0.001)
+        XCTAssertTrue(TimelineRoutingMix.isDirect(policy: "DIRECT"))
+        XCTAssertTrue(TimelineRoutingMix.isDirect(policy: " 直连 "))
+        XCTAssertFalse(TimelineRoutingMix.isDirect(policy: "PROXY"))
+        XCTAssertFalse(TimelineRoutingMix.isDirect(policy: "新加坡"))
+    }
+
+    func testWorkspaceResponsibilitiesDoNotDuplicateDiagnosticsOrNetworkRepair() {
+        XCTAssertEqual(AdvancedWorkspaceTab.allCases.map(\.title), ["运行工具", "数据与界面", "备份与安全", "配置预览"])
+        XCTAssertEqual(DiagnosticWorkspaceTab.allCases.map(\.title), ["概览", "检查结果"])
+        XCTAssertFalse(AdvancedWorkspaceTab.allCases.map(\.title).contains("诊断"))
+        XCTAssertFalse(DiagnosticWorkspaceTab.allCases.map(\.title).contains("修复中心"))
+    }
+
     func testExistingRulePresentationUsesEditingMode() {
         XCTAssertFalse(RuleEditorPresentation.add.isEditing)
         XCTAssertTrue(RuleEditorPresentation.edit(7).isEditing)

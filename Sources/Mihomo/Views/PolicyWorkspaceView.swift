@@ -51,8 +51,7 @@ struct PolicyWorkspaceView: View {
         VStack(spacing: 0) {
             HStack(spacing: 14) {
                 Button {
-                    if expandedProviderIDs.contains(provider.id) { expandedProviderIDs.remove(provider.id) }
-                    else { expandedProviderIDs.insert(provider.id) }
+                    toggleProvider(provider)
                 } label: {
                     HStack(spacing: 14) {
                         rowIcon("paperplane.fill", color: .cyan)
@@ -106,18 +105,19 @@ struct PolicyWorkspaceView: View {
             }
         }
         .background(.quaternary.opacity(0.32), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .animation(.easeInOut(duration: 0.18), value: expandedProviderIDs.contains(provider.id))
     }
 
     private func toggleProvider(_ provider: ProviderItem) {
-        if expandedProviderIDs.contains(provider.id) { expandedProviderIDs.remove(provider.id) }
-        else { expandedProviderIDs.insert(provider.id) }
+        withAnimation(.snappy(duration: 0.22)) {
+            if expandedProviderIDs.contains(provider.id) { expandedProviderIDs.remove(provider.id) }
+            else { expandedProviderIDs.insert(provider.id) }
+        }
     }
 
     private func groupRow(_ group: ProxyGroup) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Button { toggleGroup(group) } label: {
+                Button { toggleGroupAnimated(group) } label: {
                     HStack(spacing: 14) {
                         if let image = iconImages[group.name] {
                             Image(nsImage: image).resizable().scaledToFit().frame(width: 26, height: 26)
@@ -147,7 +147,7 @@ struct PolicyWorkspaceView: View {
                 Button { testGroup(group) } label: { Image(systemName: "speedometer") }
                     .buttonStyle(.borderless).disabled(isOffline).help("测速此组")
 
-                Button { toggleGroup(group) } label: {
+                Button { toggleGroupAnimated(group) } label: {
                     Image(systemName: expandedGroupIDs.contains(group.id) ? "chevron.down" : "chevron.right")
                         .foregroundStyle(.tertiary)
                 }
@@ -167,11 +167,16 @@ struct PolicyWorkspaceView: View {
                     activate: activateNode
                 )
                 .padding(16)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity)
             }
         }
         .background(.quaternary.opacity(0.32), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .animation(.easeInOut(duration: 0.18), value: expandedGroupIDs.contains(group.id))
+    }
+
+    private func toggleGroupAnimated(_ group: ProxyGroup) {
+        withAnimation(.snappy(duration: 0.22)) {
+            toggleGroup(group)
+        }
     }
 
     private func rowIcon(_ name: String, color: Color) -> some View {

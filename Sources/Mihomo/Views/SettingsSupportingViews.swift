@@ -81,14 +81,13 @@ struct SettingsRemoteAccessPane: View {
 }
 
 struct SettingsAdvancedPane: View {
-    @EnvironmentObject private var store: AppStore
     @Binding var draft: AppSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(
-                title: "运行时网络",
-                subtitle: "这里只定义生成配置的默认值；实际接管与恢复请前往“网络”。",
+                title: "连接与端口",
+                subtitle: "定义本机代理监听端口与策略切换行为。实时接管、DNS 和恢复统一在“网络”中管理。",
                 systemImage: "network"
             ) {
                 SettingsRow("Mixed 端口") {
@@ -99,29 +98,7 @@ struct SettingsAdvancedPane: View {
                     TextField("0", value: $draft.socksPort, format: .number)
                         .frame(width: 140)
                 }
-                SettingsToggleRow("在运行配置中启用 TUN", isOn: $draft.tunEnabled)
                 SettingsToggleRow("策略切换后关闭旧连接", isOn: $draft.closeConnectionsOnPolicyChange)
-            }
-
-            SettingsSection(
-                title: "DNS 默认值",
-                subtitle: "Profile、YAML 覆写和 JS Transform 可覆盖这些值。系统 DNS 接管在“网络”中单独管理。",
-                systemImage: "server.rack"
-            ) {
-                SettingsRow("Enhanced Mode") {
-                    Picker("Enhanced Mode", selection: $draft.dnsEnhancedMode) {
-                        Text("fake-ip").tag("fake-ip")
-                        Text("redir-host").tag("redir-host")
-                    }
-                    .pickerStyle(.segmented)
-                    .frame(width: 280)
-                }
-                SettingsRow("Nameserver") {
-                    TextField("逗号或换行分隔", text: listBinding(\.dnsNameservers))
-                }
-                SettingsRow("Fallback") {
-                    TextField("可选", text: listBinding(\.dnsFallbacks))
-                }
             }
 
             SettingsSection(
@@ -141,32 +118,7 @@ struct SettingsAdvancedPane: View {
                 }
             }
 
-            SettingsSection(
-                title: "恢复策略",
-                subtitle: "控制停止核心或退出应用时如何恢复系统网络状态。",
-                systemImage: "arrow.uturn.backward.circle"
-            ) {
-                SettingsToggleRow("停止时回滚 TUN DNS 与路由", isOn: $draft.restoreTunOnStop)
-                SettingsToggleRow("退出时恢复系统代理", isOn: $draft.restoreSystemProxyOnQuit)
-                SettingsRow("当前状态") {
-                    Text(store.tunRecoveryStatus)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-            }
         }
-    }
-
-    private func listBinding(_ keyPath: WritableKeyPath<AppSettings, [String]>) -> Binding<String> {
-        Binding(
-            get: { draft[keyPath: keyPath].joined(separator: ", ") },
-            set: { text in
-                draft[keyPath: keyPath] = text
-                    .components(separatedBy: CharacterSet(charactersIn: ",\n"))
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                    .filter { !$0.isEmpty }
-            }
-        )
     }
 }
 
