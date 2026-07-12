@@ -205,26 +205,10 @@ private struct MenuBarBrandMark: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            Canvas { context, size in
-                var path = Path()
-                path.move(to: CGPoint(x: size.width * 0.12, y: size.height * 0.80))
-                path.addLine(to: CGPoint(x: size.width * 0.12, y: size.height * 0.25))
-                path.addQuadCurve(
-                    to: CGPoint(x: size.width * 0.50, y: size.height * 0.58),
-                    control: CGPoint(x: size.width * 0.12, y: size.height * 0.05)
-                )
-                path.addQuadCurve(
-                    to: CGPoint(x: size.width * 0.88, y: size.height * 0.25),
-                    control: CGPoint(x: size.width * 0.88, y: size.height * 0.05)
-                )
-                path.addLine(to: CGPoint(x: size.width * 0.88, y: size.height * 0.58))
-                context.stroke(
-                    path,
-                    with: .foreground,
-                    style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round)
-                )
-            }
-            .padding(.trailing, 4)
+            MihomoMarkShape()
+                .stroke(.primary, style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round))
+                .padding(.trailing, 5)
+                .padding(.vertical, 2)
 
             Text(modeLetter)
                 .font(.system(size: 7, weight: .bold, design: .rounded))

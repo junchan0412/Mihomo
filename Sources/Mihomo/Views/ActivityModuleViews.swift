@@ -176,7 +176,7 @@ struct ActivityTrafficStatisticsView: View {
                 rows: rows,
                 selection: .constant(nil),
                 columns: [
-                    .init(title: "名称", width: 320) { $0.name },
+                    .init(title: "名称", width: 108) { $0.name },
                     .init(title: "今天", width: 176) { $0.text(for: .today) },
                     .init(title: "5 分钟", width: 176) { $0.text(for: .fiveMinutes) },
                     .init(title: "15 分钟", width: 176) { $0.text(for: .fifteenMinutes) },

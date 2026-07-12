@@ -93,27 +93,7 @@ struct OverviewView: View {
             .frame(minHeight: 206)
 
             OverviewPanel(title: "策略组", systemImage: "square.grid.2x2", tint: .purple) {
-                if store.proxyGroups.isEmpty {
-                    Text("暂无数据")
-                        .font(MihomoUI.Fonts.sectionTitle)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 126, alignment: .center)
-                } else {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(store.proxyGroups.prefix(4)) { group in
-                            HStack {
-                                Text(group.name)
-                                    .lineLimit(1)
-                                Spacer()
-                                Text(group.now.isEmpty ? "-" : group.now)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .font(MihomoUI.Fonts.bodyMedium)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                }
+                OverviewPolicyGroupsContent(groups: store.proxyGroups)
             }
             .frame(minHeight: 206)
         }
@@ -124,11 +104,19 @@ struct OverviewView: View {
             VStack(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 4) {
                     ForEach(Array(timelineSamples.enumerated()), id: \.element.id) { index, sample in
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(timelineColor(at: index))
-                            .frame(maxWidth: .infinity)
-                            .frame(height: timelineHeight(for: sample))
-                            .help("\(timelineTimeFormatter.string(from: sample.date)) · ↓ \(Formatters.rate(sample.downloadRate)) · ↑ \(Formatters.rate(sample.uploadRate))")
+                        let mix = timelineRoutingMix(at: index)
+                        VStack(spacing: 0) {
+                            Rectangle()
+                                .fill(Color.indigo.opacity(0.78))
+                                .frame(height: timelineHeight(for: sample) * mix.proxyRatio)
+                            Rectangle()
+                                .fill(Color.cyan.opacity(0.72))
+                                .frame(height: timelineHeight(for: sample) * mix.directRatio)
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 2))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: timelineHeight(for: sample), alignment: .bottom)
+                        .help("\(timelineTimeFormatter.string(from: sample.date)) · 直连 \(Formatters.bytes(mix.directBytes)) · 代理 \(Formatters.bytes(mix.proxyBytes)) · ↓ \(Formatters.rate(sample.downloadRate)) · ↑ \(Formatters.rate(sample.uploadRate))")
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: 82, maxHeight: 82, alignment: .bottomLeading)
@@ -211,16 +199,133 @@ struct OverviewView: View {
         return formatter
     }
 
-    private func timelineColor(at index: Int) -> Color {
-        let progress = timelineSamples.count <= 1 ? 1 : Double(index) / Double(timelineSamples.count - 1)
-        if progress < 0.34 { return .cyan.opacity(0.55) }
-        if progress < 0.67 { return .blue.opacity(0.65) }
-        return .indigo.opacity(0.78)
+    private func timelineRoutingMix(at index: Int) -> TimelineRoutingMix {
+        let sample = timelineSamples[index]
+        let lowerBound: Date
+        let upperBound: Date
+
+        if index > 0 {
+            lowerBound = Date(timeIntervalSince1970: (timelineSamples[index - 1].date.timeIntervalSince1970 + sample.date.timeIntervalSince1970) / 2)
+        } else {
+            lowerBound = sample.date.addingTimeInterval(-1)
+        }
+        if index + 1 < timelineSamples.count {
+            upperBound = Date(timeIntervalSince1970: (sample.date.timeIntervalSince1970 + timelineSamples[index + 1].date.timeIntervalSince1970) / 2)
+        } else {
+            upperBound = sample.date.addingTimeInterval(1)
+        }
+
+        let bucket = activityStore.policyTrafficSamples.filter { $0.date >= lowerBound && $0.date < upperBound }
+        let direct = bucket.filter { TimelineRoutingMix.isDirect(policy: $0.policy) }
+            .reduce(Int64(0)) { $0 + $1.uploadBytes + $1.downloadBytes }
+        let proxy = bucket.filter { TimelineRoutingMix.isDirect(policy: $0.policy) == false }
+            .reduce(Int64(0)) { $0 + $1.uploadBytes + $1.downloadBytes }
+
+        if direct + proxy > 0 {
+            return TimelineRoutingMix(directBytes: direct, proxyBytes: proxy)
+        }
+        return TimelineRoutingMix(directBytes: directTrafficBytes, proxyBytes: proxyTrafficBytes)
     }
 
     private func timelineHeight(for sample: TrafficSample) -> CGFloat {
         let maxValue = max(timelineSamples.map { max($0.downloadRate, $0.uploadRate) }.max() ?? 1, 1)
         let value = max(sample.downloadRate, sample.uploadRate)
         return max(8, CGFloat(value) / CGFloat(maxValue) * 104)
+    }
+}
+
+private struct OverviewPolicyGroupsContent: View {
+    var groups: [ProxyGroup]
+    @AppStorage("overview.policyGroupNames") private var storedNames = ""
+
+    private var selectedNames: [String] {
+        let available = Set(groups.map(\.name))
+        let persisted = storedNames.components(separatedBy: "\u{1F}")
+            .filter { $0.isEmpty == false && available.contains($0) }
+        return persisted.isEmpty ? groups.prefix(4).map(\.name) : Array(persisted.prefix(4))
+    }
+
+    private var selectedGroups: [ProxyGroup] {
+        let byName = Dictionary(uniqueKeysWithValues: groups.map { ($0.name, $0) })
+        return selectedNames.compactMap { byName[$0] }
+    }
+
+    var body: some View {
+        if groups.isEmpty {
+            Text("暂无数据")
+                .font(MihomoUI.Fonts.sectionTitle)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 126, alignment: .center)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("显示 \(selectedGroups.count) 个策略组")
+                        .font(MihomoUI.Fonts.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Menu {
+                        ForEach(groups) { group in
+                            Toggle(group.name, isOn: selectionBinding(for: group.name))
+                                .disabled(selectedNames.contains(group.name) == false && selectedNames.count >= 4)
+                        }
+                        Divider()
+                        Button("恢复默认") { storedNames = "" }
+                    } label: {
+                        Label("自定义", systemImage: "slider.horizontal.3")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                }
+
+                ForEach(selectedGroups) { group in
+                    HStack {
+                        Text(group.name).lineLimit(1)
+                        Spacer()
+                        Text(group.now.isEmpty ? "-" : group.now)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .font(MihomoUI.Fonts.bodyMedium)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+    }
+
+    private func selectionBinding(for name: String) -> Binding<Bool> {
+        Binding(
+            get: { selectedNames.contains(name) },
+            set: { enabled in
+                var names = selectedNames
+                if enabled, names.contains(name) == false, names.count < 4 {
+                    names.append(name)
+                } else if enabled == false {
+                    names.removeAll { $0 == name }
+                }
+                storedNames = names.joined(separator: "\u{1F}")
+            }
+        )
+    }
+}
+
+struct TimelineRoutingMix: Equatable {
+    var directBytes: Int64
+    var proxyBytes: Int64
+
+    var directRatio: CGFloat {
+        let total = directBytes + proxyBytes
+        guard total > 0 else { return 0 }
+        return CGFloat(directBytes) / CGFloat(total)
+    }
+
+    var proxyRatio: CGFloat {
+        let total = directBytes + proxyBytes
+        guard total > 0 else { return 1 }
+        return CGFloat(proxyBytes) / CGFloat(total)
+    }
+
+    static func isDirect(policy: String) -> Bool {
+        let normalized = policy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "direct" || normalized == "直连"
     }
 }

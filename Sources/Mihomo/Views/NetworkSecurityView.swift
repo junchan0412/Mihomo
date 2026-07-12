@@ -208,7 +208,29 @@ struct NetworkSecurityView: View {
                 }
             }
 
+            SettingsSection(
+                title: "自动恢复策略",
+                subtitle: "这些偏好只影响网络接管退出和停止时的恢复行为。",
+                systemImage: "arrow.uturn.backward.circle"
+            ) {
+                SettingsToggleRow("停止核心时恢复 TUN、DNS 与路由", isOn: $draft.restoreTunOnStop)
+                SettingsToggleRow("退出应用时恢复系统代理", isOn: $draft.restoreSystemProxyOnQuit)
+                SettingsRow("状态") {
+                    Text(store.tunRecoveryStatus).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+            }
+
             NetworkRepairCenterView().environmentObject(store)
+
+            HStack {
+                Text(draft == store.settings ? "恢复策略已应用" : "恢复策略尚未应用")
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("取消") { draft = store.settings }.disabled(draft == store.settings)
+                Button("应用恢复策略") { Task { await store.saveSettings(draft) } }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(draft == store.settings)
+            }
         }
     }
 
