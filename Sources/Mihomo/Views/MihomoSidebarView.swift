@@ -15,7 +15,7 @@ struct MihomoSidebarView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     sidebarGroup(title: "常规", sections: mainSections)
                     sidebarGroup(title: "引擎", sections: engineSections)
-                    settingsGroup
+                    sidebarGroup(title: "应用", sections: [.settings])
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 2)
@@ -84,34 +84,6 @@ struct MihomoSidebarView: View {
         }
         .font(MihomoUI.Fonts.caption)
         .foregroundStyle(.secondary)
-    }
-
-    private var settingsGroup: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("应用")
-                .font(MihomoUI.Fonts.caption)
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 2)
-
-            SettingsLink {
-                HStack(spacing: 10) {
-                    Image(systemName: "gearshape")
-                        .font(.system(size: 14, weight: .medium))
-                        .symbolRenderingMode(.hierarchical)
-                        .frame(width: 18)
-                    Text("设置")
-                        .font(MihomoUI.Fonts.sidebar)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, 10)
-                .frame(height: 30)
-                .contentShape(RoundedRectangle(cornerRadius: 8))
-            }
-            .buttonStyle(.plain)
-            .help("打开设置窗口")
-        }
     }
 
     private func sidebarStatus(_ title: String, isOn: Bool, activeColor: Color) -> some View {

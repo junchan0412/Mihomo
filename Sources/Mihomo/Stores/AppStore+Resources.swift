@@ -276,8 +276,8 @@ extension AppStore {
             backupPath: backupPath,
             restoredFromPath: restoredFromPath
         ), at: 0)
-        if providerUpdateHistory.count > 80 {
-            providerUpdateHistory.removeLast(providerUpdateHistory.count - 80)
+        if providerUpdateHistory.count > 500 {
+            providerUpdateHistory.removeLast(providerUpdateHistory.count - 500)
         }
         saveProviderUpdateHistory()
     }

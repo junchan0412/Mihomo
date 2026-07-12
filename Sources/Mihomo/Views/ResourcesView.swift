@@ -109,7 +109,12 @@ struct ResourcesView: View {
                     .init(title: "路径", width: 420) { $0.pathText }
                 ],
                 onDoubleClick: handleDoubleClick,
-                hasHorizontalScroller: true
+                hasHorizontalScroller: true,
+                contextMenuTitle: "更新此资源",
+                onContextMenu: { row in
+                    selectedResourceID = row.id
+                    Task { await store.refreshProviderResource(row.provider) }
+                }
             )
             .frame(minHeight: 360, maxHeight: .infinity)
             .overlay {

@@ -6,6 +6,8 @@ struct AppKitTableColumn<Row> {
     let width: CGFloat
     let value: (Row) -> String
     let textColor: ((Row) -> NSColor?)?
+    let checked: ((Row) -> Bool)?
+    let toggle: ((Row) -> Void)?
 
     init(
         title: String,
@@ -17,6 +19,17 @@ struct AppKitTableColumn<Row> {
         self.width = width
         self.textColor = textColor
         self.value = value
+        self.checked = nil
+        self.toggle = nil
+    }
+
+    init(title: String, width: CGFloat, checked: @escaping (Row) -> Bool, toggle: @escaping (Row) -> Void) {
+        self.title = title
+        self.width = width
+        self.value = { checked($0) ? "已启用" : "已禁用" }
+        self.textColor = nil
+        self.checked = checked
+        self.toggle = toggle
     }
 }
 
@@ -28,6 +41,8 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
     var hasHorizontalScroller: Bool
     var allowsParentScrollPassthrough: Bool
     var borderType: NSBorderType
+    var contextMenuTitle: String?
+    var onContextMenu: ((Row) -> Void)?
 
     init(
         rows: [Row],
@@ -36,7 +51,9 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         onDoubleClick: ((Row) -> Void)? = nil,
         hasHorizontalScroller: Bool = true,
         allowsParentScrollPassthrough: Bool = false,
-        borderType: NSBorderType = .bezelBorder
+        borderType: NSBorderType = .bezelBorder,
+        contextMenuTitle: String? = nil,
+        onContextMenu: ((Row) -> Void)? = nil
     ) {
         self.rows = rows
         self._selection = selection
@@ -45,6 +62,8 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         self.hasHorizontalScroller = hasHorizontalScroller
         self.allowsParentScrollPassthrough = allowsParentScrollPassthrough
         self.borderType = borderType
+        self.contextMenuTitle = contextMenuTitle
+        self.onContextMenu = onContextMenu
     }
 
     func makeCoordinator() -> Coordinator {
@@ -65,6 +84,11 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         tableView.rowHeight = 28
         tableView.intercellSpacing = NSSize(width: 0, height: 1)
         tableView.backgroundColor = .textBackgroundColor
+        if contextMenuTitle != nil {
+            let menu = NSMenu()
+            menu.delegate = context.coordinator
+            tableView.menu = menu
+        }
         tableView.onActivateSelection = { [weak coordinator = context.coordinator, weak tableView] in
             guard let coordinator, let tableView else { return }
             coordinator.activateSelection(on: tableView)
@@ -93,7 +117,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         context.coordinator.applySelection(on: tableView)
     }
 
-    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
         var parent: AppKitTable
         private var columnSignature: [String] = []
         private var lastRows: [Row] = []
@@ -120,11 +144,43 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             let currentRow = parent.rows[row]
             let column = parent.columns[columnIndex]
             let value = column.value(currentRow)
+            if let checked = column.checked {
+                let identifier = NSUserInterfaceItemIdentifier("MihomoCheckboxCell-\(columnIndex)")
+                let button = tableView.makeView(withIdentifier: identifier, owner: self) as? NSButton ?? makeCheckbox(identifier: identifier)
+                button.state = checked(currentRow) ? .on : .off
+                button.tag = row
+                button.setAccessibilityLabel(column.title.isEmpty ? "启用规则" : column.title)
+                button.setAccessibilityValue(button.state == .on ? "已启用" : "已禁用")
+                return button
+            }
             cell.textField?.stringValue = value
             cell.textField?.textColor = column.textColor?(currentRow) ?? .labelColor
             cell.setAccessibilityLabel("\(column.title)：\(value)")
             return cell
         }
+
+        @objc private func toggleCheckbox(_ sender: NSButton) {
+            guard sender.tag >= 0, sender.tag < parent.rows.count,
+                  let columnIndex = sender.identifier?.rawValue.split(separator: "-").last.flatMap({ Int($0) }),
+                  columnIndex < parent.columns.count else { return }
+            parent.columns[columnIndex].toggle?(parent.rows[sender.tag])
+        }
+
+        func menuNeedsUpdate(_ menu: NSMenu) {
+            menu.removeAllItems()
+            guard let title = parent.contextMenuTitle, parent.onContextMenu != nil else { return }
+            let item = NSMenuItem(title: title, action: #selector(runContextAction), keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+
+        @objc private func runContextAction() {
+            guard let tableView = currentTableView,
+                  tableView.clickedRow >= 0, tableView.clickedRow < parent.rows.count else { return }
+            parent.onContextMenu?(parent.rows[tableView.clickedRow])
+        }
+
+        private weak var currentTableView: NSTableView?
 
         @objc func clicked(_ sender: NSTableView) {
             let row = sender.clickedRow >= 0 ? sender.clickedRow : sender.selectedRow
@@ -163,6 +219,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         }
 
         func configureColumns(on tableView: NSTableView) {
+            currentTableView = tableView
             let nextSignature = parent.columns.map { "\($0.title):\($0.width)" }
             tableView.setAccessibilityLabel("数据表：\(parent.columns.map(\.title).joined(separator: "、"))")
             tableView.setAccessibilityHelp("使用方向键选择行；支持详情的表格可按 Return、Enter 或空格打开所选行。")
@@ -237,6 +294,13 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             ])
 
             return cell
+        }
+
+        private func makeCheckbox(identifier: NSUserInterfaceItemIdentifier) -> NSButton {
+            let button = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggleCheckbox(_:)))
+            button.identifier = identifier
+            button.setButtonType(.switch)
+            return button
         }
     }
 }

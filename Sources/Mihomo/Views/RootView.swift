@@ -219,6 +219,8 @@ struct DetailSwitchView: View {
             LogsView()
         case .diagnostics:
             DiagnosticsView()
+        case .settings:
+            SettingsRootView()
         }
     }
 }

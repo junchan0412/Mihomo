@@ -137,7 +137,10 @@ struct RulesView: View {
                 rows: filteredEntries,
                 selection: ruleSelectionBinding,
                 columns: [
-                    .init(title: "", width: 40, textColor: ruleStateColor) { $0.rule.disabled ? "" : "✓" },
+                    .init(title: "启用", width: 48, checked: { !$0.rule.disabled }) { entry in
+                        selectedRuleIndex = entry.rule.index
+                        store.toggleRuleDisabled(entry.rule)
+                    },
                     .init(title: "ID", width: 52, textColor: ruleTextColor) { "\($0.rule.index)" },
                     .init(title: "类型", width: 124, textColor: ruleTextColor) { $0.type },
                     .init(title: "值", width: 280, textColor: ruleTextColor) { $0.displayValue.isEmpty ? "-" : $0.displayValue },
@@ -239,10 +242,6 @@ struct RulesView: View {
 
     private func ruleTextColor(_ entry: RuleTableEntry) -> NSColor? {
         entry.rule.disabled ? .secondaryLabelColor : nil
-    }
-
-    private func ruleStateColor(_ entry: RuleTableEntry) -> NSColor? {
-        entry.rule.disabled ? .tertiaryLabelColor : .systemBlue
     }
 
     private func beginAddRule() {
