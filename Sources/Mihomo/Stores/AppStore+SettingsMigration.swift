@@ -46,6 +46,10 @@ enum SettingsMigrator {
                 }
                 migrated.settingsSchemaVersion = 5
                 log.append("v5：本机控制通道改为应用自动管理；域名嗅探升级为按 HTTP、TLS、QUIC 和高级规则配置。")
+            case 5:
+                migrated.snifferManagedByApp = true
+                migrated.settingsSchemaVersion = 6
+                log.append("v6：移除 App 内置 External UI 管理，并补齐 Country.mmdb 与 ASN.mmdb 默认 Geo 数据。")
             default:
                 throw NSError(
                     domain: "Mihomo.SettingsMigration",

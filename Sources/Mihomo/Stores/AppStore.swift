@@ -38,7 +38,6 @@ final class AppStore: ObservableObject {
     @Published var providerUpdateHistory: [ProviderUpdateRecord] = []
     @Published var advancedStatus = "高级功能待命"
     @Published var managedCoreStatus = "未托管"
-    @Published var externalUIStatus = "未安装"
     @Published var resourceUpdateStatus = "资源未更新"
     @Published var geoUpdateStatus = "未更新"
     @Published var backupStatus = "未备份"
@@ -107,8 +106,8 @@ final class AppStore: ObservableObject {
     let notificationManager = NotificationManager()
     let configFragmentStore = ConfigFragmentStore()
     let managedCoreManager = ManagedCoreManager()
-    let externalUIManager = ExternalUIManager()
     let geoUpdateManager = GeoUpdateManager()
+    let profileSettingsSynchronizer = ProfileSettingsSynchronizer()
     let backupManager = BackupManager()
     let profileAgeService = ProfileAgeService()
     let helperClient = MihomoHelperClient()
@@ -200,6 +199,10 @@ final class AppStore: ObservableObject {
             providerUpdateHistory = loadProviderUpdateHistory()
             if settings.activeProfileID == nil {
                 settings.activeProfileID = profiles.first?.id
+            }
+            if let activeProfile {
+                try synchronizeAppSettings(from: activeProfile)
+            } else {
                 try profileStore.saveSettings(settings)
             }
             lastSystemProxySnapshot = systemProxy.loadSnapshot()
@@ -208,7 +211,12 @@ final class AppStore: ObservableObject {
             tunRecoveryStatus = lastTunRecoverySnapshot == nil ? "未捕获 TUN 回滚快照" : "已有 TUN 回滚快照"
             refreshNetworkTakeoverStates(force: true)
             refreshManagedCoreStatus()
-            externalUIStatus = externalUIManager.status(name: settings.externalUIName)
+            refreshGeoDataStatus()
+            do {
+                try syncGeoDataToRuntimeDirectory()
+            } catch {
+                appendLog("warning", "同步 Geo 数据到运行目录失败：\(error.localizedDescription)")
+            }
             ageStatus = settings.profileEncryptionEnabled ? "Profile 加密已启用" : "Profile 加密未启用"
             launchDaemonStatus = MihomoHelperConstants.coreLaunchDaemonPlistPath
             helperStatus = helperService.statusDescription
@@ -233,6 +241,7 @@ final class AppStore: ObservableObject {
         do {
             var normalized = settings
             normalized.managedCoreEnabled = normalized.coreSource == .managed
+            normalized.snifferManagedByApp = true
             let previous = self.settings
             if previous.notifyProfileRefreshFailures == false,
                normalized.notifyProfileRefreshFailures {
@@ -242,6 +251,7 @@ final class AppStore: ObservableObject {
                     appendLog("warning", "通知权限未授予；已保持订阅失败通知关闭。")
                 }
             }
+            let synchronizedProfile = try synchronizeActiveProfileSettings(from: previous, to: normalized)
             if previous.profileEncryptionEnabled != normalized.profileEncryptionEnabled {
                 try profileStore.migrateProfileEncryption(profiles, settings: normalized)
             }
@@ -252,7 +262,7 @@ final class AppStore: ObservableObject {
             syncLaunchAtLoginSetting(reportSuccess: true)
             startProfileAutoRefreshIfNeeded()
             refreshConfigArtifacts()
-            appendLog("info", "设置已保存")
+            appendLog("info", synchronizedProfile ? "设置已保存，并同步至当前配置" : "设置已保存")
         } catch {
             appendLog("error", "设置保存失败：\(error.localizedDescription)")
         }

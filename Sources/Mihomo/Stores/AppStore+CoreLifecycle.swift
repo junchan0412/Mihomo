@@ -296,6 +296,8 @@ extension AppStore {
         let message = error.localizedDescription.lowercased()
         return message.contains("geosite.dat")
             || message.contains("geoip.dat")
+            || message.contains("country.mmdb")
+            || message.contains("asn.mmdb")
             || message.contains("can't initial geosite")
             || message.contains("can't download geosite")
             || message.contains("geodata")

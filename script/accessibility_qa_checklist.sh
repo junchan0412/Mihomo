@@ -147,7 +147,7 @@ append_page_checklist "Network" "System proxy, TUN, runtime/system DNS, domain s
 append_page_checklist "Resources" "Rule/Proxy Provider rows, Geo resources, update history, rollback controls, and readiness filters."
 append_page_checklist "Logs" "Category sidebar, structured table, filters, pause/resume, multi-row copy, clear confirmation, and retention controls."
 append_page_checklist "Diagnostics" "Helper audit, network takeover diagnostics, redacted export actions, and warning/error rows."
-append_page_checklist "Advanced" "Backups, secret restore indicators, managed artifacts, Age encryption, External UI, Geo, and config preview."
+append_page_checklist "Advanced" "Backups, secret restore indicators, managed artifacts, Age encryption, four Geo datasets, and config preview."
 append_page_checklist "Settings" "Separate Settings scene, user-facing remote management without internal Controller terminology, automatic access-key generation, notification purpose text, draft preservation, Apply/restart, and window close/reopen behavior."
 
 cat >>"$OUTPUT_PATH" <<'FOOTER'

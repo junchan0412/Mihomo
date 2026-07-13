@@ -14,10 +14,11 @@ final class SettingsMigrationTests: XCTestCase {
         version2.settingsSchemaVersion = 2
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version2))
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 5)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, 6)
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v3：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v4：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v5：") })
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v6：") })
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -27,7 +28,7 @@ final class SettingsMigrationTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
         let reloaded = try decoder.decode(AppSettings.self, from: Data(contentsOf: settingsFile))
 
-        XCTAssertEqual(reloaded.settingsSchemaVersion, 5)
+        XCTAssertEqual(reloaded.settingsSchemaVersion, 6)
         XCTAssertNil(try SettingsMigrator.migration(for: reloaded))
     }
 
@@ -39,12 +40,13 @@ final class SettingsMigrationTests: XCTestCase {
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version1))
 
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 5)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, 6)
         XCTAssertFalse(migration.settings.managedCoreEnabled)
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v2：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v3：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v4：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v5：") })
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v6：") })
     }
 
     func testV4MigrationMakesControlChannelLocalAndExpandsDomainSniffing() throws {
@@ -58,7 +60,7 @@ final class SettingsMigrationTests: XCTestCase {
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version4))
 
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 5)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, 6)
         XCTAssertEqual(migration.settings.controllerHost, "127.0.0.1")
         XCTAssertEqual(migration.settings.remoteAPIBindAddress, "0.0.0.0")
         XCTAssertFalse(migration.settings.controllerSecret.isEmpty)
@@ -66,5 +68,18 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertEqual(migration.settings.snifferHTTPPorts, "80,443,8443")
         XCTAssertEqual(migration.settings.snifferTLSPorts, "80,443,8443")
         XCTAssertEqual(migration.settings.snifferQUICPorts, "")
+    }
+
+    func testV5MigrationAddsCompleteGeoDefaults() throws {
+        var version5 = AppSettings.default
+        version5.settingsSchemaVersion = 5
+
+        let migration = try XCTUnwrap(SettingsMigrator.migration(for: version5))
+
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, 6)
+        XCTAssertTrue(migration.settings.countryMMDBURL.hasSuffix("country.mmdb"))
+        XCTAssertTrue(migration.settings.asnMMDBURL.hasSuffix("GeoLite2-ASN.mmdb"))
+        XCTAssertTrue(migration.settings.snifferManagedByApp)
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v6：") })
     }
 }

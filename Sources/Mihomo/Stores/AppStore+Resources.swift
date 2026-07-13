@@ -1,6 +1,16 @@
 import Foundation
 
 extension AppStore {
+    func refreshGeoDataStatus() {
+        let expected = ["geoip.dat", "geosite.dat", "Country.mmdb", "ASN.mmdb"]
+        let existing = expected.filter {
+            FileManager.default.fileExists(atPath: AppPaths.geoDirectory.appendingPathComponent($0).path)
+        }
+        geoUpdateStatus = existing.count == expected.count
+            ? "四项 Geo 数据完整"
+            : "Geo 数据 \(existing.count)/\(expected.count) 项"
+    }
+
     func updateProviderResource(_ provider: ProviderItem) async {
         do {
             let result = try await ProviderResourceManager().download(provider)
@@ -225,8 +235,12 @@ extension AppStore {
         let status = try await geoUpdateManager.update(
             geoIPURL: settings.geoIPURL,
             geoSiteURL: settings.geoSiteURL,
+            countryMMDBURL: settings.countryMMDBURL,
+            asnMMDBURL: settings.asnMMDBURL,
             geoIPSHA256: settings.geoIPSHA256,
-            geoSiteSHA256: settings.geoSiteSHA256
+            geoSiteSHA256: settings.geoSiteSHA256,
+            countryMMDBSHA256: settings.countryMMDBSHA256,
+            asnMMDBSHA256: settings.asnMMDBSHA256
         )
         try syncGeoDataToRuntimeDirectory()
         geoUpdateStatus = status
@@ -237,7 +251,9 @@ extension AppStore {
         try AppPaths.ensureBaseDirectories()
         let pairs: [(source: String, targets: [String])] = [
             ("geoip.dat", ["geoip.dat", "GeoIP.dat"]),
-            ("geosite.dat", ["geosite.dat", "GeoSite.dat"])
+            ("geosite.dat", ["geosite.dat", "GeoSite.dat"]),
+            ("Country.mmdb", ["Country.mmdb"]),
+            ("ASN.mmdb", ["ASN.mmdb"])
         ]
         for pair in pairs {
             let source = AppPaths.geoDirectory.appendingPathComponent(pair.source)

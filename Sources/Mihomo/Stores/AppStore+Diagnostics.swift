@@ -140,19 +140,16 @@ extension AppStore {
             state: settings.remoteAPIEnabled && settings.controllerSecret.isEmpty ? .warning : .ok
         ))
 
-        results.append(.init(
-            title: "外部 UI",
-            detail: externalUIStatus,
-            state: settings.externalUIEnabled && externalUIStatus == "未安装" ? .warning : .ok
-        ))
-
-        let geoFiles = ["geoip.dat", "geosite.dat"].filter {
+        let expectedGeoFiles = ["geoip.dat", "geosite.dat", "Country.mmdb", "ASN.mmdb"]
+        let geoFiles = expectedGeoFiles.filter {
             FileManager.default.fileExists(atPath: AppPaths.geoDirectory.appendingPathComponent($0).path)
         }
         results.append(.init(
             title: "Geo 数据",
-            detail: geoFiles.isEmpty ? "尚未下载 Geo 数据。" : "已存在：\(geoFiles.joined(separator: "、"))",
-            state: geoFiles.isEmpty ? .warning : .ok
+            detail: geoFiles.count == expectedGeoFiles.count
+                ? "四项默认数据完整：\(geoFiles.joined(separator: "、"))"
+                : "已有 \(geoFiles.count)/\(expectedGeoFiles.count) 项：\(geoFiles.isEmpty ? "尚未下载" : geoFiles.joined(separator: "、"))",
+            state: geoFiles.count == expectedGeoFiles.count ? .ok : .warning
         ))
 
         results.append(.init(

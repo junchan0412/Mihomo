@@ -131,7 +131,7 @@ struct SettingsAdvancedPane: View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(
                 title: "连接与端口",
-                subtitle: "定义本机代理监听端口与策略切换行为。实时接管、DNS 和恢复统一在“网络”中管理。",
+                subtitle: "当前配置中的端口会先载入 App；在此应用修改后，同名字段会同步回当前配置文件。",
                 systemImage: "network"
             ) {
                 SettingsRow("Mixed 端口") {

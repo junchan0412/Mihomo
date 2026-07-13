@@ -260,10 +260,10 @@ struct ProfileQualityAnalyzer {
         case "JS Transform":
             return "由 JS Transform 修改 Profile 后写入，优先级高于应用内同名设置。"
         case "Profile 配置":
-            return "来自当前 Profile / 订阅；配置中声明的值优先于应用内同名设置。"
+            return "来自当前 Profile / 订阅；启用或刷新配置时会载入 App，同名 App 修改会同步回当前配置。"
         case "应用默认":
             let state = value == nil ? "当前未写入" : "当前生效"
-            return "\(state)；仅当 Profile、JS Transform 与 YAML 覆写均未声明此字段时使用应用内设置。"
+            return "\(state)；Profile 未声明时使用 App 默认，后续修改会同步到当前配置；覆写片段仍保持更高优先级。"
         default:
             return hasAppDefault
                 ? "由生成流程保留；配置未覆盖时回退到应用默认值。"
@@ -287,7 +287,7 @@ struct ProfileQualityAnalyzer {
             "allow-lan",
             "external-controller",
             settings.dnsNameservers.isEmpty && settings.dnsFallbacks.isEmpty ? nil : "dns",
-            settings.snifferManagedByApp && settings.snifferEnabled ? "sniffer" : nil,
+            settings.snifferEnabled ? "sniffer" : nil,
             settings.tunEnabled ? "tun" : nil
         ].compactMap { $0 }
 

@@ -84,26 +84,26 @@ struct NetworkSecurityView: View {
 
     private var overviewPane: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("选择接管方式").font(.title3.weight(.semibold))
-            Text("普通代理优先使用系统代理；需要透明接管更多应用时再开启 TUN。两者会自动互斥。")
-                .foregroundStyle(.secondary)
-
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 250), spacing: 14)], alignment: .leading, spacing: 14) {
-                takeoverCard(
+            SettingsSection(
+                title: "接管方式",
+                subtitle: "系统代理适合日常使用；需要透明接管更多应用时切换到 TUN。两者自动互斥，系统 DNS 可独立开启。",
+                systemImage: "switch.2"
+            ) {
+                takeoverRow(
                     title: "系统代理",
                     subtitle: "适合大多数浏览器与遵循 macOS 代理设置的应用。",
                     icon: "network",
                     kind: .systemProxy,
                     isOn: systemProxyBinding
                 )
-                takeoverCard(
+                takeoverRow(
                     title: "TUN / 路由",
                     subtitle: "透明接管更广，但需要 Helper 权限和正确的恢复快照。",
                     icon: "point.3.connected.trianglepath.dotted",
                     kind: .tun,
                     isOn: tunBinding
                 )
-                takeoverCard(
+                takeoverRow(
                     title: "系统 DNS",
                     subtitle: "将 macOS DNS 临时切换为指定服务器；与运行时 DNS 不同。",
                     icon: "server.rack",
@@ -112,10 +112,16 @@ struct NetworkSecurityView: View {
                 )
             }
 
-            DomainSniffingSummaryCard {
-                store.networkWorkspaceTab = .domainSniffing
+            SettingsSection(
+                title: "流量识别",
+                subtitle: "域名嗅探不改变接管范围，只从连接握手中补充域名信息。",
+                systemImage: "viewfinder"
+            ) {
+                DomainSniffingSummaryCard {
+                    store.networkWorkspaceTab = .domainSniffing
+                }
+                .environmentObject(store)
             }
-            .environmentObject(store)
 
             if let advisory = store.networkModeAdvisory {
                 Label(advisory, systemImage: "exclamationmark.triangle.fill")
@@ -137,7 +143,7 @@ struct NetworkSecurityView: View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(
                 title: "运行时 DNS",
-                subtitle: "写入 mihomo 运行配置。Profile 或覆写中声明的 dns 字段优先级更高。",
+                subtitle: "当前配置中的 DNS 会先载入本页；应用修改后同步回当前配置，启用的覆写片段仍保持最高优先级。",
                 systemImage: "shippingbox"
             ) {
                 SettingsRow("Enhanced Mode") {
@@ -247,23 +253,35 @@ struct NetworkSecurityView: View {
         }
     }
 
-    private func takeoverCard(title: String, subtitle: String, icon: String, kind: NetworkTakeoverKind, isOn: Binding<Bool>) -> some View {
+    private func takeoverRow(title: String, subtitle: String, icon: String, kind: NetworkTakeoverKind, isOn: Binding<Bool>) -> some View {
         let item = state(for: kind)
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: icon).font(.title2).foregroundStyle(healthColor(item.health))
-                Spacer()
-                Toggle(title, isOn: isOn).labelsHidden().toggleStyle(.switch)
+        return HStack(alignment: .center, spacing: 14) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(healthColor(item.health))
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.headline)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(item.actualState)
+                    .font(.caption)
+                    .foregroundStyle(healthColor(item.health))
+                    .lineLimit(1)
             }
-            Text(title).font(.headline)
-            Text(subtitle).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Divider()
-            Text(item.actualState).font(.caption).foregroundStyle(healthColor(item.health)).lineLimit(2)
+            Spacer(minLength: 20)
+            Toggle(title, isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .accessibilityLabel(title)
+                .accessibilityValue(item.actualState)
+                .accessibilityHint(subtitle)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, minHeight: 180, alignment: .topLeading)
-        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 12))
-        .overlay { RoundedRectangle(cornerRadius: 12).stroke(MihomoUI.cardStroke, lineWidth: 1) }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .overlay(alignment: .bottom) { Divider().padding(.leading, 58) }
     }
 
     private func state(for kind: NetworkTakeoverKind) -> NetworkTakeoverState {

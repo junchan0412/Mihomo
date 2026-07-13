@@ -2,18 +2,18 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.10.0`
+当前版本：`v1.11.0`
 
-## v1.10.0 更新重点
+## v1.11.0 更新重点
 
-- 核心控制通道改为应用自动管理，Profile、JS Transform 与 YAML 覆写不再破坏客户端和核心之间的连接。
-- 设置页移除“本机 Controller”，改为用户语义明确的“远程管理”；只有跨设备管理时才显示监听地址、管理端口和访问密钥。
-- 远程管理与局域网代理权限拆分，开启远程管理时自动切换监听地址并生成访问密钥。
-- Sniffer 统一命名为“域名嗅探”，迁入网络工作区并提供概览快速开关、独立详情页与 Profile 接管选项。
-- 域名嗅探支持 HTTP、TLS、QUIC 端口、识别方式、强制/跳过域名以及来源/目标 IP 或 CIDR 例外。
-- 补齐设置 schema v5 迁移、Runtime Config 优先级说明、真实 Settings Window/AX QA 与 110 项自动化测试。
+- 网络概览将系统代理、TUN 和系统 DNS 从三张大卡重构为紧凑行式控制区，域名嗅探独立归入“流量识别”。
+- 删除 App 内置 External UI 下载、安装与 `external-ui` 注入；Profile 自身携带的原生 mihomo 字段仍原样保留。
+- 默认 Geo 数据补齐为 `geoip.dat`、`geosite.dat`、`Country.mmdb` 和 `ASN.mmdb`，自动读取上游 `.sha256sum` 校验。
+- 启用或刷新 Profile 时，端口、LAN、日志、DNS、TUN 和域名嗅探设置会载入 App。
+- 修改上述 App 设置并应用后，同名字段会同步写回当前 Profile；无关 App 设置不会重写配置文件。
+- 设置 schema 升级至 v6，并补齐真实下载、Runtime 文件同步、界面与 accessibility QA。
 
-完整变更见 [v1.10.0 Release Notes](docs/releases/v1.10.0.md)，架构与开发约定见 [开发文档](Mihomo-macOS-development-report.md)。
+完整变更见 [v1.11.0 Release Notes](docs/releases/v1.11.0.md)，架构与开发约定见 [开发文档](Mihomo-macOS-development-report.md)。
 
 ## 功能范围
 
@@ -74,7 +74,7 @@ git diff --check
 ./script/build_and_run.sh --verify
 ```
 
-当前测试集包含 110 个 XCTest，覆盖 Activity/日志展示、两色流量语义、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域、配置质量、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、Provider 更新与回滚、网络请求超时、核心实时状态恢复、Helper 路径边界、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
+当前测试集包含 114 个 XCTest，覆盖 Activity/日志展示、两色流量语义、Profile↔App 设置同步、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域、配置质量、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、Provider 更新与回滚、网络请求超时、核心实时状态恢复、Helper 路径边界、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
 
 网络恢复与辅助功能人工检查：
 
@@ -100,12 +100,17 @@ JS 输出
 
 配置页的“字段来源”和“合并层级”应始终与此规则一致。新增设置字段时，必须同时检查 `RuntimeConfigBuilder`、`ProfileQualityAnalyzer`、设置迁移和相关测试。
 
-有两个明确例外：
+当前 Profile 与 App 之间还有一条同步链：
+
+- 启用、导入或刷新 Profile 时，Profile 中已经声明的端口、LAN、日志、DNS、TUN 和域名嗅探字段覆盖 App 中的同名值。
+- 用户之后修改这些 App 设置并应用时，只把发生变化的字段同步回当前 Profile；无关设置不触碰 Profile。
+- JS Transform 与 YAML 覆写只参与 Runtime Config 生成，不回写 Profile，仍保持更高运行时优先级。
+
+唯一明确例外：
 
 - `external-controller` 与 `secret` 始终由应用管理，确保客户端能连接自己启动的核心；远程管理设置只决定监听范围、端口和访问密钥。
-- 开启“由 Mihomo 管理域名嗅探”时，最终 `sniffer` 使用网络工作区设置；关闭后才遵循 Profile/覆写中的 `sniffer`。
 
-两项能力的用户语义与配置边界见 [核心控制与域名嗅探设计](docs/design/control-channel-and-domain-sniffing.md)。
+相关边界见 [核心控制与域名嗅探设计](docs/design/control-channel-and-domain-sniffing.md) 与 [Profile 设置同步设计](docs/design/profile-settings-synchronization.md)。
 
 ## Release
 
@@ -115,16 +120,16 @@ JS 输出
 export https_proxy=http://127.0.0.1:6152
 export http_proxy=http://127.0.0.1:6152
 export all_proxy=socks5://127.0.0.1:6153
-./script/package_release.sh 1.10.0
-./script/release_smoke_test.sh 1.10.0
+./script/package_release.sh 1.11.0
+./script/release_smoke_test.sh 1.11.0
 ```
 
 产物位于 `dist/releases/`：
 
-- `Mihomo-1.10.0-macOS-arm64.zip`
-- `Mihomo-1.10.0-update.json`
+- `Mihomo-1.11.0-macOS-arm64.zip`
+- `Mihomo-1.11.0-update.json`
 - `mihomo-update.json`
-- `Mihomo-1.10.0-provenance.md`
+- `Mihomo-1.11.0-provenance.md`
 
 Release 必须上传 zip 和 `mihomo-update.json`，否则应用内更新无法发现或验证新版本。manifest 使用 Ed25519 签名，私钥从 `MIHOMO_UPDATE_PRIVATE_KEY` 或 `~/.mihomo-update-signing/ed25519.private` 读取。
 
@@ -151,7 +156,7 @@ script/                 构建、发布、smoke 与质量门禁
 ## 安全边界
 
 - Helper 只接受预期 app bundle/signing identifier，并验证允许访问的路径。
-- 下载的 core、Age、External UI 与 Geo 数据在替换前验证 SHA-256。
+- 下载的 core、Age 与 Geo 数据在替换前验证 SHA-256；默认 Geo 数据会自动读取上游 `.sha256sum`。
 - Runtime/Provider 路径禁止父目录穿越和 symlink escape。
 - 普通备份默认脱敏；可迁移 Secret 使用单独的口令加密 bundle。
 - 诊断导出会脱敏已知 secret、credential 和 URL query。

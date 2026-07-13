@@ -65,139 +65,6 @@ final class ManagedCoreManager {
     }
 }
 
-final class ExternalUIManager {
-    private let externalUIDirectory: URL
-    private let runtimeDirectory: URL
-
-    init(
-        externalUIDirectory: URL = AppPaths.externalUIDirectory,
-        runtimeDirectory: URL = AppPaths.runtimeDirectory
-    ) {
-        self.externalUIDirectory = externalUIDirectory
-        self.runtimeDirectory = runtimeDirectory
-    }
-
-    func install(name: String, from urlString: String, expectedSHA256: String) async throws -> String {
-        guard let url = URL(string: urlString) else {
-            throw NSError(domain: "ExternalUI", code: 1, userInfo: [NSLocalizedDescriptionKey: "外部 UI 下载 URL 无效"])
-        }
-        try AppPaths.ensureBaseDirectories()
-        let (downloaded, _) = try await NetworkClient.download(from: url)
-        return try installDownloadedArchive(
-            downloaded,
-            name: name,
-            sourceURL: url,
-            expectedSHA256: expectedSHA256
-        )
-    }
-
-    func installDownloadedArchive(
-        _ downloaded: URL,
-        name: String,
-        sourceURL: URL,
-        expectedSHA256: String
-    ) throws -> String {
-        try ArtifactChecksum.validate(fileURL: downloaded, expectedSHA256: expectedSHA256, artifactName: "外部 UI 下载包")
-        let cleanedName = try validatedName(name)
-        let target = externalUIDirectory.appendingPathComponent(cleanedName, isDirectory: true)
-        let tempRoot = runtimeDirectory.appendingPathComponent("external-ui-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempRoot) }
-
-        if sourceURL.pathExtension.lowercased() == "zip" {
-            let result = try Shell.run("/usr/bin/unzip", ["-q", downloaded.path, "-d", tempRoot.path])
-            guard result.status == 0 else {
-                throw NSError(domain: "ExternalUI", code: Int(result.status), userInfo: [
-                    NSLocalizedDescriptionKey: result.stderr.isEmpty ? result.stdout : result.stderr
-                ])
-            }
-        } else {
-            try FileManager.default.copyItem(at: downloaded, to: tempRoot.appendingPathComponent("index.html"))
-        }
-
-        let root = try locateWebRoot(in: tempRoot)
-        try validateWebRoot(root)
-        let stagedTarget = externalUIDirectory.appendingPathComponent(".\(cleanedName)-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: stagedTarget, withIntermediateDirectories: true)
-        var stagedTargetNeedsCleanup = true
-        defer {
-            if stagedTargetNeedsCleanup {
-                try? FileManager.default.removeItem(at: stagedTarget)
-            }
-        }
-        for item in try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) {
-            try FileManager.default.copyItem(at: item, to: stagedTarget.appendingPathComponent(item.lastPathComponent))
-        }
-        try replaceInstallation(at: target, with: stagedTarget)
-        stagedTargetNeedsCleanup = false
-        return target.path
-    }
-
-    func status(name: String) -> String {
-        let path = externalUIDirectory
-            .appendingPathComponent((try? validatedName(name)) ?? "external-ui", isDirectory: true)
-            .appendingPathComponent("index.html")
-        return FileManager.default.fileExists(atPath: path.path) ? path.deletingLastPathComponent().path : "未安装"
-    }
-
-    private func validatedName(_ name: String) throws -> String {
-        let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "external-ui" : name
-        guard cleaned != ".", cleaned != "..", cleaned.contains("/") == false, cleaned.contains("\\") == false else {
-            throw NSError(domain: "ExternalUI", code: 4, userInfo: [NSLocalizedDescriptionKey: "外部 UI 名称不能包含路径分隔符"])
-        }
-        return cleaned
-    }
-
-    private func validateWebRoot(_ root: URL) throws {
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isSymbolicLinkKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            throw NSError(domain: "ExternalUI", code: 5, userInfo: [NSLocalizedDescriptionKey: "无法读取外部 UI 内容"])
-        }
-        for case let item as URL in enumerator {
-            let values = try item.resourceValues(forKeys: [.isSymbolicLinkKey])
-            guard values.isSymbolicLink != true else {
-                throw NSError(domain: "ExternalUI", code: 6, userInfo: [NSLocalizedDescriptionKey: "外部 UI 压缩包包含符号链接，已拒绝安装"])
-            }
-        }
-    }
-
-    private func replaceInstallation(at target: URL, with stagedTarget: URL) throws {
-        let manager = FileManager.default
-        let backup = target.deletingLastPathComponent().appendingPathComponent(".\(target.lastPathComponent)-backup-\(UUID().uuidString)", isDirectory: true)
-        let targetExists = manager.fileExists(atPath: target.path)
-        if targetExists {
-            try manager.moveItem(at: target, to: backup)
-        }
-        do {
-            try manager.moveItem(at: stagedTarget, to: target)
-            if targetExists {
-                try? manager.removeItem(at: backup)
-            }
-        } catch {
-            if targetExists, manager.fileExists(atPath: backup.path) {
-                try? manager.moveItem(at: backup, to: target)
-            }
-            throw error
-        }
-    }
-
-    private func locateWebRoot(in directory: URL) throws -> URL {
-        if FileManager.default.fileExists(atPath: directory.appendingPathComponent("index.html").path) {
-            return directory
-        }
-        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil) else {
-            throw NSError(domain: "ExternalUI", code: 2, userInfo: [NSLocalizedDescriptionKey: "无法读取外部 UI 压缩包"])
-        }
-        for case let url as URL in enumerator where url.lastPathComponent == "index.html" {
-            return url.deletingLastPathComponent()
-        }
-        throw NSError(domain: "ExternalUI", code: 3, userInfo: [NSLocalizedDescriptionKey: "压缩包中没有 index.html"])
-    }
-}
-
 final class GeoUpdateManager {
     private let geoDirectory: URL
 
@@ -208,28 +75,36 @@ final class GeoUpdateManager {
     func update(
         geoIPURL: String,
         geoSiteURL: String,
+        countryMMDBURL: String,
+        asnMMDBURL: String,
         geoIPSHA256: String,
-        geoSiteSHA256: String
+        geoSiteSHA256: String,
+        countryMMDBSHA256: String,
+        asnMMDBSHA256: String
     ) async throws -> String {
         try AppPaths.ensureBaseDirectories()
         var updated: [String] = []
-        if let url = URL(string: geoIPURL), geoIPURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+        let artifacts = [
+            GeoArtifact(name: "GeoIP", fileName: "geoip.dat", url: geoIPURL, sha256: geoIPSHA256),
+            GeoArtifact(name: "GeoSite", fileName: "geosite.dat", url: geoSiteURL, sha256: geoSiteSHA256),
+            GeoArtifact(name: "Country MMDB", fileName: "Country.mmdb", url: countryMMDBURL, sha256: countryMMDBSHA256),
+            GeoArtifact(name: "ASN MMDB", fileName: "ASN.mmdb", url: asnMMDBURL, sha256: asnMMDBSHA256)
+        ]
+
+        for artifact in artifacts where artifact.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            guard let url = URL(string: artifact.url) else {
+                throw NSError(domain: "GeoUpdate", code: 1, userInfo: [
+                    NSLocalizedDescriptionKey: "\(artifact.name) 下载 URL 无效。"
+                ])
+            }
+            let checksum = try await resolvedChecksum(manual: artifact.sha256, for: url, artifactName: artifact.name)
             try await download(
                 url: url,
-                to: geoDirectory.appendingPathComponent("geoip.dat"),
-                expectedSHA256: geoIPSHA256,
-                artifactName: "GeoIP 数据"
+                to: geoDirectory.appendingPathComponent(artifact.fileName),
+                expectedSHA256: checksum,
+                artifactName: "\(artifact.name) 数据"
             )
-            updated.append("geoip.dat")
-        }
-        if let url = URL(string: geoSiteURL), geoSiteURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-            try await download(
-                url: url,
-                to: geoDirectory.appendingPathComponent("geosite.dat"),
-                expectedSHA256: geoSiteSHA256,
-                artifactName: "GeoSite 数据"
-            )
-            updated.append("geosite.dat")
+            updated.append(artifact.fileName)
         }
         return updated.isEmpty ? "没有可更新的 Geo URL" : "已更新 \(updated.joined(separator: "、"))"
     }
@@ -274,6 +149,35 @@ final class GeoUpdateManager {
         let (temp, _) = try await NetworkClient.download(from: url)
         try installDownloadedArtifact(temp, to: target, expectedSHA256: expectedSHA256, artifactName: artifactName)
     }
+
+    private func resolvedChecksum(manual: String, for url: URL, artifactName: String) async throws -> String {
+        let trimmed = manual.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty else { return trimmed }
+
+        guard let checksumURL = URL(string: url.absoluteString + ".sha256sum") else {
+            throw NSError(domain: "GeoUpdate", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "无法生成 \(artifactName) 校验文件 URL。"
+            ])
+        }
+        let (data, response) = try await NetworkClient.data(from: checksumURL, kind: .download)
+        if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) == false {
+            throw NSError(domain: "GeoUpdate", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: "\(artifactName) 校验文件下载失败：HTTP \(http.statusCode)。"
+            ])
+        }
+        let text = String(decoding: data, as: UTF8.self)
+        guard let range = text.range(of: #"[A-Fa-f0-9]{64}"#, options: .regularExpression) else {
+            throw NSError(domain: "GeoUpdate", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: "\(artifactName) 校验文件中没有有效 SHA-256。"
+            ])
+        }
+        return String(text[range])
+    }
 }
 
-
+private struct GeoArtifact {
+    var name: String
+    var fileName: String
+    var url: String
+    var sha256: String
+}

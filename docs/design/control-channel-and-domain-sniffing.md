@@ -35,8 +35,8 @@ Controller 是 mihomo 提供的 HTTP/WebSocket 控制接口，客户端依靠它
 - 例外规则支持跳过/强制域名、来源地址和目标地址。
 - 核心运行时，应用设置会明确执行“应用并重启核心”。
 
-## 配置所有权
+## 配置同步
 
-默认启用“由 Mihomo 管理域名嗅探”，此时网络工作区生成最终 `sniffer` 字段。这与 Sparkle 的“接管域名嗅探设置”一致。
+当前 Profile 中声明的 `sniffer` 会在启用或刷新配置时载入网络工作区，因此 Profile 初始值优先于 App 默认值。
 
-高级用户可以关闭应用管理。关闭后，Mihomo 不再写入或移除 `sniffer`，最终结果完全遵循 Profile、JS Transform 和 YAML 覆写。
+用户之后在网络工作区修改域名嗅探并应用时，变化会同步写回当前 Profile。JS Transform 和 YAML 覆写仍只影响最终 Runtime Config，不反向修改 Profile。Controller 的 `external-controller` 与 `secret` 仍是唯一由 App 强制管理的配置例外。

@@ -18,10 +18,6 @@ enum AppPaths {
         supportDirectory.appendingPathComponent("Core", isDirectory: true)
     }
 
-    static var externalUIDirectory: URL {
-        supportDirectory.appendingPathComponent("ExternalUI", isDirectory: true)
-    }
-
     static var geoDirectory: URL {
         supportDirectory.appendingPathComponent("Geo", isDirectory: true)
     }
@@ -116,7 +112,7 @@ enum AppPaths {
 
     static func ensureBaseDirectories() throws {
         let manager = FileManager.default
-        for directory in [supportDirectory, profilesDirectory, runtimeDirectory, coreDirectory, externalUIDirectory, geoDirectory, backupsDirectory, providerBackupsDirectory, toolsDirectory, logsDirectory] {
+        for directory in [supportDirectory, profilesDirectory, runtimeDirectory, coreDirectory, geoDirectory, backupsDirectory, providerBackupsDirectory, toolsDirectory, logsDirectory] {
             try manager.createDirectory(at: directory, withIntermediateDirectories: true)
         }
     }

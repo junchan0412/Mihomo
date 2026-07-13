@@ -10,7 +10,7 @@ enum AdvancedWorkspaceTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .runtime: return "运行工具"
-        case .data: return "数据与界面"
+        case .data: return "Geo 数据"
         case .backup: return "备份与安全"
         case .inspection: return "配置预览"
         }
@@ -44,7 +44,6 @@ struct AdvancedView: View {
                         helperGroup
                         deepLinkGroup
                     case .data:
-                        AdvancedExternalUIGroup(draft: $draft)
                         AdvancedGeoGroup(draft: $draft)
                     case .backup:
                         AdvancedProfileEncryptionGroup(draft: $draft)
@@ -112,7 +111,7 @@ struct AdvancedView: View {
     private var tabDescription: String {
         switch tab {
         case .runtime: return "管理 Helper、LaunchDaemon 与自动化入口。"
-        case .data: return "维护 External UI、GeoIP 与 GeoSite 数据。"
+        case .data: return "维护 GeoIP、GeoSite、Country MMDB 与 ASN MMDB 数据。"
         case .backup: return "配置加密、备份和跨设备恢复。"
         case .inspection: return "查看最终运行配置与配置来源，不执行诊断或网络修复。"
         }

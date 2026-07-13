@@ -66,29 +66,6 @@ final class ArtifactChecksumTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: targetKeygen, encoding: .utf8), "old-keygen")
     }
 
-    func testExternalUIChecksumMismatchDoesNotReplaceExistingInstallation() throws {
-        let root = temporaryDirectory()
-        let externalUI = root.appendingPathComponent("ExternalUI", isDirectory: true)
-        let runtime = root.appendingPathComponent("Runtime", isDirectory: true)
-        let existingIndex = externalUI.appendingPathComponent("dashboard/index.html")
-        let downloaded = root.appendingPathComponent("dashboard.zip")
-        try FileManager.default.createDirectory(at: existingIndex.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try "old-ui".write(to: existingIndex, atomically: true, encoding: .utf8)
-        try "untrusted-ui".write(to: downloaded, atomically: true, encoding: .utf8)
-
-        let manager = ExternalUIManager(externalUIDirectory: externalUI, runtimeDirectory: runtime)
-
-        XCTAssertThrowsError(try manager.installDownloadedArchive(
-            downloaded,
-            name: "dashboard",
-            sourceURL: URL(string: "https://example.com/dashboard.zip")!,
-            expectedSHA256: String(repeating: "3", count: 64)
-        )) { error in
-            XCTAssertTrue(error.localizedDescription.contains("SHA-256 不匹配"))
-        }
-        XCTAssertEqual(try String(contentsOf: existingIndex, encoding: .utf8), "old-ui")
-    }
-
     func testGeoChecksumMismatchDoesNotReplaceExistingData() throws {
         let root = temporaryDirectory()
         let target = root.appendingPathComponent("Geo/geoip.dat")
@@ -108,28 +85,6 @@ final class ArtifactChecksumTests: XCTestCase {
             XCTAssertTrue(error.localizedDescription.contains("SHA-256 不匹配"))
         }
         XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "old-geo")
-    }
-
-    func testExternalUIValidatedArchiveReplacesExistingInstallation() throws {
-        let root = temporaryDirectory()
-        let externalUI = root.appendingPathComponent("ExternalUI", isDirectory: true)
-        let runtime = root.appendingPathComponent("Runtime", isDirectory: true)
-        let existingIndex = externalUI.appendingPathComponent("dashboard/index.html")
-        let downloaded = root.appendingPathComponent("index.html")
-        try FileManager.default.createDirectory(at: existingIndex.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try "old-ui".write(to: existingIndex, atomically: true, encoding: .utf8)
-        try "new-ui".write(to: downloaded, atomically: true, encoding: .utf8)
-
-        let manager = ExternalUIManager(externalUIDirectory: externalUI, runtimeDirectory: runtime)
-        let installedPath = try manager.installDownloadedArchive(
-            downloaded,
-            name: "dashboard",
-            sourceURL: URL(string: "https://example.com/index.html")!,
-            expectedSHA256: try ArtifactChecksum.sha256(fileURL: downloaded)
-        )
-
-        XCTAssertEqual(installedPath, externalUI.appendingPathComponent("dashboard").path)
-        XCTAssertEqual(try String(contentsOf: existingIndex, encoding: .utf8), "new-ui")
     }
 
     private func temporaryDirectory() -> URL {

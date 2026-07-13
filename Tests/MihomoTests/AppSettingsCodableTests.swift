@@ -6,7 +6,7 @@ final class AppSettingsCodableTests: XCTestCase {
     func testRoundTripPreservesNonDefaultSettings() throws {
         let profileID = UUID(uuidString: "8C08A1E5-8DF4-48BE-9E15-5503C3176AE6")!
         let settings = AppSettings(
-            settingsSchemaVersion: 5,
+            settingsSchemaVersion: 6,
             mihomoPath: "/opt/mihomo/bin/mihomo",
             coreSource: .local,
             activeProfileID: profileID,
@@ -43,10 +43,6 @@ final class AppSettingsCodableTests: XCTestCase {
             launchDaemonEnabled: true,
             autoSetSystemDNS: true,
             systemDNSServers: ["9.9.9.9"],
-            externalUIEnabled: true,
-            externalUIName: "zashboard",
-            externalUIDownloadURL: "https://example.com/ui.zip",
-            externalUISHA256: String(repeating: "b", count: 64),
             remoteAPIEnabled: true,
             remoteAPIBindAddress: "0.0.0.0",
             controllerSecret: "controller-secret",
@@ -70,8 +66,12 @@ final class AppSettingsCodableTests: XCTestCase {
             dnsFallbacks: ["https://fallback.example.com/dns-query"],
             geoIPURL: "https://example.com/geoip.dat",
             geoSiteURL: "https://example.com/geosite.dat",
+            countryMMDBURL: "https://example.com/country.mmdb",
+            asnMMDBURL: "https://example.com/asn.mmdb",
             geoIPSHA256: String(repeating: "c", count: 64),
             geoSiteSHA256: String(repeating: "d", count: 64),
+            countryMMDBSHA256: String(repeating: "f", count: 64),
+            asnMMDBSHA256: String(repeating: "9", count: 64),
             backupWebDAVURL: "https://webdav.example.com/mihomo",
             backupWebDAVUsername: "backup-user",
             backupWebDAVPassword: "backup-password",
@@ -108,9 +108,10 @@ final class AppSettingsCodableTests: XCTestCase {
         let decoded = try JSONDecoder().decode(AppSettings.self, from: data)
 
         XCTAssertEqual(decoded.managedCoreSHA256, AppSettings.default.managedCoreSHA256)
-        XCTAssertEqual(decoded.externalUISHA256, AppSettings.default.externalUISHA256)
         XCTAssertEqual(decoded.geoIPSHA256, AppSettings.default.geoIPSHA256)
         XCTAssertEqual(decoded.geoSiteSHA256, AppSettings.default.geoSiteSHA256)
+        XCTAssertEqual(decoded.countryMMDBURL, AppSettings.default.countryMMDBURL)
+        XCTAssertEqual(decoded.asnMMDBURL, AppSettings.default.asnMMDBURL)
         XCTAssertEqual(decoded.ageDownloadSHA256, AppSettings.default.ageDownloadSHA256)
     }
 

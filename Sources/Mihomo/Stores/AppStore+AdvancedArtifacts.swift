@@ -20,23 +20,6 @@ extension AppStore {
         }
     }
 
-    func installExternalUI() async {
-        do {
-            externalUIStatus = "正在下载外部 UI..."
-            let path = try await externalUIManager.install(
-                name: settings.externalUIName,
-                from: settings.externalUIDownloadURL,
-                expectedSHA256: settings.externalUISHA256
-            )
-            externalUIStatus = path
-            appendLog("info", "外部 UI 已安装：\(path)")
-            refreshConfigArtifacts()
-        } catch {
-            externalUIStatus = "外部 UI 安装失败：\(error.localizedDescription)"
-            appendLog("error", externalUIStatus)
-        }
-    }
-
     func updateGeoData() async {
         do {
             geoUpdateStatus = "正在更新 Geo 数据..."

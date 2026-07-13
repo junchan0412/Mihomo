@@ -38,10 +38,6 @@ struct AppSettings: Codable, Hashable {
     var launchDaemonEnabled: Bool
     var autoSetSystemDNS: Bool
     var systemDNSServers: [String]
-    var externalUIEnabled: Bool
-    var externalUIName: String
-    var externalUIDownloadURL: String
-    var externalUISHA256: String
     var remoteAPIEnabled: Bool
     var remoteAPIBindAddress: String
     var controllerSecret: String
@@ -65,8 +61,12 @@ struct AppSettings: Codable, Hashable {
     var dnsFallbacks: [String]
     var geoIPURL: String
     var geoSiteURL: String
+    var countryMMDBURL: String
+    var asnMMDBURL: String
     var geoIPSHA256: String
     var geoSiteSHA256: String
+    var countryMMDBSHA256: String
+    var asnMMDBSHA256: String
     var backupWebDAVURL: String
     var backupWebDAVUsername: String
     var backupWebDAVPassword: String
@@ -84,7 +84,7 @@ struct AppSettings: Codable, Hashable {
     static let `default` = AppSettings()
 
     init(
-        settingsSchemaVersion: Int = 5,
+        settingsSchemaVersion: Int = 6,
         mihomoPath: String = "",
         coreSource: CoreSource = .managed,
         activeProfileID: UUID? = nil,
@@ -121,10 +121,6 @@ struct AppSettings: Codable, Hashable {
         launchDaemonEnabled: Bool = false,
         autoSetSystemDNS: Bool = false,
         systemDNSServers: [String] = ["1.1.1.1", "8.8.8.8"],
-        externalUIEnabled: Bool = false,
-        externalUIName: String = "zashboard",
-        externalUIDownloadURL: String = "https://github.com/Zephyruso/zashboard/archive/refs/heads/gh-pages.zip",
-        externalUISHA256: String = "",
         remoteAPIEnabled: Bool = false,
         remoteAPIBindAddress: String = "127.0.0.1",
         controllerSecret: String = "",
@@ -148,8 +144,12 @@ struct AppSettings: Codable, Hashable {
         dnsFallbacks: [String] = [],
         geoIPURL: String = "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geoip.dat",
         geoSiteURL: String = "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geosite.dat",
+        countryMMDBURL: String = "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/country.mmdb",
+        asnMMDBURL: String = "https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/GeoLite2-ASN.mmdb",
         geoIPSHA256: String = "",
         geoSiteSHA256: String = "",
+        countryMMDBSHA256: String = "",
+        asnMMDBSHA256: String = "",
         backupWebDAVURL: String = "",
         backupWebDAVUsername: String = "",
         backupWebDAVPassword: String = "",
@@ -201,10 +201,6 @@ struct AppSettings: Codable, Hashable {
         self.launchDaemonEnabled = launchDaemonEnabled
         self.autoSetSystemDNS = autoSetSystemDNS
         self.systemDNSServers = systemDNSServers
-        self.externalUIEnabled = externalUIEnabled
-        self.externalUIName = externalUIName
-        self.externalUIDownloadURL = externalUIDownloadURL
-        self.externalUISHA256 = externalUISHA256
         self.remoteAPIEnabled = remoteAPIEnabled
         self.remoteAPIBindAddress = remoteAPIBindAddress
         self.controllerSecret = controllerSecret
@@ -228,8 +224,12 @@ struct AppSettings: Codable, Hashable {
         self.dnsFallbacks = dnsFallbacks
         self.geoIPURL = geoIPURL
         self.geoSiteURL = geoSiteURL
+        self.countryMMDBURL = countryMMDBURL
+        self.asnMMDBURL = asnMMDBURL
         self.geoIPSHA256 = geoIPSHA256
         self.geoSiteSHA256 = geoSiteSHA256
+        self.countryMMDBSHA256 = countryMMDBSHA256
+        self.asnMMDBSHA256 = asnMMDBSHA256
         self.backupWebDAVURL = backupWebDAVURL
         self.backupWebDAVUsername = backupWebDAVUsername
         self.backupWebDAVPassword = backupWebDAVPassword
@@ -283,10 +283,6 @@ struct AppSettings: Codable, Hashable {
         case launchDaemonEnabled
         case autoSetSystemDNS
         case systemDNSServers
-        case externalUIEnabled
-        case externalUIName
-        case externalUIDownloadURL
-        case externalUISHA256
         case remoteAPIEnabled
         case remoteAPIBindAddress
         case controllerSecret
@@ -310,8 +306,12 @@ struct AppSettings: Codable, Hashable {
         case dnsFallbacks
         case geoIPURL
         case geoSiteURL
+        case countryMMDBURL
+        case asnMMDBURL
         case geoIPSHA256
         case geoSiteSHA256
+        case countryMMDBSHA256
+        case asnMMDBSHA256
         case backupWebDAVURL
         case backupWebDAVUsername
         case backupWebDAVPassword
@@ -369,10 +369,6 @@ struct AppSettings: Codable, Hashable {
         launchDaemonEnabled = try container.decodeIfPresent(Bool.self, forKey: .launchDaemonEnabled) ?? fallback.launchDaemonEnabled
         autoSetSystemDNS = try container.decodeIfPresent(Bool.self, forKey: .autoSetSystemDNS) ?? fallback.autoSetSystemDNS
         systemDNSServers = try container.decodeIfPresent([String].self, forKey: .systemDNSServers) ?? fallback.systemDNSServers
-        externalUIEnabled = try container.decodeIfPresent(Bool.self, forKey: .externalUIEnabled) ?? fallback.externalUIEnabled
-        externalUIName = try container.decodeIfPresent(String.self, forKey: .externalUIName) ?? fallback.externalUIName
-        externalUIDownloadURL = try container.decodeIfPresent(String.self, forKey: .externalUIDownloadURL) ?? fallback.externalUIDownloadURL
-        externalUISHA256 = try container.decodeIfPresent(String.self, forKey: .externalUISHA256) ?? fallback.externalUISHA256
         remoteAPIEnabled = try container.decodeIfPresent(Bool.self, forKey: .remoteAPIEnabled) ?? fallback.remoteAPIEnabled
         remoteAPIBindAddress = try container.decodeIfPresent(String.self, forKey: .remoteAPIBindAddress) ?? fallback.remoteAPIBindAddress
         controllerSecret = try container.decodeIfPresent(String.self, forKey: .controllerSecret) ?? fallback.controllerSecret
@@ -396,8 +392,12 @@ struct AppSettings: Codable, Hashable {
         dnsFallbacks = try container.decodeIfPresent([String].self, forKey: .dnsFallbacks) ?? fallback.dnsFallbacks
         geoIPURL = try container.decodeIfPresent(String.self, forKey: .geoIPURL) ?? fallback.geoIPURL
         geoSiteURL = try container.decodeIfPresent(String.self, forKey: .geoSiteURL) ?? fallback.geoSiteURL
+        countryMMDBURL = try container.decodeIfPresent(String.self, forKey: .countryMMDBURL) ?? fallback.countryMMDBURL
+        asnMMDBURL = try container.decodeIfPresent(String.self, forKey: .asnMMDBURL) ?? fallback.asnMMDBURL
         geoIPSHA256 = try container.decodeIfPresent(String.self, forKey: .geoIPSHA256) ?? fallback.geoIPSHA256
         geoSiteSHA256 = try container.decodeIfPresent(String.self, forKey: .geoSiteSHA256) ?? fallback.geoSiteSHA256
+        countryMMDBSHA256 = try container.decodeIfPresent(String.self, forKey: .countryMMDBSHA256) ?? fallback.countryMMDBSHA256
+        asnMMDBSHA256 = try container.decodeIfPresent(String.self, forKey: .asnMMDBSHA256) ?? fallback.asnMMDBSHA256
         backupWebDAVURL = try container.decodeIfPresent(String.self, forKey: .backupWebDAVURL) ?? fallback.backupWebDAVURL
         backupWebDAVUsername = try container.decodeIfPresent(String.self, forKey: .backupWebDAVUsername) ?? fallback.backupWebDAVUsername
         backupWebDAVPassword = try container.decodeIfPresent(String.self, forKey: .backupWebDAVPassword) ?? fallback.backupWebDAVPassword

@@ -130,7 +130,7 @@ final class RuntimeConfigBuilderTests: XCTestCase {
         XCTAssertTrue(generated.contains("192.168.1.0/24"))
     }
 
-    func testProfileDomainSniffingIsPreservedWhenAppManagementIsDisabled() throws {
+    func testProfileDomainSniffingOverridesAppDefaults() throws {
         let profile = """
         sniffer:
           enable: false
@@ -138,12 +138,11 @@ final class RuntimeConfigBuilderTests: XCTestCase {
             TLS:
               ports: [9443]
         """
-        let settings = AppSettings(snifferManagedByApp: false, snifferEnabled: true)
+        let settings = AppSettings(snifferManagedByApp: true, snifferEnabled: true)
 
         let generated = try RuntimeConfigBuilder().build(profileContent: profile, settings: settings)
 
         XCTAssertTrue(generated.contains("enable: false"))
         XCTAssertTrue(generated.contains("9443"))
-        XCTAssertFalse(generated.contains("force-dns-mapping"))
     }
 }

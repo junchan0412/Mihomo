@@ -80,49 +80,6 @@ struct AdvancedProfileEncryptionGroup: View {
     }
 }
 
-struct AdvancedExternalUIGroup: View {
-    @EnvironmentObject private var store: AppStore
-    @Binding var draft: AppSettings
-
-    var body: some View {
-        GroupBox("外部 UI") {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
-                GridRow {
-                    Toggle("写入 external-ui", isOn: $draft.externalUIEnabled)
-                    TextField("名称", text: $draft.externalUIName)
-                }
-                GridRow {
-                    Text("下载 URL")
-                    TextField("zashboard/metacubexd zip", text: $draft.externalUIDownloadURL)
-                }
-                GridRow {
-                    Text("SHA-256")
-                    TextField("必填；安装前校验下载包", text: $draft.externalUISHA256)
-                }
-                GridRow {
-                    Text("状态")
-                    HStack {
-                        Text(store.externalUIStatus)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                        Spacer()
-                        Button {
-                            Task {
-                                await store.saveSettings(draft)
-                                await store.installExternalUI()
-                            }
-                        } label: {
-                            Label("安装 UI", systemImage: "square.and.arrow.down")
-                        }
-                    }
-                }
-            }
-            .textFieldStyle(.roundedBorder)
-            .padding(.vertical, 4)
-        }
-    }
-}
-
 struct AdvancedConfigPreviewGroup: View {
     @EnvironmentObject private var store: AppStore
 
@@ -160,23 +117,47 @@ struct AdvancedGeoGroup: View {
     @Binding var draft: AppSettings
 
     var body: some View {
-        GroupBox("Geo 数据") {
+        SettingsSection(
+            title: "Geo 数据",
+            subtitle: "默认维护 mihomo 常用的规则数据库与 IP 归属数据库；未手动填写 SHA-256 时自动读取上游 .sha256sum 校验。",
+            systemImage: "globe.asia.australia"
+        ) {
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
                 GridRow {
-                    Text("GeoIP")
+                    Text("GeoIP.dat")
                     TextField("geoip.dat URL", text: $draft.geoIPURL)
                 }
                 GridRow {
-                    Text("GeoSite")
+                    Text("GeoSite.dat")
                     TextField("geosite.dat URL", text: $draft.geoSiteURL)
                 }
                 GridRow {
-                    Text("GeoIP SHA-256")
-                    TextField("必填；更新前校验 geoip.dat", text: $draft.geoIPSHA256)
+                    Text("Country.mmdb")
+                    TextField("country.mmdb URL", text: $draft.countryMMDBURL)
                 }
                 GridRow {
-                    Text("GeoSite SHA-256")
-                    TextField("必填；更新前校验 geosite.dat", text: $draft.geoSiteSHA256)
+                    Text("ASN.mmdb")
+                    TextField("GeoLite2-ASN.mmdb URL", text: $draft.asnMMDBURL)
+                }
+                DisclosureGroup("手动 SHA-256（可选）") {
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                        GridRow {
+                            Text("GeoIP")
+                            TextField("留空时读取 .sha256sum", text: $draft.geoIPSHA256)
+                        }
+                        GridRow {
+                            Text("GeoSite")
+                            TextField("留空时读取 .sha256sum", text: $draft.geoSiteSHA256)
+                        }
+                        GridRow {
+                            Text("Country")
+                            TextField("留空时读取 .sha256sum", text: $draft.countryMMDBSHA256)
+                        }
+                        GridRow {
+                            Text("ASN")
+                            TextField("留空时读取 .sha256sum", text: $draft.asnMMDBSHA256)
+                        }
+                    }
                 }
                 GridRow {
                     Text("状态")
@@ -190,13 +171,13 @@ struct AdvancedGeoGroup: View {
                                 await store.updateGeoData()
                             }
                         } label: {
-                            Label("更新 Geo", systemImage: "globe")
+                            Label("更新全部 Geo 数据", systemImage: "arrow.down.circle")
                         }
                     }
                 }
             }
             .textFieldStyle(.roundedBorder)
-            .padding(.vertical, 4)
+            .padding(16)
         }
     }
 }

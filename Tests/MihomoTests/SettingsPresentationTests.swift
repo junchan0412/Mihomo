@@ -42,7 +42,7 @@ final class SettingsPresentationTests: XCTestCase {
     }
 
     func testWorkspaceResponsibilitiesDoNotDuplicateDiagnosticsOrNetworkRepair() {
-        XCTAssertEqual(AdvancedWorkspaceTab.allCases.map(\.title), ["运行工具", "数据与界面", "备份与安全", "配置预览"])
+        XCTAssertEqual(AdvancedWorkspaceTab.allCases.map(\.title), ["运行工具", "Geo 数据", "备份与安全", "配置预览"])
         XCTAssertEqual(DiagnosticWorkspaceTab.allCases.map(\.title), ["概览", "检查结果"])
         XCTAssertFalse(AdvancedWorkspaceTab.allCases.map(\.title).contains("诊断"))
         XCTAssertFalse(DiagnosticWorkspaceTab.allCases.map(\.title).contains("修复中心"))

@@ -8,20 +8,14 @@ struct DomainSniffingSettingsView: View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(
                 title: "域名嗅探",
-                subtitle: "从 HTTP Host、TLS SNI 和 QUIC 握手中识别域名，让直接连接 IP 的应用也能匹配域名规则。它不会解密 HTTPS，也不是 DNS 查询。",
+                subtitle: "从 HTTP Host、TLS SNI 和 QUIC 握手中识别域名。当前配置中的 sniffer 会先载入本页，本页修改也会同步回当前配置。",
                 systemImage: "viewfinder"
             ) {
-                SettingsToggleDescriptionRow(
-                    "由 Mihomo 管理域名嗅探",
-                    description: "开启后使用本页设置；关闭后完全遵循当前 Profile 中的 sniffer 配置。",
-                    isOn: $draft.snifferManagedByApp
-                )
                 SettingsToggleDescriptionRow(
                     "启用域名嗅探",
                     description: "建议在 TUN、透明代理或部分应用直接访问 IP 时开启。",
                     isOn: $draft.snifferEnabled
                 )
-                .disabled(!draft.snifferManagedByApp)
                 SettingsRow("当前行为") {
                     Label(statusTitle, systemImage: statusIcon)
                         .foregroundStyle(.secondary)
@@ -93,16 +87,14 @@ struct DomainSniffingSettingsView: View {
     }
 
     private var isEditable: Bool {
-        draft.snifferManagedByApp && draft.snifferEnabled
+        draft.snifferEnabled
     }
 
     private var statusTitle: String {
-        if !draft.snifferManagedByApp { return "由当前 Profile 决定" }
-        return draft.snifferEnabled ? "已启用，使用本页规则" : "已关闭"
+        draft.snifferEnabled ? "已启用 · 与当前配置同步" : "已关闭 · 与当前配置同步"
     }
 
     private var statusIcon: String {
-        if !draft.snifferManagedByApp { return "doc.text" }
         return draft.snifferEnabled ? "checkmark.circle.fill" : "pause.circle"
     }
 
@@ -124,7 +116,9 @@ struct DomainSniffingSettingsView: View {
     }
 
     private func applySettings() async {
-        let updated = draft
+        var updated = draft
+        updated.snifferManagedByApp = true
+        draft = updated
         let shouldRestart = store.isCoreRunning && snifferSettingsChanged(from: store.settings, to: updated)
         await store.saveSettings(updated)
         if shouldRestart, store.settings == updated {
@@ -133,8 +127,7 @@ struct DomainSniffingSettingsView: View {
     }
 
     private func snifferSettingsChanged(from old: AppSettings, to new: AppSettings) -> Bool {
-        old.snifferManagedByApp != new.snifferManagedByApp
-            || old.snifferEnabled != new.snifferEnabled
+        old.snifferEnabled != new.snifferEnabled
             || old.snifferParsePureIP != new.snifferParsePureIP
             || old.snifferForceDNSMapping != new.snifferForceDNSMapping
             || old.snifferOverrideDestination != new.snifferOverrideDestination
@@ -153,38 +146,31 @@ struct DomainSniffingSummaryCard: View {
     var openDetails: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                Image(systemName: "viewfinder")
-                    .font(.title2)
-                    .foregroundStyle(store.settings.snifferEnabled ? Color.accentColor : Color.secondary)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("域名嗅探").font(.headline)
-                    Text("从连接握手识别域名，帮助直接访问 IP 的应用匹配域名规则。")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-                Toggle("域名嗅探", isOn: enabledBinding)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .disabled(!store.settings.snifferManagedByApp)
-            }
-
-            Divider()
-
-            HStack {
+        HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "viewfinder")
+                .font(.title3)
+                .foregroundStyle(store.settings.snifferEnabled ? Color.accentColor : Color.secondary)
+                .frame(width: 28)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("域名嗅探").font(.headline)
+                Text("从连接握手识别域名，帮助直接访问 IP 的应用匹配域名规则。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Label(summaryStatus, systemImage: summaryIcon)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Spacer()
-                Button("详细设置", action: openDetails)
             }
+            Spacer(minLength: 20)
+            Button("详细设置", action: openDetails)
+            Toggle("域名嗅探", isOn: enabledBinding)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .accessibilityLabel("域名嗅探")
+                .accessibilityValue(summaryStatus)
         }
-        .padding(16)
-        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 12))
-        .overlay { RoundedRectangle(cornerRadius: 12).stroke(MihomoUI.cardStroke, lineWidth: 1) }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
     }
 
     private var enabledBinding: Binding<Bool> {
@@ -193,6 +179,7 @@ struct DomainSniffingSummaryCard: View {
             set: { enabled in
                 Task {
                     var updated = store.settings
+                    updated.snifferManagedByApp = true
                     updated.snifferEnabled = enabled
                     await store.saveSettings(updated)
                     if store.settings == updated, store.isCoreRunning {
@@ -204,12 +191,10 @@ struct DomainSniffingSummaryCard: View {
     }
 
     private var summaryStatus: String {
-        if !store.settings.snifferManagedByApp { return "由当前 Profile 决定" }
-        return store.settings.snifferEnabled ? "已启用" : "已关闭"
+        store.settings.snifferEnabled ? "已启用 · 已同步配置" : "已关闭 · 已同步配置"
     }
 
     private var summaryIcon: String {
-        if !store.settings.snifferManagedByApp { return "doc.text" }
         return store.settings.snifferEnabled ? "checkmark.circle.fill" : "pause.circle"
     }
 }

@@ -33,9 +33,8 @@ extension AppStore {
                 settings: settings
             )
             profiles.append(item)
-            settings.activeProfileID = item.id
             try profileStore.saveProfiles(profiles)
-            try profileStore.saveSettings(settings)
+            try synchronizeAppSettings(from: item)
             newRemoteURL = ""
             newRemoteName = ""
             refreshConfigArtifacts()
@@ -49,9 +48,8 @@ extension AppStore {
         do {
             let item = try profileStore.importLocalProfile(fileURL: url, settings: settings)
             profiles.append(item)
-            settings.activeProfileID = item.id
             try profileStore.saveProfiles(profiles)
-            try profileStore.saveSettings(settings)
+            try synchronizeAppSettings(from: item)
             refreshConfigArtifacts()
             appendLog("info", "已导入本地配置 \(item.name)")
         } catch {
@@ -65,6 +63,9 @@ extension AppStore {
             if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
                 profiles[index] = updated
                 try profileStore.saveProfiles(profiles)
+            }
+            if settings.activeProfileID == updated.id {
+                try synchronizeAppSettings(from: updated)
             }
             refreshConfigArtifacts()
             appendLog("info", "已刷新配置 \(profile.name)")
@@ -133,6 +134,13 @@ extension AppStore {
                     profiles[index] = updated
                     try? profileStore.saveProfiles(profiles)
                 }
+                if settings.activeProfileID == updated.id {
+                    do {
+                        try synchronizeAppSettings(from: updated)
+                    } catch {
+                        appendLog("error", "配置刷新后同步 App 设置失败：\(error.localizedDescription)")
+                    }
+                }
                 refreshConfigArtifacts()
                 succeeded += 1
                 markRefreshJob(profileID: result.profileID, state: .succeeded, message: "刷新成功", finishedAt: Date())
@@ -154,11 +162,10 @@ extension AppStore {
     }
 
     func setActiveProfile(_ profile: ProfileItem) async {
-        settings.activeProfileID = profile.id
         do {
-            try profileStore.saveSettings(settings)
+            try synchronizeAppSettings(from: profile)
             refreshConfigArtifacts()
-            appendLog("info", "已启用配置 \(profile.name)")
+            appendLog("info", "已启用配置 \(profile.name)，配置参数已同步到 App")
             if isCoreRunning {
                 await restartCore()
             }
@@ -193,6 +200,9 @@ extension AppStore {
             let updated = try profileStore.saveProfileContent(profile, content: content, settings: settings)
             profiles[index] = updated
             try profileStore.saveProfiles(profiles)
+            if settings.activeProfileID == updated.id {
+                try synchronizeAppSettings(from: updated)
+            }
             refreshConfigArtifacts()
             appendLog("info", "已保存配置 \(updated.name)")
             if let undoManager {
@@ -240,6 +250,9 @@ extension AppStore {
             let updated = try profileStore.saveProfileContent(profile, content: snapshot.content, settings: settings)
             profiles[index] = updated
             try profileStore.saveProfiles(profiles)
+            if settings.activeProfileID == updated.id {
+                try synchronizeAppSettings(from: updated)
+            }
             refreshConfigArtifacts()
             registerProfileEditorUndo(
                 profileID: profileID,
@@ -326,114 +339,6 @@ extension AppStore {
         } catch {
             appendLog("error", "恢复配置失败：\(error.localizedDescription)")
         }
-    }
-
-    func profileStats(for profile: ProfileItem) -> ProfileStats {
-        let fingerprint = profileStatsFingerprint(for: profile)
-        if let cached = profileStatsCache[profile.id], cached.fingerprint == fingerprint {
-            return cached.stats
-        }
-
-        do {
-            let content = try profileStore.loadProfileContent(profile, settings: settings)
-            let snapshot = try ProfileYAMLStructureEditor().snapshot(content: content)
-            let providers = configFragmentStore.parseProviders(profileContent: content)
-            let stats = ProfileStats(
-                lineCount: content.split(separator: "\n", omittingEmptySubsequences: false).count,
-                fileSize: content.data(using: .utf8)?.count ?? 0,
-                policyGroupCount: snapshot.groups.count,
-                proxyCount: snapshot.proxyNames.count,
-                ruleCount: snapshot.rules.count,
-                proxyProviderCount: providers.filter { $0.kind == "Proxy" }.count,
-                ruleProviderCount: providers.filter { $0.kind == "Rule" }.count,
-                errorMessage: nil
-            )
-            profileStatsCache[profile.id] = ProfileStatsCacheEntry(fingerprint: fingerprint, stats: stats)
-            return stats
-        } catch {
-            let stats = ProfileStats(errorMessage: error.localizedDescription)
-            profileStatsCache[profile.id] = ProfileStatsCacheEntry(fingerprint: fingerprint, stats: stats)
-            return stats
-        }
-    }
-
-    func profileQualityReport(for profile: ProfileItem?) -> ProfileQualityReport {
-        guard let profile else { return .empty }
-        let fingerprint = profileQualityFingerprint(for: profile)
-        if let cached = profileQualityCache[profile.id], cached.fingerprint == fingerprint {
-            return cached.report
-        }
-
-        do {
-            let content = try profileStore.loadProfileContent(profile, settings: settings)
-            let report = profileQualityAnalyzer.analyze(
-                profile: profile,
-                profileContent: content,
-                settings: settings,
-                fragments: configFragments,
-                disabledRules: disabledRules,
-                migrationLog: settingsMigrationLog
-            )
-            profileQualityCache[profile.id] = ProfileQualityCacheEntry(fingerprint: fingerprint, report: report)
-            return report
-        } catch {
-            let report = ProfileQualityReport(
-                score: 0,
-                headline: "配置无法读取",
-                issues: [
-                    .init(
-                        severity: .error,
-                        title: "Profile 读取失败",
-                        detail: error.localizedDescription
-                    )
-                ],
-                runtimeItems: [],
-                sourceItems: [],
-                diffLayers: [],
-                migrationLog: settingsMigrationLog,
-                generatedConfig: ""
-            )
-            profileQualityCache[profile.id] = ProfileQualityCacheEntry(fingerprint: fingerprint, report: report)
-            return report
-        }
-    }
-
-    func makeOfflineProxyGroups(from snapshot: ProfileStructureSnapshot) -> [ProxyGroup] {
-        snapshot.groups.map { group in
-            let proxyNodes = group.proxies.map { proxy in
-                ProxyNode(name: proxy, type: snapshot.proxyNames.contains(proxy) ? "proxy" : "built-in", delay: nil)
-            }
-            let providerNodes = group.uses.map { provider in
-                ProxyNode(name: provider, type: "provider", delay: nil)
-            }
-            return ProxyGroup(
-                name: group.name,
-                type: group.type,
-                now: "",
-                all: proxyNodes + providerNodes,
-                icon: group.icon,
-                hidden: group.hidden
-            )
-        }
-    }
-
-    private func profileStatsFingerprint(for profile: ProfileItem) -> ProfileStatsFingerprint {
-        ProfileStatsFingerprint(
-            fileName: profile.fileName,
-            location: profile.location,
-            updatedAt: profile.updatedAt,
-            profileStoragePath: settings.profileStoragePath
-        )
-    }
-
-    private func profileQualityFingerprint(for profile: ProfileItem) -> ProfileQualityFingerprint {
-        ProfileQualityFingerprint(
-            profile: profileStatsFingerprint(for: profile),
-            settings: settings,
-            fragments: configFragments,
-            disabledRules: disabledRules,
-            migrationLog: settingsMigrationLog
-        )
     }
 
     private func markRefreshJob(
