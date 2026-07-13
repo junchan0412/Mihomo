@@ -9,7 +9,7 @@ struct OverviewSummaryMetric: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: systemImage)
-                .font(.system(size: 17, weight: .medium))
+                .font(.headline)
                 .foregroundStyle(tint)
                 .frame(width: 26)
             VStack(alignment: .leading, spacing: 4) {
@@ -118,6 +118,7 @@ struct OverviewSideStat: View {
 }
 
 struct TrafficDistributionBar: View {
+    @Environment(\.colorSchemeContrast) private var contrast
     var directBytes: Int64
     var proxyBytes: Int64
 
@@ -130,10 +131,10 @@ struct TrafficDistributionBar: View {
             let directWidth = proxy.size.width * CGFloat(directBytes) / CGFloat(total)
             HStack(spacing: 0) {
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.cyan)
+                    .fill(contrast == .increased ? Color.blue : Color.cyan)
                     .frame(width: max(4, directWidth))
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(Color.indigo.opacity(0.75))
+                    .fill(contrast == .increased ? Color.purple : Color.indigo.opacity(0.82))
             }
         }
         .frame(height: 12)

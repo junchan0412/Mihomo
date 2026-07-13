@@ -75,7 +75,7 @@ struct ProfileRefreshQueueStrip: View {
         .font(.callout)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -286,7 +286,7 @@ private struct RemovedConfigFragmentsSummaryView: View {
                     .lineLimit(4)
                     .frame(maxWidth: .infinity, minHeight: 62, alignment: .topLeading)
                     .padding(9)
-                    .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 7))
+                    .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 7))
             } else {
                 Text("选择或新增覆写后，可在这里查看类型、状态与内容摘要。")
                     .font(.callout)

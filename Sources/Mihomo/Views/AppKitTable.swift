@@ -19,51 +19,119 @@ struct AppKitTableColumn<Row> {
         self.width = width
         self.textColor = textColor
         self.value = value
-        self.checked = nil
-        self.toggle = nil
+        checked = nil
+        toggle = nil
     }
 
     init(title: String, width: CGFloat, checked: @escaping (Row) -> Bool, toggle: @escaping (Row) -> Void) {
         self.title = title
         self.width = width
-        self.value = { checked($0) ? "已启用" : "已禁用" }
-        self.textColor = nil
+        value = { checked($0) ? "已启用" : "已禁用" }
+        textColor = nil
         self.checked = checked
         self.toggle = toggle
     }
 }
 
+struct AppKitTableContextAction<Row> {
+    let title: String
+    let isDestructive: Bool
+    let isEnabled: ([Row]) -> Bool
+    let action: ([Row]) -> Void
+
+    init(
+        _ title: String,
+        isDestructive: Bool = false,
+        isEnabled: @escaping ([Row]) -> Bool = { _ in true },
+        action: @escaping ([Row]) -> Void
+    ) {
+        self.title = title
+        self.isDestructive = isDestructive
+        self.isEnabled = isEnabled
+        self.action = action
+    }
+}
+
 struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID: Hashable {
     var rows: [Row]
-    @Binding var selection: Row.ID?
+    @Binding var selection: Set<Row.ID>
     var columns: [AppKitTableColumn<Row>]
+    var allowsMultipleSelection: Bool
     var onDoubleClick: ((Row) -> Void)?
+    var onActivate: (([Row]) -> Void)?
+    var onPreview: (([Row]) -> Void)?
+    var onDelete: (([Row]) -> Void)?
     var hasHorizontalScroller: Bool
     var allowsParentScrollPassthrough: Bool
     var borderType: NSBorderType
-    var contextMenuTitle: String?
-    var onContextMenu: ((Row) -> Void)?
+    var contextMenuActions: [AppKitTableContextAction<Row>]
 
     init(
         rows: [Row],
         selection: Binding<Row.ID?>,
         columns: [AppKitTableColumn<Row>],
         onDoubleClick: ((Row) -> Void)? = nil,
+        onActivate: (([Row]) -> Void)? = nil,
+        onPreview: (([Row]) -> Void)? = nil,
+        onDelete: (([Row]) -> Void)? = nil,
         hasHorizontalScroller: Bool = true,
         allowsParentScrollPassthrough: Bool = false,
         borderType: NSBorderType = .bezelBorder,
         contextMenuTitle: String? = nil,
-        onContextMenu: ((Row) -> Void)? = nil
+        onContextMenu: ((Row) -> Void)? = nil,
+        contextMenuActions: [AppKitTableContextAction<Row>] = []
     ) {
         self.rows = rows
-        self._selection = selection
+        _selection = Binding(
+            get: { selection.wrappedValue.map { Set([$0]) } ?? [] },
+            set: { selection.wrappedValue = $0.first }
+        )
         self.columns = columns
+        allowsMultipleSelection = false
         self.onDoubleClick = onDoubleClick
+        self.onActivate = onActivate
+        self.onPreview = onPreview
+        self.onDelete = onDelete
         self.hasHorizontalScroller = hasHorizontalScroller
         self.allowsParentScrollPassthrough = allowsParentScrollPassthrough
         self.borderType = borderType
-        self.contextMenuTitle = contextMenuTitle
-        self.onContextMenu = onContextMenu
+        self.contextMenuActions = contextMenuActions
+        if let contextMenuTitle, let onContextMenu {
+            self.contextMenuActions.append(
+                AppKitTableContextAction(contextMenuTitle) { selectedRows in
+                    guard let row = selectedRows.first else { return }
+                    onContextMenu(row)
+                }
+            )
+        }
+    }
+
+    init(
+        rows: [Row],
+        selection: Binding<Set<Row.ID>>,
+        columns: [AppKitTableColumn<Row>],
+        allowsMultipleSelection: Bool = true,
+        onDoubleClick: ((Row) -> Void)? = nil,
+        onActivate: (([Row]) -> Void)? = nil,
+        onPreview: (([Row]) -> Void)? = nil,
+        onDelete: (([Row]) -> Void)? = nil,
+        hasHorizontalScroller: Bool = true,
+        allowsParentScrollPassthrough: Bool = false,
+        borderType: NSBorderType = .bezelBorder,
+        contextMenuActions: [AppKitTableContextAction<Row>] = []
+    ) {
+        self.rows = rows
+        _selection = selection
+        self.columns = columns
+        self.allowsMultipleSelection = allowsMultipleSelection
+        self.onDoubleClick = onDoubleClick
+        self.onActivate = onActivate
+        self.onPreview = onPreview
+        self.onDelete = onDelete
+        self.hasHorizontalScroller = hasHorizontalScroller
+        self.allowsParentScrollPassthrough = allowsParentScrollPassthrough
+        self.borderType = borderType
+        self.contextMenuActions = contextMenuActions
     }
 
     func makeCoordinator() -> Coordinator {
@@ -78,13 +146,14 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         tableView.action = #selector(Coordinator.clicked(_:))
         tableView.doubleAction = #selector(Coordinator.doubleClicked(_:))
         tableView.headerView = NSTableHeaderView()
-        tableView.allowsMultipleSelection = false
+        tableView.allowsMultipleSelection = allowsMultipleSelection
+        tableView.allowsEmptySelection = true
         tableView.usesAlternatingRowBackgroundColors = true
         tableView.selectionHighlightStyle = .regular
         tableView.rowHeight = 28
         tableView.intercellSpacing = NSSize(width: 0, height: 1)
         tableView.backgroundColor = .textBackgroundColor
-        if contextMenuTitle != nil {
+        if contextMenuActions.isEmpty == false {
             let menu = NSMenu()
             menu.delegate = context.coordinator
             tableView.menu = menu
@@ -92,6 +161,14 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         tableView.onActivateSelection = { [weak coordinator = context.coordinator, weak tableView] in
             guard let coordinator, let tableView else { return }
             coordinator.activateSelection(on: tableView)
+        }
+        tableView.onPreviewSelection = { [weak coordinator = context.coordinator, weak tableView] in
+            guard let coordinator, let tableView else { return }
+            coordinator.previewSelection(on: tableView)
+        }
+        tableView.onDeleteSelection = { [weak coordinator = context.coordinator, weak tableView] in
+            guard let coordinator, let tableView else { return }
+            coordinator.deleteSelection(on: tableView)
         }
 
         let scrollView = AppKitTableScrollView()
@@ -109,9 +186,11 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let tableView = scrollView.documentView as? NSTableView else { return }
         context.coordinator.parent = self
+        tableView.allowsMultipleSelection = allowsMultipleSelection
         scrollView.hasHorizontalScroller = hasHorizontalScroller
         scrollView.borderType = borderType
         (scrollView as? AppKitTableScrollView)?.allowsParentScrollPassthrough = allowsParentScrollPassthrough
+        context.coordinator.configureContextMenu(on: tableView)
         context.coordinator.configureColumns(on: tableView)
         context.coordinator.reloadDataIfNeeded(on: tableView)
         context.coordinator.applySelection(on: tableView)
@@ -123,6 +202,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         private var lastRows: [Row] = []
         private var rowSignature: [String] = []
         private var isApplyingSelection = false
+        private weak var currentTableView: NSTableView?
 
         init(_ parent: AppKitTable) {
             self.parent = parent
@@ -140,13 +220,15 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             else { return nil }
 
             let identifier = NSUserInterfaceItemIdentifier("MihomoTableCell")
-            let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView ?? makeCell(identifier: identifier)
+            let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView
+                ?? makeCell(identifier: identifier)
             let currentRow = parent.rows[row]
             let column = parent.columns[columnIndex]
             let value = column.value(currentRow)
             if let checked = column.checked {
                 let identifier = NSUserInterfaceItemIdentifier("MihomoCheckboxCell-\(columnIndex)")
-                let button = tableView.makeView(withIdentifier: identifier, owner: self) as? NSButton ?? makeCheckbox(identifier: identifier)
+                let button = tableView.makeView(withIdentifier: identifier, owner: self) as? NSButton
+                    ?? makeCheckbox(identifier: identifier)
                 button.state = checked(currentRow) ? .on : .off
                 button.tag = row
                 button.setAccessibilityLabel(column.title.isEmpty ? "启用规则" : column.title)
@@ -162,67 +244,98 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         @objc private func toggleCheckbox(_ sender: NSButton) {
             guard sender.tag >= 0, sender.tag < parent.rows.count,
                   let columnIndex = sender.identifier?.rawValue.split(separator: "-").last.flatMap({ Int($0) }),
-                  columnIndex < parent.columns.count else { return }
+                  columnIndex < parent.columns.count
+            else { return }
             parent.columns[columnIndex].toggle?(parent.rows[sender.tag])
+        }
+
+        func configureContextMenu(on tableView: NSTableView) {
+            currentTableView = tableView
+            if parent.contextMenuActions.isEmpty {
+                tableView.menu = nil
+            } else if tableView.menu == nil {
+                let menu = NSMenu()
+                menu.delegate = self
+                tableView.menu = menu
+            }
         }
 
         func menuNeedsUpdate(_ menu: NSMenu) {
             menu.removeAllItems()
-            guard let title = parent.contextMenuTitle, parent.onContextMenu != nil else { return }
-            let item = NSMenuItem(title: title, action: #selector(runContextAction), keyEquivalent: "")
-            item.target = self
-            menu.addItem(item)
+            guard let tableView = currentTableView else { return }
+            selectClickedRowIfNeeded(on: tableView)
+            let selectedRows = selectedRows(on: tableView)
+
+            for (index, action) in parent.contextMenuActions.enumerated() {
+                let item = NSMenuItem(title: action.title, action: #selector(runContextAction(_:)), keyEquivalent: "")
+                item.target = self
+                item.tag = index
+                item.isEnabled = action.isEnabled(selectedRows)
+                if action.isDestructive {
+                    item.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+                }
+                menu.addItem(item)
+            }
         }
 
-        @objc private func runContextAction() {
+        @objc private func runContextAction(_ sender: NSMenuItem) {
             guard let tableView = currentTableView,
-                  tableView.clickedRow >= 0, tableView.clickedRow < parent.rows.count else { return }
-            parent.onContextMenu?(parent.rows[tableView.clickedRow])
+                  parent.contextMenuActions.indices.contains(sender.tag)
+            else { return }
+            let rows = selectedRows(on: tableView)
+            parent.contextMenuActions[sender.tag].action(rows)
         }
-
-        private weak var currentTableView: NSTableView?
 
         @objc func clicked(_ sender: NSTableView) {
-            let row = sender.clickedRow >= 0 ? sender.clickedRow : sender.selectedRow
-            guard row >= 0, row < parent.rows.count else { return }
-            parent.selection = parent.rows[row].id
+            synchronizeSelection(from: sender)
         }
 
         @objc func doubleClicked(_ sender: NSTableView) {
+            let rowIndex = sender.clickedRow >= 0 ? sender.clickedRow : sender.selectedRow
+            guard rowIndex >= 0, rowIndex < parent.rows.count else { return }
+            parent.onDoubleClick?(parent.rows[rowIndex])
             activateSelection(on: sender)
         }
 
         func activateSelection(on tableView: NSTableView) {
-            let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
-            guard row >= 0, row < parent.rows.count else { return }
-            parent.selection = parent.rows[row].id
-            parent.onDoubleClick?(parent.rows[row])
+            let rows = selectedRows(on: tableView)
+            guard rows.isEmpty == false else { return }
+            if let onActivate = parent.onActivate {
+                onActivate(rows)
+            } else if let first = rows.first {
+                parent.onDoubleClick?(first)
+            }
         }
 
-        func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-            guard row >= 0, row < parent.rows.count else { return false }
-            parent.selection = parent.rows[row].id
-            return true
+        func previewSelection(on tableView: NSTableView) {
+            let rows = selectedRows(on: tableView)
+            guard rows.isEmpty == false else { return }
+            if let onPreview = parent.onPreview {
+                onPreview(rows)
+            } else {
+                activateSelection(on: tableView)
+            }
+        }
+
+        func deleteSelection(on tableView: NSTableView) {
+            let rows = selectedRows(on: tableView)
+            guard rows.isEmpty == false else { return }
+            parent.onDelete?(rows)
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
-            guard !isApplyingSelection,
+            guard isApplyingSelection == false,
                   let tableView = notification.object as? NSTableView
             else { return }
-
-            let selectedRow = tableView.selectedRow
-            if selectedRow >= 0, selectedRow < parent.rows.count {
-                parent.selection = parent.rows[selectedRow].id
-            } else {
-                parent.selection = nil
-            }
+            synchronizeSelection(from: tableView)
         }
 
         func configureColumns(on tableView: NSTableView) {
             currentTableView = tableView
             let nextSignature = parent.columns.map { "\($0.title):\($0.width)" }
             tableView.setAccessibilityLabel("数据表：\(parent.columns.map(\.title).joined(separator: "、"))")
-            tableView.setAccessibilityHelp("使用方向键选择行；支持详情的表格可按 Return、Enter 或空格打开所选行。")
+            let selectionHelp = parent.allowsMultipleSelection ? "可使用 Command 或 Shift 选择多行。" : ""
+            tableView.setAccessibilityHelp("使用方向键选择行；Return 打开，空格预览，Delete 删除。\(selectionHelp)")
             guard nextSignature != columnSignature else { return }
 
             tableView.tableColumns.forEach { tableView.removeTableColumn($0) }
@@ -261,15 +374,32 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             isApplyingSelection = true
             defer { isApplyingSelection = false }
 
-            guard let selection = parent.selection,
-                  let row = parent.rows.firstIndex(where: { $0.id == selection })
-            else {
-                tableView.deselectAll(nil)
-                return
+            let indexes = IndexSet(parent.rows.indices.filter { parent.selection.contains(parent.rows[$0].id) })
+            if tableView.selectedRowIndexes != indexes {
+                tableView.selectRowIndexes(indexes, byExtendingSelection: false)
             }
+        }
 
-            if tableView.selectedRow != row {
-                tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+        private func synchronizeSelection(from tableView: NSTableView) {
+            parent.selection = Set(tableView.selectedRowIndexes.compactMap { index in
+                guard parent.rows.indices.contains(index) else { return nil }
+                return parent.rows[index].id
+            })
+        }
+
+        private func selectClickedRowIfNeeded(on tableView: NSTableView) {
+            let clickedRow = tableView.clickedRow
+            guard clickedRow >= 0, clickedRow < parent.rows.count,
+                  tableView.selectedRowIndexes.contains(clickedRow) == false
+            else { return }
+            tableView.selectRowIndexes(IndexSet(integer: clickedRow), byExtendingSelection: false)
+            synchronizeSelection(from: tableView)
+        }
+
+        private func selectedRows(on tableView: NSTableView) -> [Row] {
+            tableView.selectedRowIndexes.compactMap { index in
+                guard parent.rows.indices.contains(index) else { return nil }
+                return parent.rows[index]
             }
         }
 
@@ -280,7 +410,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             let textField = NSTextField(labelWithString: "")
             textField.lineBreakMode = .byTruncatingTail
             textField.usesSingleLineMode = true
-            textField.font = .systemFont(ofSize: 13)
+            textField.font = .systemFont(ofSize: NSFont.systemFontSize)
             textField.translatesAutoresizingMaskIntoConstraints = false
             textField.setAccessibilityElement(false)
 
@@ -302,65 +432,5 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             button.setButtonType(.switch)
             return button
         }
-    }
-}
-
-final class AppKitAccessibleTableView: NSTableView {
-    var onActivateSelection: (() -> Void)?
-
-    override func keyDown(with event: NSEvent) {
-        let isActivationKey = event.keyCode == 36 || event.keyCode == 76 || event.charactersIgnoringModifiers == " "
-        if isActivationKey, selectedRow >= 0, let onActivateSelection {
-            onActivateSelection()
-            return
-        }
-        super.keyDown(with: event)
-    }
-}
-
-private final class AppKitTableScrollView: NSScrollView {
-    var allowsParentScrollPassthrough = false
-
-    override func scrollWheel(with event: NSEvent) {
-        guard allowsParentScrollPassthrough else {
-            super.scrollWheel(with: event)
-            return
-        }
-
-        guard shouldPassVerticalScrollToParent(event), let nextResponder else {
-            super.scrollWheel(with: event)
-            return
-        }
-
-        nextResponder.scrollWheel(with: event)
-    }
-
-    private func shouldPassVerticalScrollToParent(_ event: NSEvent) -> Bool {
-        guard abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX) else { return false }
-
-        let visibleHeight = contentView.bounds.height
-        let contentHeight = tableContentHeight
-        guard contentHeight > visibleHeight + 1 else { return true }
-
-        let originY = contentView.bounds.origin.y
-        let maxY = max(0, contentHeight - visibleHeight)
-
-        if originY <= 1, event.scrollingDeltaY > 0 {
-            return true
-        }
-        if originY >= maxY - 1, event.scrollingDeltaY < 0 {
-            return true
-        }
-        return false
-    }
-
-    private var tableContentHeight: CGFloat {
-        guard let tableView = documentView as? NSTableView else {
-            return documentView?.bounds.height ?? 0
-        }
-
-        let headerHeight = tableView.headerView?.frame.height ?? 0
-        let rowStride = tableView.rowHeight + tableView.intercellSpacing.height
-        return headerHeight + CGFloat(tableView.numberOfRows) * rowStride
     }
 }

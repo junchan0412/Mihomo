@@ -5,8 +5,8 @@ struct SettingsRootView: View {
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var store: AppStore
     @State private var draft = AppSettings.default
+    @State private var lastSavedSettings = AppSettings.default
     @State private var tab: SettingsTab = .general
-    @AppStorage("menuBar.showTrafficRates") private var showsMenuBarTrafficRates = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,8 +29,8 @@ struct SettingsRootView: View {
         .safeAreaInset(edge: .bottom) { footer }
         .frame(minWidth: 760, minHeight: 600)
         .navigationTitle("设置")
-        .onAppear { draft = store.settings }
-        .onReceive(store.$settings) { draft = $0 }
+        .onAppear { synchronizeDraft(with: store.settings, force: true) }
+        .onReceive(store.$settings) { synchronizeDraft(with: $0, force: false) }
     }
 
     private var header: some View {
@@ -94,6 +94,10 @@ struct SettingsRootView: View {
 
             SettingsSection(title: "订阅与常驻", subtitle: "控制远程配置刷新、登录项与轻量启动。", systemImage: "clock.arrow.circlepath") {
                 SettingsToggleRow("自动刷新远程订阅", isOn: $draft.autoRefreshProfiles)
+                SettingsToggleRow("订阅刷新失败时通知", isOn: $draft.notifyProfileRefreshFailures)
+                Text("仅在你主动启用此选项时请求系统通知权限；通知只用于后台刷新失败。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 SettingsRow("刷新间隔（小时）") {
                     TextField("24", value: $draft.profileRefreshIntervalHours, format: .number).frame(width: 140)
                 }
@@ -107,7 +111,7 @@ struct SettingsRootView: View {
                 }
                 SettingsToggleRow("登录后自动打开 Mihomo", isOn: $draft.launchAtLogin)
                 SettingsToggleRow("轻量模式启动", isOn: $draft.lightweightMode)
-                SettingsToggleRow("菜单栏显示上传下载速率", isOn: $showsMenuBarTrafficRates)
+                SettingsToggleRow("菜单栏显示上传下载速率", isOn: $draft.showMenuBarTrafficRates)
                 SettingsRow("登录项状态") { Text(store.loginItemStatus).foregroundStyle(.secondary) }
             }
 
@@ -176,5 +180,12 @@ struct SettingsRootView: View {
         case .bundled: return ManagedCoreManager.bundledCorePath ?? ""
         case .local: return localPath
         }
+    }
+
+    private func synchronizeDraft(with settings: AppSettings, force: Bool) {
+        if force || draft == lastSavedSettings {
+            draft = settings
+        }
+        lastSavedSettings = settings
     }
 }

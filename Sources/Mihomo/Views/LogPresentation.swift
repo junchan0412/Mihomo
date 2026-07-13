@@ -88,34 +88,25 @@ struct LogCategorySidebar: View {
     @Binding var selection: LogCategory
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("类型")
-                .font(MihomoUI.Fonts.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 18)
-                .padding(.top, 18)
-
+        List(selection: $selection) {
+            Section("类型") {
             ForEach(LogCategory.allCases) { category in
-                Button {
-                    selection = category
-                } label: {
-                    Text(category.title)
-                        .font(MihomoUI.Fonts.bodyMedium)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 14)
-                        .frame(height: 38)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(selection == category ? MihomoUI.mutedFill : Color.clear)
-                        )
+                    Label(category.title, systemImage: category.systemImage)
+                        .tag(category)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 10)
             }
-
-            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.bar)
+        .listStyle(.sidebar)
+    }
+}
+
+private extension LogCategory {
+    var systemImage: String {
+        switch self {
+        case .all: return "tray.full"
+        case .general: return "text.alignleft"
+        case .network: return "network"
+        case .dhcp: return "cable.connector"
+        }
     }
 }

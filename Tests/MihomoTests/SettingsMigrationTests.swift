@@ -3,7 +3,7 @@ import XCTest
 @testable import Mihomo
 
 final class SettingsMigrationTests: XCTestCase {
-    func testV2SettingsMigrateToV3AndDoNotMigrateAfterReload() throws {
+    func testV2SettingsMigrateToCurrentSchemaAndDoNotMigrateAfterReload() throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("MihomoSettingsMigrationTests-\(UUID().uuidString)", isDirectory: true)
         let settingsFile = root.appendingPathComponent("settings.json")
@@ -14,8 +14,9 @@ final class SettingsMigrationTests: XCTestCase {
         version2.settingsSchemaVersion = 2
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version2))
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 3)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, 4)
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v3：") })
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v4：") })
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -25,7 +26,7 @@ final class SettingsMigrationTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
         let reloaded = try decoder.decode(AppSettings.self, from: Data(contentsOf: settingsFile))
 
-        XCTAssertEqual(reloaded.settingsSchemaVersion, 3)
+        XCTAssertEqual(reloaded.settingsSchemaVersion, 4)
         XCTAssertNil(try SettingsMigrator.migration(for: reloaded))
     }
 
@@ -37,9 +38,10 @@ final class SettingsMigrationTests: XCTestCase {
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version1))
 
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 3)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, 4)
         XCTAssertFalse(migration.settings.managedCoreEnabled)
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v2：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v3：") })
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v4：") })
     }
 }

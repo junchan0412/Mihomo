@@ -28,7 +28,10 @@ enum AdvancedWorkspaceTab: String, CaseIterable, Identifiable {
 struct AdvancedView: View {
     @EnvironmentObject private var store: AppStore
     @State private var draft = AppSettings.default
+    @State private var lastSavedSettings = AppSettings.default
     @State private var tab: AdvancedWorkspaceTab = .runtime
+    @State private var confirmsHelperUninstall = false
+    @State private var confirmsLaunchDaemonUninstall = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -59,10 +62,22 @@ struct AdvancedView: View {
         .safeAreaInset(edge: .bottom) { footer }
         .navigationTitle("高级工具")
         .onAppear {
-            draft = store.settings
+            synchronizeDraft(with: store.settings, force: true)
             store.refreshConfigArtifacts()
         }
-        .onReceive(store.$settings) { draft = $0 }
+        .onReceive(store.$settings) { synchronizeDraft(with: $0, force: false) }
+        .confirmationDialog("卸载 XPC Helper？", isPresented: $confirmsHelperUninstall, titleVisibility: .visible) {
+            Button("卸载 Helper", role: .destructive) { Task { await store.unregisterHelper() } }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("卸载后，需要管理员权限的系统代理、DNS、TUN 与核心托管操作将不可用，直到重新注册。")
+        }
+        .confirmationDialog("卸载 LaunchDaemon？", isPresented: $confirmsLaunchDaemonUninstall, titleVisibility: .visible) {
+            Button("卸载 LaunchDaemon", role: .destructive) { Task { await store.uninstallLaunchDaemon() } }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("后台托管的核心进程会停止，登录后也不会自动由 LaunchDaemon 启动。")
+        }
     }
 
     private var header: some View {
@@ -118,7 +133,7 @@ struct AdvancedView: View {
                     Button("检查") { Task { await store.refreshHelperStatus() } }
                     Button("审计") { Task { await store.auditHelper() } }
                     Button("修复") { Task { await store.repairHelperRegistration() } }
-                    Button("卸载", role: .destructive) { Task { await store.unregisterHelper() } }
+                    Button("卸载", role: .destructive) { confirmsHelperUninstall = true }
                 }
             }
             SettingsRow("核心路径") {
@@ -137,7 +152,7 @@ struct AdvancedView: View {
                             await store.installLaunchDaemon()
                         }
                     }
-                    Button("卸载", role: .destructive) { Task { await store.uninstallLaunchDaemon() } }
+                    Button("卸载", role: .destructive) { confirmsLaunchDaemonUninstall = true }
                 }
             }
         }
@@ -174,5 +189,12 @@ struct AdvancedView: View {
         .padding(.horizontal, MihomoUI.pageHorizontalPadding)
         .padding(.vertical, 12)
         .background(.bar)
+    }
+
+    private func synchronizeDraft(with settings: AppSettings, force: Bool) {
+        if force || draft == lastSavedSettings {
+            draft = settings
+        }
+        lastSavedSettings = settings
     }
 }

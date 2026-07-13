@@ -1,10 +1,14 @@
 import SwiftUI
 
 struct RootView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: AppStore
+    @AppStorage("main.sidebar.visible") private var sidebarIsVisible = true
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @StateObject private var appIntentRouter = AppIntentRouter.shared
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             MihomoSidebarView(selection: $store.selectedSection)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 236, max: 260)
         } detail: {
@@ -12,14 +16,9 @@ struct RootView: View {
                 .id(store.selectedSection)
                 .navigationTitle("")
                 .transition(.opacity)
-                .animation(.easeOut(duration: 0.12), value: store.selectedSection)
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: store.selectedSection)
         }
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                GlobalLogMenuHost()
-                .frame(width: 260, alignment: .leading)
-            }
-
+        .toolbar(id: "main") {
             ToolbarItem(id: "core-control", placement: .primaryAction) {
                 ToolbarStateButton(
                     title: "核心",
@@ -56,7 +55,7 @@ struct RootView: View {
                 }
             }
 
-            ToolbarItem(id: "mode-control", placement: .primaryAction) {
+            ToolbarItem(id: "mode-control", placement: .principal) {
                 Picker("模式", selection: Binding(
                     get: { store.currentMode },
                     set: { mode in Task { await store.setMode(mode) } }
@@ -68,8 +67,26 @@ struct RootView: View {
                 .pickerStyle(.segmented)
                 .frame(width: 150)
             }
+
+            ToolbarItem(id: "recent-logs", placement: .secondaryAction) {
+                GlobalLogMenuHost()
+                    .frame(width: 260, alignment: .leading)
+            }
         }
+        .toolbarRole(.editor)
         .background(WindowIdentifierView(identifier: AppWindowIdentifier.main))
+        .onAppear {
+            store.isLightweightModeActive = false
+            columnVisibility = sidebarIsVisible ? .all : .detailOnly
+        }
+        .onChange(of: columnVisibility) {
+            sidebarIsVisible = columnVisibility != .detailOnly
+        }
+        .onChange(of: appIntentRouter.pendingAction) {
+            guard let action = appIntentRouter.pendingAction else { return }
+            appIntentRouter.pendingAction = nil
+            Task { await store.handleAppIntent(action) }
+        }
     }
 }
 
@@ -94,6 +111,7 @@ private struct GlobalLogMenu: View {
     var logs: [LogEntry]
     var clearLogs: () -> Void
     var openFullLog: () -> Void
+    @State private var confirmsClear = false
 
     var body: some View {
         Menu {
@@ -112,7 +130,7 @@ private struct GlobalLogMenu: View {
             }
 
             Button("全部清除") {
-                clearLogs()
+                confirmsClear = true
             }
             .disabled(logs.isEmpty)
         } label: {
@@ -133,6 +151,12 @@ private struct GlobalLogMenu: View {
         .menuStyle(.button)
         .controlSize(.small)
         .help("显示最近日志")
+        .confirmationDialog("清空当前日志？", isPresented: $confirmsClear, titleVisibility: .visible) {
+            Button("全部清除", role: .destructive) { clearLogs() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("这只会清空当前界面的日志与缓冲；已落盘日志文件不会被删除。")
+        }
     }
 
     private func levelTitle(_ level: String?) -> String {
@@ -219,8 +243,6 @@ struct DetailSwitchView: View {
             LogsView()
         case .diagnostics:
             DiagnosticsView()
-        case .settings:
-            SettingsRootView()
         }
     }
 }

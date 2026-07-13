@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 
 struct PolicyWorkspaceView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var providers: [ProviderItem]
     var groups: [ProxyGroup]
     var iconImages: [String: NSImage]
@@ -14,6 +15,7 @@ struct PolicyWorkspaceView: View {
     @Binding var selectedNodeID: String?
     var nodesForGroup: (ProxyGroup) -> [PolicyNodeRow]
     var toggleGroup: (ProxyGroup) -> Void
+    var showGroupDetail: (ProxyGroup) -> Void
     var activateNode: (PolicyNodeRow) -> Void
 
     var body: some View {
@@ -97,18 +99,24 @@ struct PolicyWorkspaceView: View {
                                 Spacer(minLength: 0)
                             }
                             .padding(.horizontal, 12).frame(minHeight: 48)
-                            .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
+                            .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 12))
                         }
                     }
                     .padding(16)
                 }
             }
         }
-        .background(.quaternary.opacity(0.32), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .contextMenu {
+            Button("刷新 Provider") { refreshProvider(provider) }
+            Button(expandedProviderIDs.contains(provider.id) ? "收起" : "展开") {
+                toggleProvider(provider)
+            }
+        }
     }
 
     private func toggleProvider(_ provider: ProviderItem) {
-        withAnimation(.snappy(duration: 0.22)) {
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) {
             if expandedProviderIDs.contains(provider.id) { expandedProviderIDs.remove(provider.id) }
             else { expandedProviderIDs.insert(provider.id) }
         }
@@ -170,11 +178,19 @@ struct PolicyWorkspaceView: View {
                 .transition(.opacity)
             }
         }
-        .background(.quaternary.opacity(0.32), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .contextMenu {
+            Button("测速此组") { testGroup(group) }
+                .disabled(isOffline)
+            Button(expandedGroupIDs.contains(group.id) ? "收起" : "展开") {
+                toggleGroupAnimated(group)
+            }
+            Button("查看详情") { showGroupDetail(group) }
+        }
     }
 
     private func toggleGroupAnimated(_ group: ProxyGroup) {
-        withAnimation(.snappy(duration: 0.22)) {
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) {
             toggleGroup(group)
         }
     }

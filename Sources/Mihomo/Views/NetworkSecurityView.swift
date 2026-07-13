@@ -3,6 +3,7 @@ import SwiftUI
 struct NetworkSecurityView: View {
     @EnvironmentObject private var store: AppStore
     @State private var draft = AppSettings.default
+    @State private var lastSavedSettings = AppSettings.default
     @State private var selectedSnapshotKind: NetworkSecuritySnapshotKind? = .systemProxy
 
     private var states: [NetworkTakeoverState] {
@@ -32,11 +33,15 @@ struct NetworkSecurityView: View {
             }
         }
         .navigationTitle("网络")
+        .focusedSceneValue(
+            \.workspaceCommands,
+            WorkspaceCommandContext(refresh: { store.refreshNetworkTakeoverStates(force: true) })
+        )
         .onAppear {
-            draft = store.settings
+            synchronizeDraft(with: store.settings, force: true)
             store.refreshNetworkTakeoverStates()
         }
-        .onReceive(store.$settings) { draft = $0 }
+        .onReceive(store.$settings) { synchronizeDraft(with: $0, force: false) }
     }
 
     private var header: some View {
@@ -249,8 +254,8 @@ struct NetworkSecurityView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, minHeight: 180, alignment: .topLeading)
-        .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
-        .overlay { RoundedRectangle(cornerRadius: 12).stroke(.quaternary, lineWidth: 1) }
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 12))
+        .overlay { RoundedRectangle(cornerRadius: 12).stroke(MihomoUI.cardStroke, lineWidth: 1) }
     }
 
     private func state(for kind: NetworkTakeoverKind) -> NetworkTakeoverState {
@@ -263,6 +268,13 @@ struct NetworkSecurityView: View {
 
     private var tunBinding: Binding<Bool> {
         Binding(get: { store.settings.tunEnabled }, set: { enabled in Task { await store.setTunEnabled(enabled) } })
+    }
+
+    private func synchronizeDraft(with settings: AppSettings, force: Bool) {
+        if force || draft == lastSavedSettings {
+            draft = settings
+        }
+        lastSavedSettings = settings
     }
 
     private var systemDNSBinding: Binding<Bool> {

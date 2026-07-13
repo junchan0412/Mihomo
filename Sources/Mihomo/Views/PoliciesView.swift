@@ -1,10 +1,12 @@
 import SwiftUI
 
 struct PoliciesView: View {
+    @Environment(\.undoManager) private var undoManager
     @EnvironmentObject private var store: AppStore
     @State private var selectedGroupID: String?
     @State private var selectedNodeID: String?
     @State private var searchText = ""
+    @FocusState private var searchIsFocused: Bool
     @State private var pendingAutomaticOverride: PolicyNodeRow?
     @State private var showingGroupEditor = false
     @State private var showingGroupDetail = false
@@ -64,6 +66,9 @@ struct PoliciesView: View {
         .padding(.vertical, MihomoUI.pageVerticalPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("策略")
+        .searchable(text: $searchText, placement: .toolbar, prompt: "搜索策略组或节点")
+        .compatibleSearchFocused($searchIsFocused)
+        .focusedSceneValue(\.workspaceCommands, commandContext)
         .onAppear {
             if store.offlineProxyGroups.isEmpty {
                 store.refreshConfigArtifacts()
@@ -242,6 +247,10 @@ struct PoliciesView: View {
                     expandedGroupIDs.insert(group.id)
                 }
             },
+            showGroupDetail: { group in
+                selectedGroupID = group.id
+                showingGroupDetail = true
+            },
             activateNode: handleNodeDoubleClick
         )
     }
@@ -341,8 +350,37 @@ struct PoliciesView: View {
     private func savePolicyGroups() {
         guard let profile = store.activeProfile else { return }
         Task {
-            await store.saveProfileEditor(profileID: profile.id, name: profile.name, content: groupEditorContent)
+            await store.saveProfileEditor(
+                profileID: profile.id,
+                name: profile.name,
+                content: groupEditorContent,
+                undoManager: undoManager
+            )
             showingGroupEditor = false
         }
+    }
+
+    private func collapseSelectedGroup() {
+        guard let selectedGroupID else { return }
+        expandedGroupIDs.remove(selectedGroupID)
+    }
+
+    private func expandSelectedGroup() {
+        guard let selectedGroupID else { return }
+        expandedGroupIDs.insert(selectedGroupID)
+    }
+
+    private var commandContext: WorkspaceCommandContext {
+        WorkspaceCommandContext(
+            search: {
+                searchIsFocused = true
+                MihomoSearchFocus.request()
+            },
+            refresh: { Task { await store.refreshController() } },
+            activateSelection: searchIsFocused == false && canApplySelectedNode ? applySelectedNode : nil,
+            previewSelection: searchIsFocused || selectedGroup == nil ? nil : { showingGroupDetail = true },
+            collapseSelection: searchIsFocused || selectedGroup == nil ? nil : collapseSelectedGroup,
+            expandSelection: searchIsFocused || selectedGroup == nil ? nil : expandSelectedGroup
+        )
     }
 }

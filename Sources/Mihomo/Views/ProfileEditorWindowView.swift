@@ -1,17 +1,16 @@
 import SwiftUI
 
 struct ProfileEditorWindowView: View {
+    @Environment(\.undoManager) private var undoManager
     @EnvironmentObject private var store: AppStore
+    let profileID: UUID
     @State private var editorName = ""
     @State private var editorContent = ""
     @State private var editorMode = "yaml"
     @State private var status = "选择配置后载入内容"
 
     private var profile: ProfileItem? {
-        guard let id = store.profileEditorProfileID ?? store.settings.activeProfileID else {
-            return store.profiles.first
-        }
-        return store.profiles.first { $0.id == id }
+        store.profiles.first { $0.id == profileID }
     }
 
     var body: some View {
@@ -41,16 +40,11 @@ struct ProfileEditorWindowView: View {
                 .padding(16)
             }
         }
-        .navigationTitle("配置编辑器")
+        .navigationTitle(profile?.name ?? "配置编辑器")
         .onAppear(perform: loadEditor)
-        .onChange(of: store.profileEditorProfileID) {
-            loadEditor()
-        }
         .onChange(of: store.profiles) {
-            if let profile, profile.id == store.profileEditorProfileID {
-                return
-            }
-            loadEditor()
+            guard profile == nil else { return }
+            status = "配置已被删除"
         }
     }
 
@@ -110,7 +104,8 @@ struct ProfileEditorWindowView: View {
             await store.saveProfileEditor(
                 profileID: profile.id,
                 name: editorName,
-                content: editorContent
+                content: editorContent,
+                undoManager: undoManager
             )
             status = "已保存：\(Formatters.shortDate.string(from: Date()))"
         }

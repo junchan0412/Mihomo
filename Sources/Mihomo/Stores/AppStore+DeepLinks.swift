@@ -11,6 +11,10 @@ extension AppStore {
 
         do {
             switch command {
+            case "open-section":
+                guard let rawSection = query["section"], let section = AppSection(rawValue: rawSection) else { return }
+                selectedSection = section
+                isLightweightModeActive = false
             case "install-profile", "profile":
                 guard let value = query["url"], let importURL = URL(string: value) else { return }
                 if importURL.isFileURL {

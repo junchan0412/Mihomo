@@ -2,9 +2,12 @@ import AppKit
 import SwiftUI
 
 struct RulesView: View {
+    @Environment(\.undoManager) private var undoManager
     @EnvironmentObject private var store: AppStore
     @State private var searchText = ""
-    @State private var selectedRuleIndex: Int?
+    @FocusState private var searchIsFocused: Bool
+    @State private var selectedRuleIDs: Set<String> = []
+    @State private var confirmsDeletion = false
     @State private var editorPresentation: RuleEditorPresentation?
     @State private var editorOriginalIndex: Int?
     @State private var editorType = "MATCH"
@@ -36,8 +39,12 @@ struct RulesView: View {
     }
 
     private var selectedEntry: RuleTableEntry? {
-        guard let selectedRuleIndex else { return nil }
-        return entries.first { $0.rule.index == selectedRuleIndex }
+        guard selectedRuleIDs.count == 1, let selectedRuleID = selectedRuleIDs.first else { return nil }
+        return entries.first { $0.id == selectedRuleID }
+    }
+
+    private var selectedEntries: [RuleTableEntry] {
+        entries.filter { selectedRuleIDs.contains($0.id) }
     }
 
     var body: some View {
@@ -52,6 +59,9 @@ struct RulesView: View {
             .padding(16)
         }
         .navigationTitle("规则")
+        .searchable(text: $searchText, placement: .toolbar, prompt: "搜索规则类型、值或策略")
+        .compatibleSearchFocused($searchIsFocused)
+        .focusedSceneValue(\.workspaceCommands, commandContext)
         .onAppear {
             store.refreshConfigArtifacts()
             applyRuleFocusQuery()
@@ -60,10 +70,17 @@ struct RulesView: View {
             applyRuleFocusQuery()
         }
         .onChange(of: store.rules) {
-            guard let selectedRuleIndex else { return }
-            if store.rules.contains(where: { $0.index == selectedRuleIndex }) == false {
-                self.selectedRuleIndex = nil
+            selectedRuleIDs.formIntersection(Set(entries.map(\.id)))
+        }
+        .confirmationDialog("删除所选规则？", isPresented: $confirmsDeletion, titleVisibility: .visible) {
+            Button("删除 \(selectedEntries.count) 条规则", role: .destructive) {
+                let indices = selectedEntries.map(\.rule.index)
+                selectedRuleIDs.removeAll()
+                Task { await store.deleteActiveProfileRules(indices: indices, undoManager: undoManager) }
             }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("规则会从当前配置文件中移除。完成后可使用 Command-Z 撤销。")
         }
         .sheet(item: $editorPresentation) { presentation in
             RuleEditorSheet(
@@ -91,8 +108,6 @@ struct RulesView: View {
 
             Spacer()
 
-            searchField
-
             Button {
                 store.refreshConfigArtifacts()
             } label: {
@@ -111,35 +126,24 @@ struct RulesView: View {
         .padding(.vertical, 12)
     }
 
-    private var searchField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("搜索规则", text: $searchText)
-                .textFieldStyle(.plain)
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 6)
-        .frame(width: 260)
-        .background(.quaternary.opacity(0.8), in: RoundedRectangle(cornerRadius: 7))
-    }
-
     private func applyRuleFocusQuery() {
         let query = store.ruleFocusQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         guard query.isEmpty == false else { return }
         searchText = query
-        selectedRuleIndex = entries.first { $0.searchText.localizedCaseInsensitiveContains(query) }?.rule.index
+        if let entry = entries.first(where: { $0.searchText.localizedCaseInsensitiveContains(query) }) {
+            selectedRuleIDs = [entry.id]
+        }
     }
 
     private var ruleTable: some View {
         VStack(spacing: 0) {
             AppKitTable(
                 rows: filteredEntries,
-                selection: ruleSelectionBinding,
+                selection: $selectedRuleIDs,
                 columns: [
                     .init(title: "启用", width: 48, checked: { !$0.rule.disabled }) { entry in
-                        selectedRuleIndex = entry.rule.index
-                        store.toggleRuleDisabled(entry.rule)
+                        selectedRuleIDs = [entry.id]
+                        store.toggleRuleDisabled(entry.rule, undoManager: undoManager)
                     },
                     .init(title: "ID", width: 52, textColor: ruleTextColor) { "\($0.rule.index)" },
                     .init(title: "类型", width: 124, textColor: ruleTextColor) { $0.type },
@@ -148,11 +152,24 @@ struct RulesView: View {
                     .init(title: "计数", width: 68, textColor: ruleTextColor) { "\($0.rule.hitCount)" },
                     .init(title: "注释", width: 140, textColor: ruleTextColor) { $0.note.isEmpty ? "-" : $0.note }
                 ],
+                allowsMultipleSelection: true,
                 onDoubleClick: beginEdit,
-                hasHorizontalScroller: false
+                onActivate: { selected in
+                    guard let entry = selected.first else { return }
+                    selectedRuleIDs = [entry.id]
+                    beginEdit(entry)
+                },
+                onPreview: { selected in
+                    guard let entry = selected.first else { return }
+                    selectedRuleIDs = [entry.id]
+                    beginEdit(entry)
+                },
+                onDelete: { _ in requestDeleteSelectedRules() },
+                hasHorizontalScroller: false,
+                contextMenuActions: ruleContextMenuActions
             )
         }
-        .background(.quaternary.opacity(0.28), in: RoundedRectangle(cornerRadius: 8))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             if filteredEntries.isEmpty {
                 ContentUnavailableView("没有规则", systemImage: "list.bullet.rectangle")
@@ -164,7 +181,7 @@ struct RulesView: View {
         ruleTable
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay { RoundedRectangle(cornerRadius: 10).stroke(.quaternary, lineWidth: 1) }
+        .overlay { RoundedRectangle(cornerRadius: 10).stroke(MihomoUI.cardStroke, lineWidth: 1) }
     }
 
     private var bottomBar: some View {
@@ -184,7 +201,7 @@ struct RulesView: View {
                     .frame(width: 18)
             }
             .help("删除选中规则")
-            .disabled(selectedRuleIndex == nil)
+            .disabled(selectedEntries.isEmpty)
 
             Button {
                 if let selectedEntry {
@@ -195,16 +212,16 @@ struct RulesView: View {
                     .frame(width: 18)
             }
             .help("编辑选中规则")
-            .disabled(selectedRuleIndex == nil)
+            .disabled(selectedEntry == nil)
 
             Button {
                 toggleSelectedRule()
             } label: {
-                Image(systemName: selectedEntry?.rule.disabled == true ? "checkmark.circle" : "slash.circle")
+                Image(systemName: selectedEntries.allSatisfy(\.rule.disabled) ? "checkmark.circle" : "slash.circle")
                     .frame(width: 18)
             }
-            .help(selectedEntry?.rule.disabled == true ? "启用选中规则" : "禁用选中规则")
-            .disabled(selectedRuleIndex == nil)
+            .help(selectedEntries.allSatisfy(\.rule.disabled) ? "启用选中规则" : "禁用选中规则")
+            .disabled(selectedEntries.isEmpty)
 
             Divider()
                 .frame(height: 20)
@@ -225,21 +242,6 @@ struct RulesView: View {
         .buttonStyle(.bordered)
     }
 
-    private var ruleSelectionBinding: Binding<RuleTableEntry.ID?> {
-        Binding(
-            get: { selectedEntry?.id },
-            set: { id in
-                guard let id,
-                      let entry = filteredEntries.first(where: { $0.id == id })
-                else {
-                    selectedRuleIndex = nil
-                    return
-                }
-                selectedRuleIndex = entry.rule.index
-            }
-        )
-    }
-
     private func ruleTextColor(_ entry: RuleTableEntry) -> NSColor? {
         entry.rule.disabled ? .secondaryLabelColor : nil
     }
@@ -254,7 +256,7 @@ struct RulesView: View {
     }
 
     private func beginEdit(_ entry: RuleTableEntry) {
-        selectedRuleIndex = entry.rule.index
+        selectedRuleIDs = [entry.id]
         editorOriginalIndex = entry.rule.index
         editorType = entry.type
         editorValue = entry.value
@@ -274,22 +276,62 @@ struct RulesView: View {
             options: parseOptions(editorNote)
         )
         Task {
-            await store.upsertActiveProfileRule(originalIndex: editorOriginalIndex, rule: rule)
-            selectedRuleIndex = rule.index
+            await store.upsertActiveProfileRule(originalIndex: editorOriginalIndex, rule: rule, undoManager: undoManager)
+            if let entry = store.rules.map(RuleTableEntry.init).first(where: { $0.rule.index == rule.index }) {
+                selectedRuleIDs = [entry.id]
+            }
         }
     }
 
     private func deleteSelectedRule() {
-        guard let selectedRuleIndex else { return }
-        Task {
-            await store.deleteActiveProfileRule(index: selectedRuleIndex)
-            self.selectedRuleIndex = nil
-        }
+        requestDeleteSelectedRules()
     }
 
     private func toggleSelectedRule() {
-        guard let selectedEntry else { return }
-        store.toggleRuleDisabled(selectedEntry.rule)
+        guard selectedEntries.isEmpty == false else { return }
+        let shouldDisable = selectedEntries.allSatisfy { $0.rule.disabled } == false
+        store.setRulesDisabled(selectedEntries.map(\.rule), disabled: shouldDisable, undoManager: undoManager)
+    }
+
+    private func requestDeleteSelectedRules() {
+        guard selectedEntries.isEmpty == false else { return }
+        confirmsDeletion = true
+    }
+
+    private var ruleContextMenuActions: [AppKitTableContextAction<RuleTableEntry>] {
+        [
+            .init("启用") { entries in
+                store.setRulesDisabled(entries.map(\.rule), disabled: false, undoManager: undoManager)
+            },
+            .init("停用") { entries in
+                store.setRulesDisabled(entries.map(\.rule), disabled: true, undoManager: undoManager)
+            },
+            .init("编辑", isEnabled: { $0.count == 1 }) { entries in
+                guard let entry = entries.first else { return }
+                beginEdit(entry)
+            },
+            .init("复制规则") { entries in
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(entries.map(\.rule.content).joined(separator: "\n"), forType: .string)
+            },
+            .init("删除", isDestructive: true) { entries in
+                selectedRuleIDs = Set(entries.map(\.id))
+                requestDeleteSelectedRules()
+            }
+        ]
+    }
+
+    private var commandContext: WorkspaceCommandContext {
+        WorkspaceCommandContext(
+            search: {
+                searchIsFocused = true
+                MihomoSearchFocus.request()
+            },
+            refresh: store.refreshConfigArtifacts,
+            activateSelection: searchIsFocused || selectedEntry == nil ? nil : { if let selectedEntry { beginEdit(selectedEntry) } },
+            previewSelection: searchIsFocused || selectedEntry == nil ? nil : { if let selectedEntry { beginEdit(selectedEntry) } },
+            deleteSelection: searchIsFocused || selectedEntries.isEmpty ? nil : requestDeleteSelectedRules
+        )
     }
 
     private func parseOptions(_ text: String) -> [String] {

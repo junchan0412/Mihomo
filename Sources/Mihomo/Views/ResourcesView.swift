@@ -3,8 +3,11 @@ import SwiftUI
 
 struct ResourcesView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var selectedResourceID: String?
+    @State private var selectedResourceIDs: Set<String> = []
+    @State private var searchText = ""
+    @FocusState private var searchIsFocused: Bool
     @State private var showsOnlyUnready = false
+    @State private var confirmsRollback = false
 
     private var latestRecords: [String: ProviderUpdateRecord] {
         var records: [String: ProviderUpdateRecord] = [:]
@@ -25,12 +28,23 @@ struct ResourcesView: View {
     }
 
     private var visibleRows: [ExternalResourceRow] {
-        showsOnlyUnready ? allRows.filter { $0.isReady == false } : allRows
+        let readinessRows = showsOnlyUnready ? allRows.filter { $0.isReady == false } : allRows
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else { return readinessRows }
+        return readinessRows.filter {
+            $0.nameText.localizedCaseInsensitiveContains(query)
+                || $0.typeText.localizedCaseInsensitiveContains(query)
+                || $0.pathText.localizedCaseInsensitiveContains(query)
+        }
     }
 
     private var selectedRow: ExternalResourceRow? {
-        guard let selectedResourceID else { return nil }
+        guard selectedResourceIDs.count == 1, let selectedResourceID = selectedResourceIDs.first else { return nil }
         return allRows.first { $0.id == selectedResourceID }
+    }
+
+    private var selectedRows: [ExternalResourceRow] {
+        allRows.filter { selectedResourceIDs.contains($0.id) }
     }
 
     private var refreshableCount: Int {
@@ -47,6 +61,9 @@ struct ResourcesView: View {
         .padding(.vertical, MihomoUI.pageVerticalPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("资源")
+        .searchable(text: $searchText, placement: .toolbar, prompt: "搜索 Provider 或路径")
+        .compatibleSearchFocused($searchIsFocused)
+        .focusedSceneValue(\.workspaceCommands, commandContext)
         .onAppear {
             store.refreshConfigArtifacts()
             ensureSelection()
@@ -56,6 +73,14 @@ struct ResourcesView: View {
         }
         .onChange(of: showsOnlyUnready) {
             ensureSelection()
+        }
+        .confirmationDialog("回滚所选资源？", isPresented: $confirmsRollback, titleVisibility: .visible) {
+            Button("回滚 \(rollbackableSelectedRows.count) 个资源", role: .destructive) {
+                rollbackSelectedResources()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("当前资源文件会被备份版本替换；Mihomo 会保留被替换版本供后续再次回滚。")
         }
     }
 
@@ -100,7 +125,7 @@ struct ResourcesView: View {
         VStack(spacing: 0) {
             AppKitTable(
                 rows: visibleRows,
-                selection: $selectedResourceID,
+                selection: $selectedResourceIDs,
                 columns: [
                     .init(title: "名称", width: 160) { $0.nameText },
                     .init(title: "类型", width: 150) { $0.typeText },
@@ -108,13 +133,12 @@ struct ResourcesView: View {
                     .init(title: "状态", width: 150, textColor: statusTextColor) { $0.statusText },
                     .init(title: "路径", width: 420) { $0.pathText }
                 ],
+                allowsMultipleSelection: true,
                 onDoubleClick: handleDoubleClick,
+                onActivate: { rows in refreshResources(rows) },
+                onPreview: { rows in previewResources(rows) },
                 hasHorizontalScroller: true,
-                contextMenuTitle: "更新此资源",
-                onContextMenu: { row in
-                    selectedResourceID = row.id
-                    Task { await store.refreshProviderResource(row.provider) }
-                }
+                contextMenuActions: resourceContextMenuActions
             )
             .frame(minHeight: 360, maxHeight: .infinity)
             .overlay {
@@ -131,10 +155,10 @@ struct ResourcesView: View {
 
             bottomBar
         }
-        .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay {
             RoundedRectangle(cornerRadius: 8)
-                .stroke(.quaternary, lineWidth: 1)
+                .stroke(MihomoUI.cardStroke, lineWidth: 1)
         }
     }
 
@@ -164,6 +188,13 @@ struct ResourcesView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(refreshableCount == 0)
+
+            Button {
+                refreshResources(selectedRows)
+            } label: {
+                Label("更新所选", systemImage: "arrow.clockwise")
+            }
+            .disabled(selectedRows.contains(where: \.canRefresh) == false)
         }
         .font(.callout)
         .padding(.horizontal, 12)
@@ -219,24 +250,95 @@ struct ResourcesView: View {
         .frame(maxWidth: .infinity, minHeight: 138, alignment: .topLeading)
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(.quaternary.opacity(0.24), in: RoundedRectangle(cornerRadius: 8))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func ensureSelection() {
         let rows = visibleRows
         guard rows.isEmpty == false else {
-            selectedResourceID = nil
+            selectedResourceIDs.removeAll()
             return
         }
-        if let selectedResourceID, rows.contains(where: { $0.id == selectedResourceID }) {
+        selectedResourceIDs.formIntersection(Set(rows.map(\.id)))
+        if selectedResourceIDs.isEmpty == false {
             return
         }
-        selectedResourceID = rows.first?.id
+        if let firstID = rows.first?.id {
+            selectedResourceIDs = [firstID]
+        }
     }
 
     private func handleDoubleClick(_ row: ExternalResourceRow) {
         guard row.canRefresh else { return }
         Task { await store.refreshProviderResource(row.provider) }
+    }
+
+    private func refreshResources(_ rows: [ExternalResourceRow]) {
+        let providers = rows.filter(\.canRefresh).map(\.provider)
+        Task {
+            for provider in providers {
+                await store.refreshProviderResource(provider)
+            }
+        }
+    }
+
+    private func previewResources(_ rows: [ExternalResourceRow]) {
+        QuickLookPreviewer.shared.present(resourceURLs(for: rows))
+    }
+
+    private func resourceURLs(for rows: [ExternalResourceRow]) -> [URL] {
+        rows.compactMap { row in
+            let path = row.provider.path?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard path.isEmpty == false else { return nil }
+            return URL(fileURLWithPath: (path as NSString).expandingTildeInPath)
+        }
+    }
+
+    private var rollbackableSelectedRows: [ExternalResourceRow] {
+        selectedRows.filter { store.latestProviderRollbackRecord(for: $0.provider) != nil }
+    }
+
+    private func rollbackSelectedResources() {
+        let providers = rollbackableSelectedRows.map(\.provider)
+        Task {
+            for provider in providers {
+                await store.rollbackProviderResource(provider)
+            }
+        }
+    }
+
+    private var resourceContextMenuActions: [AppKitTableContextAction<ExternalResourceRow>] {
+        [
+            .init("更新") { rows in
+                refreshResources(rows)
+            },
+            .init(
+                "回滚",
+                isDestructive: true,
+                isEnabled: { rows in rows.contains { store.latestProviderRollbackRecord(for: $0.provider) != nil } }
+            ) { rows in
+                selectedResourceIDs = Set(rows.map(\.id))
+                confirmsRollback = true
+            },
+            .init("快速查看", isEnabled: { resourceURLs(for: $0).isEmpty == false }) { rows in
+                previewResources(rows)
+            },
+            .init("在 Finder 中显示", isEnabled: { resourceURLs(for: $0).isEmpty == false }) { rows in
+                NSWorkspace.shared.activateFileViewerSelecting(resourceURLs(for: rows))
+            }
+        ]
+    }
+
+    private var commandContext: WorkspaceCommandContext {
+        WorkspaceCommandContext(
+            search: {
+                searchIsFocused = true
+                MihomoSearchFocus.request()
+            },
+            refresh: { refreshResources(selectedRows.isEmpty ? visibleRows : selectedRows) },
+            activateSelection: searchIsFocused || selectedRows.isEmpty ? nil : { refreshResources(selectedRows) },
+            previewSelection: searchIsFocused || resourceURLs(for: selectedRows).isEmpty ? nil : { previewResources(selectedRows) }
+        )
     }
 
     private func statusTextColor(_ row: ExternalResourceRow) -> NSColor? {

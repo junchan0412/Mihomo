@@ -65,7 +65,7 @@ struct TrafficGraphView: View {
 
             let value = Int64(Double(maxValue) * Double(3 - index) / 3.0)
             let text = Text(Formatters.rate(value))
-                .font(.system(size: 10, weight: .medium).monospacedDigit())
+                .font(.caption2.weight(.medium).monospacedDigit())
                 .foregroundStyle(.secondary)
             context.draw(text, at: CGPoint(x: graphRect.maxX + 8, y: y), anchor: .leading)
         }

@@ -168,6 +168,7 @@ extension AppStore {
     func exportDiagnosticBundle() {
         do {
             let archive = try makeDiagnosticBundle()
+            lastDiagnosticBundleURL = archive
             diagnosticExportStatus = "诊断包已导出：\(archive.path)"
             NSWorkspace.shared.activateFileViewerSelecting([archive])
             appendLog("info", diagnosticExportStatus)

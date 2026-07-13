@@ -17,6 +17,16 @@ struct DiagnosticsView: View {
                     Button { store.exportDiagnosticBundle() } label: {
                         Label("导出诊断包", systemImage: "square.and.arrow.up")
                     }
+                    if let url = store.lastDiagnosticBundleURL {
+                        ShareLink(item: url) {
+                            Label("分享", systemImage: "square.and.arrow.up.on.square")
+                        }
+                        Button {
+                            QuickLookPreviewer.shared.present([url])
+                        } label: {
+                            Label("快速查看", systemImage: "eye")
+                        }
+                    }
                     Button { Task { await store.runDiagnostics() } } label: {
                         Label("运行诊断", systemImage: "stethoscope")
                     }
@@ -45,6 +55,15 @@ struct DiagnosticsView: View {
             }
         }
         .navigationTitle("诊断")
+        .focusedSceneValue(
+            \.workspaceCommands,
+            WorkspaceCommandContext(
+                refresh: { Task { await store.runDiagnostics() } },
+                previewSelection: store.lastDiagnosticBundleURL.map { url in
+                    { QuickLookPreviewer.shared.present([url]) }
+                }
+            )
+        )
     }
 
     private var overview: some View {
@@ -79,7 +98,7 @@ struct DiagnosticsView: View {
                         Spacer()
                     }
                     .padding(14)
-                    .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
+                    .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 12))
                 }
             }
         }
@@ -130,6 +149,7 @@ enum DiagnosticWorkspaceTab: String, CaseIterable, Identifiable {
 
 struct NetworkRepairCenterView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var confirmsSnapshotClear = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -170,7 +190,7 @@ struct NetworkRepairCenterView: View {
                 }
 
                 Button(role: .destructive) {
-                    store.clearNetworkRecoverySnapshots()
+                    confirmsSnapshotClear = true
                 } label: {
                     Label("清理快照", systemImage: "trash")
                 }
@@ -180,7 +200,15 @@ struct NetworkRepairCenterView: View {
             .buttonStyle(.bordered)
         }
         .padding(12)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
+        .confirmationDialog("清理所有网络恢复快照？", isPresented: $confirmsSnapshotClear, titleVisibility: .visible) {
+            Button("清理快照", role: .destructive) {
+                store.clearNetworkRecoverySnapshots()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("清理后将无法使用现有快照恢复系统代理、DNS 与 TUN 路由状态。")
+        }
     }
 }
 
@@ -215,7 +243,7 @@ struct NetworkRepairStateCard: View {
         }
         .padding(10)
         .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
-        .background(.background.opacity(0.42), in: RoundedRectangle(cornerRadius: 8))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
     }
 
     private var color: Color {

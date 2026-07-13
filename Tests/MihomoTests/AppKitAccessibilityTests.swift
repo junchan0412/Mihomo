@@ -31,6 +31,28 @@ final class AppKitAccessibilityTests: XCTestCase {
         XCTAssertFalse(textView.isEditable)
     }
 
+    func testTableSupportsMultiSelectionPreviewAndDeleteKeys() {
+        let tableView = AppKitAccessibleTableView()
+        let dataSource = TwoRowDataSource()
+        tableView.dataSource = dataSource
+        tableView.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("name")))
+        tableView.allowsMultipleSelection = true
+        tableView.reloadData()
+        tableView.selectRowIndexes(IndexSet([0, 1]), byExtendingSelection: false)
+
+        var previewCount = 0
+        var deleteCount = 0
+        tableView.onPreviewSelection = { previewCount += 1 }
+        tableView.onDeleteSelection = { deleteCount += 1 }
+
+        tableView.keyDown(with: keyEvent(characters: " ", keyCode: 49))
+        tableView.keyDown(with: keyEvent(characters: "\u{8}", keyCode: 51))
+
+        XCTAssertEqual(tableView.selectedRowIndexes, IndexSet([0, 1]))
+        XCTAssertEqual(previewCount, 1)
+        XCTAssertEqual(deleteCount, 1)
+    }
+
     private func keyEvent(characters: String, keyCode: UInt16) -> NSEvent {
         NSEvent.keyEvent(
             with: .keyDown,
@@ -49,4 +71,8 @@ final class AppKitAccessibilityTests: XCTestCase {
 
 private final class OneRowDataSource: NSObject, NSTableViewDataSource {
     func numberOfRows(in tableView: NSTableView) -> Int { 1 }
+}
+
+private final class TwoRowDataSource: NSObject, NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int { 2 }
 }

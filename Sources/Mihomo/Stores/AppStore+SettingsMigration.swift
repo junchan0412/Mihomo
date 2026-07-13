@@ -25,6 +25,9 @@ enum SettingsMigrator {
             case 2:
                 migrated.settingsSchemaVersion = 3
                 log.append("v3：升级 settingsSchemaVersion 标记；现有设置无需额外转换。")
+            case 3:
+                migrated.settingsSchemaVersion = 4
+                log.append("v4：加入订阅失败通知偏好与菜单栏速率显示偏好，默认保持非打扰与原有显示行为。")
             default:
                 throw NSError(
                     domain: "Mihomo.SettingsMigration",
