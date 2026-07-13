@@ -14,9 +14,10 @@ final class SettingsMigrationTests: XCTestCase {
         version2.settingsSchemaVersion = 2
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version2))
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 4)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, 5)
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v3：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v4：") })
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v5：") })
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -26,7 +27,7 @@ final class SettingsMigrationTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
         let reloaded = try decoder.decode(AppSettings.self, from: Data(contentsOf: settingsFile))
 
-        XCTAssertEqual(reloaded.settingsSchemaVersion, 4)
+        XCTAssertEqual(reloaded.settingsSchemaVersion, 5)
         XCTAssertNil(try SettingsMigrator.migration(for: reloaded))
     }
 
@@ -38,10 +39,32 @@ final class SettingsMigrationTests: XCTestCase {
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version1))
 
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 4)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, 5)
         XCTAssertFalse(migration.settings.managedCoreEnabled)
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v2：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v3：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v4：") })
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v5：") })
+    }
+
+    func testV4MigrationMakesControlChannelLocalAndExpandsDomainSniffing() throws {
+        var version4 = AppSettings.default
+        version4.settingsSchemaVersion = 4
+        version4.controllerHost = "192.168.1.20"
+        version4.remoteAPIEnabled = true
+        version4.remoteAPIBindAddress = "127.0.0.1"
+        version4.controllerSecret = ""
+        version4.snifferPorts = "80,443,8443"
+
+        let migration = try XCTUnwrap(SettingsMigrator.migration(for: version4))
+
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, 5)
+        XCTAssertEqual(migration.settings.controllerHost, "127.0.0.1")
+        XCTAssertEqual(migration.settings.remoteAPIBindAddress, "0.0.0.0")
+        XCTAssertFalse(migration.settings.controllerSecret.isEmpty)
+        XCTAssertTrue(migration.settings.snifferManagedByApp)
+        XCTAssertEqual(migration.settings.snifferHTTPPorts, "80,443,8443")
+        XCTAssertEqual(migration.settings.snifferTLSPorts, "80,443,8443")
+        XCTAssertEqual(migration.settings.snifferQUICPorts, "")
     }
 }

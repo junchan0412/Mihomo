@@ -23,6 +23,9 @@ struct NetworkSecurityView: View {
                     switch store.networkWorkspaceTab {
                     case .overview: overviewPane
                     case .dns: dnsPane
+                    case .domainSniffing:
+                        DomainSniffingSettingsView(draft: $draft)
+                            .environmentObject(store)
                     case .recovery: recoveryPane
                     }
                 }
@@ -49,7 +52,7 @@ struct NetworkSecurityView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("网络").font(MihomoUI.Fonts.pageTitle)
-                    Text("按模式开启接管；DNS 配置与异常恢复保持独立。")
+                    Text("管理网络接管、DNS、域名嗅探与异常恢复。")
                         .font(MihomoUI.Fonts.pageSubtitle)
                         .foregroundStyle(.secondary)
                 }
@@ -68,7 +71,7 @@ struct NetworkSecurityView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 520)
+                .frame(maxWidth: 680)
                 Spacer()
                 Button { store.refreshNetworkTakeoverStates(force: true) } label: {
                     Label("刷新状态", systemImage: "arrow.clockwise")
@@ -108,6 +111,11 @@ struct NetworkSecurityView: View {
                     isOn: systemDNSBinding
                 )
             }
+
+            DomainSniffingSummaryCard {
+                store.networkWorkspaceTab = .domainSniffing
+            }
+            .environmentObject(store)
 
             if let advisory = store.networkModeAdvisory {
                 Label(advisory, systemImage: "exclamationmark.triangle.fill")

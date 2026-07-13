@@ -74,7 +74,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @main
 struct MihomoApp: App {
-    @Environment(\.openWindow) private var openWindow
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var store = AppStore()
 
@@ -94,12 +93,12 @@ struct MihomoApp: App {
                 .onOpenURL { url in
                     Task { await store.handleDeepLink(url) }
                 }
-                .background(MainWindowOpenBridge(store: store, openWindow: openWindow, appDelegate: appDelegate))
+                .background(MainWindowOpenBridge(store: store, appDelegate: appDelegate))
         }
         .defaultSize(width: 1180, height: 780)
         .windowResizability(.contentMinSize)
         .commands {
-            MihomoCommands(store: store, openWindow: openWindow)
+            MihomoCommands(store: store)
         }
 
         Settings {
@@ -211,8 +210,8 @@ enum MenuBarPresentation {
 }
 
 private struct MainWindowOpenBridge: View {
+    @Environment(\.openWindow) private var openWindow
     @ObservedObject var store: AppStore
-    let openWindow: OpenWindowAction
     let appDelegate: AppDelegate
 
     var body: some View {

@@ -98,9 +98,9 @@ extension AppStore {
             let client = controllerClient()
             let version = try await client.version()
             let mode = try await client.configMode()
-            results.append(.init(title: "Controller", detail: "已连接，版本 \(version)，模式 \(mode)", state: .ok))
+            results.append(.init(title: "核心控制通道", detail: "已连接，版本 \(version)，模式 \(mode)", state: .ok))
         } catch {
-            results.append(.init(title: "Controller", detail: error.localizedDescription, state: isCoreRunning ? .failed : .warning))
+            results.append(.init(title: "核心控制通道", detail: error.localizedDescription, state: isCoreRunning ? .failed : .warning))
         }
 
         results.append(.init(
@@ -136,7 +136,7 @@ extension AppStore {
 
         results.append(.init(
             title: "远程 HTTP API",
-            detail: settings.remoteAPIEnabled ? "已显式启用，绑定 \(settings.remoteAPIBindAddress):\(settings.controllerPort)，密钥\(settings.controllerSecret.isEmpty ? "未设置" : "已设置")。" : "默认关闭远程访问，仅绑定 127.0.0.1。",
+            detail: settings.remoteAPIEnabled ? "已启用，监听 \(settings.remoteAPIBindAddress):\(settings.controllerPort)，访问密钥\(settings.controllerSecret.isEmpty ? "未设置" : "已设置")。" : "已关闭；本机控制通道由应用自动管理。",
             state: settings.remoteAPIEnabled && settings.controllerSecret.isEmpty ? .warning : .ok
         ))
 

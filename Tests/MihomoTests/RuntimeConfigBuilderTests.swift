@@ -80,4 +80,70 @@ final class RuntimeConfigBuilderTests: XCTestCase {
         XCTAssertTrue(generated.contains("mixed-port: 9100"))
         XCTAssertTrue(generated.contains("enhanced-mode: fake-ip"))
     }
+
+    func testAppManagedControlChannelOverridesProfileEndpointAndSecret() throws {
+        let profile = """
+        external-controller: 192.168.1.20:9999
+        secret: profile-secret
+        external-controller-unix: /tmp/mihomo.sock
+        """
+        let settings = AppSettings(
+            controllerHost: "10.0.0.8",
+            controllerPort: 19090,
+            controllerSecret: "app-secret"
+        )
+
+        let generated = try RuntimeConfigBuilder().build(profileContent: profile, settings: settings)
+
+        XCTAssertTrue(generated.contains("external-controller: 127.0.0.1:19090"))
+        XCTAssertTrue(generated.contains("secret: app-secret"))
+        XCTAssertFalse(generated.contains("192.168.1.20:9999"))
+        XCTAssertFalse(generated.contains("profile-secret"))
+        XCTAssertFalse(generated.contains("external-controller-unix"))
+    }
+
+    func testAppManagedDomainSniffingEmitsProtocolAndExceptionSettings() throws {
+        let settings = AppSettings(
+            snifferManagedByApp: true,
+            snifferEnabled: true,
+            snifferParsePureIP: true,
+            snifferForceDNSMapping: true,
+            snifferOverrideDestination: true,
+            snifferHTTPPorts: "80,8080-8088",
+            snifferTLSPorts: "443,8443",
+            snifferQUICPorts: "443",
+            snifferForceDomains: "+.example.com",
+            snifferSkipDomains: "+.push.apple.com",
+            snifferSkipDestinationAddresses: "1.1.1.1/32",
+            snifferSkipSourceAddresses: "192.168.1.0/24"
+        )
+
+        let generated = try RuntimeConfigBuilder().build(profileContent: "", settings: settings)
+
+        XCTAssertTrue(generated.contains("parse-pure-ip: true"))
+        XCTAssertTrue(generated.contains("force-dns-mapping: true"))
+        XCTAssertTrue(generated.contains("override-destination: true"))
+        XCTAssertTrue(generated.contains("QUIC:"))
+        XCTAssertTrue(generated.contains("8080-8088"))
+        XCTAssertTrue(generated.contains("+.push.apple.com"))
+        XCTAssertTrue(generated.contains("1.1.1.1/32"))
+        XCTAssertTrue(generated.contains("192.168.1.0/24"))
+    }
+
+    func testProfileDomainSniffingIsPreservedWhenAppManagementIsDisabled() throws {
+        let profile = """
+        sniffer:
+          enable: false
+          sniff:
+            TLS:
+              ports: [9443]
+        """
+        let settings = AppSettings(snifferManagedByApp: false, snifferEnabled: true)
+
+        let generated = try RuntimeConfigBuilder().build(profileContent: profile, settings: settings)
+
+        XCTAssertTrue(generated.contains("enable: false"))
+        XCTAssertTrue(generated.contains("9443"))
+        XCTAssertFalse(generated.contains("force-dns-mapping"))
+    }
 }

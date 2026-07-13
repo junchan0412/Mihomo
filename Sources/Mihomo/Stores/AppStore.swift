@@ -312,7 +312,7 @@ final class AppStore: ObservableObject {
 
     func controllerClient() -> MihomoControllerClient {
         MihomoControllerClient(
-            host: settings.controllerHost,
+            host: settings.localControlHost,
             port: settings.controllerPort,
             secret: settings.controllerSecret
         )

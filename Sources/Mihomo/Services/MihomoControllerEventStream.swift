@@ -139,7 +139,7 @@ struct MihomoControllerEventStream {
     private func webSocketURL(path: String, queryItems: [URLQueryItem]) throws -> URL {
         let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalizedHost.isEmpty == false, (1...65_535).contains(port) else {
-            throw controllerError("Controller WebSocket 地址无效：\(host):\(port)")
+            throw controllerError("核心实时状态地址无效：\(host):\(port)")
         }
         var components = URLComponents()
         components.scheme = "ws"
@@ -148,7 +148,7 @@ struct MihomoControllerEventStream {
         components.path = path.hasPrefix("/") ? path : "/\(path)"
         components.queryItems = queryItems.isEmpty ? nil : queryItems
         guard let url = components.url else {
-            throw controllerError("Controller WebSocket 地址无效：\(host):\(port)")
+            throw controllerError("核心实时状态地址无效：\(host):\(port)")
         }
         return url
     }

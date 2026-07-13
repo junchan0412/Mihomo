@@ -123,7 +123,7 @@ extension AppStore {
         while pendingTargets.isEmpty == false || runningTasks.isEmpty == false {
             while runningTasks.count < maxConcurrent, pendingTargets.isEmpty == false {
                 let target = pendingTargets.removeFirst()
-                let host = settings.controllerHost
+                let host = settings.localControlHost
                 let port = settings.controllerPort
                 let secret = settings.controllerSecret
                 let urls = normalizedDelayTestURLs
@@ -279,7 +279,7 @@ extension AppStore {
             return "连接被拒绝"
         }
         if trimmed.localizedCaseInsensitiveContains("unauthorized") || trimmed.localizedCaseInsensitiveContains("401") {
-            return "Controller 密钥错误"
+            return "核心控制通道的访问密钥错误"
         }
         return trimmed.isEmpty ? "未知错误" : trimmed
     }

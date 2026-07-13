@@ -19,8 +19,8 @@ final class SettingsPresentationTests: XCTestCase {
         XCTAssertFalse(LogCategory.allCases.map(\.title).contains("脚本"))
     }
 
-    func testNetworkWorkspaceKeepsDNSAsAFirstClassDestination() {
-        XCTAssertEqual(NetworkWorkspaceTab.allCases.map(\.title), ["概览", "DNS", "恢复"])
+    func testNetworkWorkspaceKeepsDNSAndDomainSniffingAsFirstClassDestinations() {
+        XCTAssertEqual(NetworkWorkspaceTab.allCases.map(\.title), ["概览", "DNS", "域名嗅探", "恢复"])
     }
 
     func testMenuBarModeLettersMatchOutboundModes() {

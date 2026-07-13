@@ -47,10 +47,19 @@ struct AppSettings: Codable, Hashable {
     var controllerSecret: String
     var yamlOverrideEnabled: Bool
     var jsOverrideEnabled: Bool
+    var snifferManagedByApp: Bool
     var snifferEnabled: Bool
     var snifferPorts: String
+    var snifferParsePureIP: Bool
+    var snifferForceDNSMapping: Bool
+    var snifferOverrideDestination: Bool
+    var snifferHTTPPorts: String
+    var snifferTLSPorts: String
+    var snifferQUICPorts: String
     var snifferForceDomains: String
     var snifferSkipDomains: String
+    var snifferSkipDestinationAddresses: String
+    var snifferSkipSourceAddresses: String
     var dnsEnhancedMode: String
     var dnsNameservers: [String]
     var dnsFallbacks: [String]
@@ -75,7 +84,7 @@ struct AppSettings: Codable, Hashable {
     static let `default` = AppSettings()
 
     init(
-        settingsSchemaVersion: Int = 4,
+        settingsSchemaVersion: Int = 5,
         mihomoPath: String = "",
         coreSource: CoreSource = .managed,
         activeProfileID: UUID? = nil,
@@ -121,10 +130,19 @@ struct AppSettings: Codable, Hashable {
         controllerSecret: String = "",
         yamlOverrideEnabled: Bool = true,
         jsOverrideEnabled: Bool = false,
-        snifferEnabled: Bool = false,
+        snifferManagedByApp: Bool = true,
+        snifferEnabled: Bool = true,
         snifferPorts: String = "80,443",
+        snifferParsePureIP: Bool = true,
+        snifferForceDNSMapping: Bool = true,
+        snifferOverrideDestination: Bool = false,
+        snifferHTTPPorts: String = "80,443",
+        snifferTLSPorts: String = "443",
+        snifferQUICPorts: String = "",
         snifferForceDomains: String = "",
-        snifferSkipDomains: String = "",
+        snifferSkipDomains: String = "+.push.apple.com",
+        snifferSkipDestinationAddresses: String = "",
+        snifferSkipSourceAddresses: String = "",
         dnsEnhancedMode: String = "fake-ip",
         dnsNameservers: [String] = ["https://1.1.1.1/dns-query", "https://dns.google/dns-query"],
         dnsFallbacks: [String] = [],
@@ -192,10 +210,19 @@ struct AppSettings: Codable, Hashable {
         self.controllerSecret = controllerSecret
         self.yamlOverrideEnabled = yamlOverrideEnabled
         self.jsOverrideEnabled = jsOverrideEnabled
+        self.snifferManagedByApp = snifferManagedByApp
         self.snifferEnabled = snifferEnabled
         self.snifferPorts = snifferPorts
+        self.snifferParsePureIP = snifferParsePureIP
+        self.snifferForceDNSMapping = snifferForceDNSMapping
+        self.snifferOverrideDestination = snifferOverrideDestination
+        self.snifferHTTPPorts = snifferHTTPPorts
+        self.snifferTLSPorts = snifferTLSPorts
+        self.snifferQUICPorts = snifferQUICPorts
         self.snifferForceDomains = snifferForceDomains
         self.snifferSkipDomains = snifferSkipDomains
+        self.snifferSkipDestinationAddresses = snifferSkipDestinationAddresses
+        self.snifferSkipSourceAddresses = snifferSkipSourceAddresses
         self.dnsEnhancedMode = dnsEnhancedMode
         self.dnsNameservers = dnsNameservers
         self.dnsFallbacks = dnsFallbacks
@@ -265,10 +292,19 @@ struct AppSettings: Codable, Hashable {
         case controllerSecret
         case yamlOverrideEnabled
         case jsOverrideEnabled
+        case snifferManagedByApp
         case snifferEnabled
         case snifferPorts
+        case snifferParsePureIP
+        case snifferForceDNSMapping
+        case snifferOverrideDestination
+        case snifferHTTPPorts
+        case snifferTLSPorts
+        case snifferQUICPorts
         case snifferForceDomains
         case snifferSkipDomains
+        case snifferSkipDestinationAddresses
+        case snifferSkipSourceAddresses
         case dnsEnhancedMode
         case dnsNameservers
         case dnsFallbacks
@@ -342,10 +378,19 @@ struct AppSettings: Codable, Hashable {
         controllerSecret = try container.decodeIfPresent(String.self, forKey: .controllerSecret) ?? fallback.controllerSecret
         yamlOverrideEnabled = try container.decodeIfPresent(Bool.self, forKey: .yamlOverrideEnabled) ?? fallback.yamlOverrideEnabled
         jsOverrideEnabled = try container.decodeIfPresent(Bool.self, forKey: .jsOverrideEnabled) ?? fallback.jsOverrideEnabled
+        snifferManagedByApp = try container.decodeIfPresent(Bool.self, forKey: .snifferManagedByApp) ?? fallback.snifferManagedByApp
         snifferEnabled = try container.decodeIfPresent(Bool.self, forKey: .snifferEnabled) ?? fallback.snifferEnabled
         snifferPorts = try container.decodeIfPresent(String.self, forKey: .snifferPorts) ?? fallback.snifferPorts
+        snifferParsePureIP = try container.decodeIfPresent(Bool.self, forKey: .snifferParsePureIP) ?? fallback.snifferParsePureIP
+        snifferForceDNSMapping = try container.decodeIfPresent(Bool.self, forKey: .snifferForceDNSMapping) ?? fallback.snifferForceDNSMapping
+        snifferOverrideDestination = try container.decodeIfPresent(Bool.self, forKey: .snifferOverrideDestination) ?? fallback.snifferOverrideDestination
+        snifferHTTPPorts = try container.decodeIfPresent(String.self, forKey: .snifferHTTPPorts) ?? fallback.snifferHTTPPorts
+        snifferTLSPorts = try container.decodeIfPresent(String.self, forKey: .snifferTLSPorts) ?? fallback.snifferTLSPorts
+        snifferQUICPorts = try container.decodeIfPresent(String.self, forKey: .snifferQUICPorts) ?? fallback.snifferQUICPorts
         snifferForceDomains = try container.decodeIfPresent(String.self, forKey: .snifferForceDomains) ?? fallback.snifferForceDomains
         snifferSkipDomains = try container.decodeIfPresent(String.self, forKey: .snifferSkipDomains) ?? fallback.snifferSkipDomains
+        snifferSkipDestinationAddresses = try container.decodeIfPresent(String.self, forKey: .snifferSkipDestinationAddresses) ?? fallback.snifferSkipDestinationAddresses
+        snifferSkipSourceAddresses = try container.decodeIfPresent(String.self, forKey: .snifferSkipSourceAddresses) ?? fallback.snifferSkipSourceAddresses
         dnsEnhancedMode = try container.decodeIfPresent(String.self, forKey: .dnsEnhancedMode) ?? fallback.dnsEnhancedMode
         dnsNameservers = try container.decodeIfPresent([String].self, forKey: .dnsNameservers) ?? fallback.dnsNameservers
         dnsFallbacks = try container.decodeIfPresent([String].self, forKey: .dnsFallbacks) ?? fallback.dnsFallbacks
@@ -374,4 +419,8 @@ struct AppSettings: Codable, Hashable {
         }
         return mihomoPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .managed : .local
     }
+}
+
+extension AppSettings {
+    var localControlHost: String { "127.0.0.1" }
 }

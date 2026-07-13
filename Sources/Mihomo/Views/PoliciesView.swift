@@ -222,7 +222,7 @@ struct PoliciesView: View {
         if isOfflinePolicyMode {
             return selectedGroup.map { "\($0.name) · 离线配置预览" } ?? "离线配置预览"
         }
-        return selectedGroup.map { "\($0.name) · 当前 \($0.now)" } ?? "启动 mihomo 并刷新 Controller"
+        return selectedGroup.map { "\($0.name) · 当前 \($0.now)" } ?? "启动 mihomo 并刷新核心状态"
     }
 
     private var content: some View {

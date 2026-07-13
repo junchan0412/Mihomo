@@ -276,7 +276,7 @@ struct MihomoControllerClient {
     private func endpointURL(_ path: String) throws -> URL {
         let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalizedHost.isEmpty == false, (1...65_535).contains(port) else {
-            throw controllerError("Controller 地址无效：\(host):\(port)")
+            throw controllerError("核心控制地址无效：\(host):\(port)")
         }
 
         var components = URLComponents()
@@ -293,7 +293,7 @@ struct MihomoControllerClient {
         }
 
         guard let url = components.url else {
-            throw controllerError("Controller 地址无效：\(host):\(port)")
+            throw controllerError("核心控制地址无效：\(host):\(port)")
         }
         return url
     }
@@ -306,7 +306,7 @@ struct MihomoControllerClient {
 
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
-            throw controllerError("Controller 返回了无效的网络响应。")
+            throw controllerError("运行中的核心返回了无效的网络响应。")
         }
         guard (200..<300).contains(http.statusCode) else {
             let fallback = String(data: data, encoding: .utf8) ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)

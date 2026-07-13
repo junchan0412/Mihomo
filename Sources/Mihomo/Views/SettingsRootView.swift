@@ -146,7 +146,7 @@ struct SettingsRootView: View {
             Button("取消") { draft = store.settings }
                 .keyboardShortcut(.cancelAction)
                 .disabled(draft == store.settings)
-            Button("应用") { Task { await store.saveSettings(draft) } }
+            Button(applyButtonTitle) { Task { await applySettings() } }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .disabled(draft == store.settings)
@@ -187,5 +187,34 @@ struct SettingsRootView: View {
             draft = settings
         }
         lastSavedSettings = settings
+    }
+
+    private var applyButtonTitle: String {
+        requiresControlChannelRestart && store.isCoreRunning ? "应用并重启核心" : "应用"
+    }
+
+    private var requiresControlChannelRestart: Bool {
+        return draft.controllerPort != store.settings.controllerPort
+            || draft.remoteAPIEnabled != store.settings.remoteAPIEnabled
+            || draft.remoteAPIBindAddress != store.settings.remoteAPIBindAddress
+            || draft.controllerSecret != store.settings.controllerSecret
+            || draft.allowLAN != store.settings.allowLAN
+    }
+
+    private func applySettings() async {
+        var normalized = draft
+        normalized.controllerHost = normalized.localControlHost
+        if normalized.remoteAPIEnabled,
+           normalized.controllerSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            normalized.controllerSecret = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+                + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        }
+
+        let shouldRestart = requiresControlChannelRestart && store.isCoreRunning
+        draft = normalized
+        await store.saveSettings(normalized)
+        if shouldRestart, store.settings == normalized {
+            await store.restartCore()
+        }
     }
 }

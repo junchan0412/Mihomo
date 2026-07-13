@@ -229,7 +229,7 @@ enum BackupSecretPolicy {
         let normalized = normalizedManualSecrets(manualSecrets)
         var fields: [String] = []
         if normalized.controllerSecret.isEmpty == false {
-            fields.append("Controller Secret")
+            fields.append("远程管理访问密钥")
         }
         if normalized.backupWebDAVPassword.isEmpty == false {
             fields.append("WebDAV 密码")
@@ -248,7 +248,7 @@ enum BackupSecretPolicy {
         let normalized = normalizedManualSecrets(secrets)
         return [
             BackupSecretChecklistItem(
-                title: "Controller Secret",
+                title: "远程管理访问密钥",
                 isPresent: normalized.controllerSecret.isEmpty == false
             ),
             BackupSecretChecklistItem(

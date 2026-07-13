@@ -30,33 +30,53 @@ struct SettingsRemoteAccessPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(
-                title: "本机 Controller",
-                subtitle: "用于应用连接 mihomo。配置文件中的同名字段会覆盖这些应用默认值。",
-                systemImage: "point.3.connected.trianglepath.dotted"
+                title: "远程管理",
+                subtitle: "Mihomo 会自动管理本机控制通道。只有需要从其他设备查看状态或切换策略时，才开启远程管理。",
+                systemImage: "externaldrive.connected.to.line.below"
             ) {
-                SettingsRow("主机") {
-                    TextField("127.0.0.1", text: $draft.controllerHost)
-                }
-                SettingsRow("端口") {
-                    TextField("9090", value: $draft.controllerPort, format: .number)
-                        .frame(width: 140)
-                }
-                SettingsRow("Secret") {
-                    SecureField("可留空", text: $draft.controllerSecret)
+                SettingsToggleDescriptionRow(
+                    "允许其他设备管理此 Mac",
+                    description: "关闭时仅 Mihomo 本机可以访问核心状态，日常使用无需配置地址或密钥。",
+                    isOn: remoteManagementBinding
+                )
+
+                if draft.remoteAPIEnabled {
+                    SettingsRow("监听地址") {
+                        TextField("0.0.0.0", text: $draft.remoteAPIBindAddress)
+                    }
+                    SettingsRow("管理端口") {
+                        TextField("9090", value: $draft.controllerPort, format: .number)
+                            .frame(width: 140)
+                    }
+                    SettingsRow("访问密钥") {
+                        HStack {
+                            SecureField("应用会自动生成", text: $draft.controllerSecret)
+                            Button("重新生成") { regenerateAccessKey() }
+                        }
+                    }
+                    Label("请只在受信任网络中开放，并使用访问密钥。更改会在应用后重启核心。", systemImage: "lock.shield")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                } else {
+                    SettingsRow("当前状态") {
+                        Label("仅本机访问 · 自动管理", systemImage: "checkmark.shield")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
             SettingsSection(
-                title: "远程访问",
-                subtitle: "仅在需要从其他设备管理此 Mac 时启用。建议限制监听地址并设置 Secret。",
-                systemImage: "externaldrive.connected.to.line.below"
+                title: "局域网代理",
+                subtitle: "这决定其他设备能否使用本机代理端口，与远程管理权限是两项独立能力。",
+                systemImage: "network.badge.shield.half.filled"
             ) {
-                SettingsToggleRow("启用远程 HTTP API", isOn: $draft.remoteAPIEnabled)
-                SettingsRow("绑定地址") {
-                    TextField("127.0.0.1", text: $draft.remoteAPIBindAddress)
-                }
-                .disabled(!draft.remoteAPIEnabled)
-                SettingsToggleRow("允许局域网访问代理", isOn: $draft.allowLAN)
+                SettingsToggleDescriptionRow(
+                    "允许局域网设备使用代理",
+                    description: "开启后，局域网设备可以连接 Mixed/SOCKS 端口；不会自动获得管理权限。",
+                    isOn: $draft.allowLAN
+                )
             }
 
             SettingsSection(
@@ -77,6 +97,30 @@ struct SettingsRemoteAccessPane: View {
                 }
             }
         }
+    }
+
+    private var remoteManagementBinding: Binding<Bool> {
+        Binding(
+            get: { draft.remoteAPIEnabled },
+            set: { enabled in
+                draft.remoteAPIEnabled = enabled
+                draft.controllerHost = draft.localControlHost
+                if enabled {
+                    let address = draft.remoteAPIBindAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if address.isEmpty || address == "127.0.0.1" || address == "localhost" {
+                        draft.remoteAPIBindAddress = "0.0.0.0"
+                    }
+                    if draft.controllerSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        regenerateAccessKey()
+                    }
+                }
+            }
+        )
+    }
+
+    private func regenerateAccessKey() {
+        draft.controllerSecret = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+            + UUID().uuidString.replacingOccurrences(of: "-", with: "")
     }
 }
 
@@ -99,23 +143,6 @@ struct SettingsAdvancedPane: View {
                         .frame(width: 140)
                 }
                 SettingsToggleRow("策略切换后关闭旧连接", isOn: $draft.closeConnectionsOnPolicyChange)
-            }
-
-            SettingsSection(
-                title: "Sniffer",
-                subtitle: "帮助核心从连接中还原域名；不熟悉时保持关闭即可。",
-                systemImage: "waveform.path.ecg"
-            ) {
-                SettingsToggleRow("启用 Sniffer", isOn: $draft.snifferEnabled)
-                SettingsRow("端口") {
-                    TextField("80,443", text: $draft.snifferPorts)
-                }
-                SettingsRow("Force Domain") {
-                    TextField("逗号或换行分隔", text: $draft.snifferForceDomains)
-                }
-                SettingsRow("Skip Domain") {
-                    TextField("逗号或换行分隔", text: $draft.snifferSkipDomains)
-                }
             }
 
         }
@@ -242,5 +269,36 @@ struct SettingsToggleRow: View {
                 .labelsHidden()
                 .toggleStyle(.switch)
         }
+    }
+}
+
+struct SettingsToggleDescriptionRow: View {
+    var title: String
+    var description: String
+    @Binding var isOn: Bool
+
+    init(_ title: String, description: String, isOn: Binding<Bool>) {
+        self.title = title
+        self.description = description
+        _isOn = isOn
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 18) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 20)
+            Toggle(title, isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .overlay(alignment: .bottom) { Divider() }
     }
 }

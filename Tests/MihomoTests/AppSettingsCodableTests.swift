@@ -6,7 +6,7 @@ final class AppSettingsCodableTests: XCTestCase {
     func testRoundTripPreservesNonDefaultSettings() throws {
         let profileID = UUID(uuidString: "8C08A1E5-8DF4-48BE-9E15-5503C3176AE6")!
         let settings = AppSettings(
-            settingsSchemaVersion: 4,
+            settingsSchemaVersion: 5,
             mihomoPath: "/opt/mihomo/bin/mihomo",
             coreSource: .local,
             activeProfileID: profileID,
@@ -52,10 +52,19 @@ final class AppSettingsCodableTests: XCTestCase {
             controllerSecret: "controller-secret",
             yamlOverrideEnabled: false,
             jsOverrideEnabled: true,
+            snifferManagedByApp: false,
             snifferEnabled: true,
             snifferPorts: "80,443,8443",
+            snifferParsePureIP: false,
+            snifferForceDNSMapping: false,
+            snifferOverrideDestination: true,
+            snifferHTTPPorts: "80,8080",
+            snifferTLSPorts: "443,8443",
+            snifferQUICPorts: "443",
             snifferForceDomains: "example.com",
             snifferSkipDomains: "skip.example.com",
+            snifferSkipDestinationAddresses: "1.1.1.1/32",
+            snifferSkipSourceAddresses: "192.168.1.0/24",
             dnsEnhancedMode: "redir-host",
             dnsNameservers: ["https://dns.example.com/dns-query"],
             dnsFallbacks: ["https://fallback.example.com/dns-query"],
@@ -219,7 +228,7 @@ final class AppSettingsCodableTests: XCTestCase {
         XCTAssertEqual(merged.controllerSecret, "manual-controller")
         XCTAssertEqual(merged.backupWebDAVPassword, "current-webdav")
         XCTAssertEqual(merged.gistToken, "manual-gist")
-        XCTAssertEqual(fields, ["Controller Secret", "Gist Token"])
+        XCTAssertEqual(fields, ["远程管理访问密钥", "Gist Token"])
     }
 
     func testSecretChecklistReportsPresentAndMissingFieldsWithoutValues() {
@@ -233,8 +242,8 @@ final class AppSettingsCodableTests: XCTestCase {
         let byTitle = Dictionary(uniqueKeysWithValues: checklist.map { ($0.title, $0) })
 
         XCTAssertEqual(checklist.count, 3)
-        XCTAssertEqual(byTitle["Controller Secret"]?.isPresent, true)
-        XCTAssertEqual(byTitle["Controller Secret"]?.statusTitle, "已就绪")
+        XCTAssertEqual(byTitle["远程管理访问密钥"]?.isPresent, true)
+        XCTAssertEqual(byTitle["远程管理访问密钥"]?.statusTitle, "已就绪")
         XCTAssertEqual(byTitle["WebDAV 密码"]?.isPresent, false)
         XCTAssertEqual(byTitle["WebDAV 密码"]?.statusTitle, "缺失")
         XCTAssertEqual(byTitle["Gist Token"]?.isPresent, true)

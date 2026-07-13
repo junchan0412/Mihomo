@@ -106,6 +106,22 @@ extension ProfileQualityAnalyzer {
         return true
     }
 
+    func isValidSnifferAddressToken(_ token: String) -> Bool {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return false }
+
+        let parts = trimmed.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count <= 2 else { return false }
+        let address = String(parts[0])
+        let isIPv6 = address.contains(":")
+        let type = isIPv6 ? "IP-CIDR6" : "IP-CIDR"
+        guard isValidCIDRAddress(address, type: type) else { return false }
+        guard parts.count == 2 else { return true }
+
+        let maximumPrefix = isIPv6 ? 128 : 32
+        return Int(parts[1]).map { (0...maximumPrefix).contains($0) } == true
+    }
+
     func isSupportedRuleType(_ type: String) -> Bool {
         [
             "DOMAIN",

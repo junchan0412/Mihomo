@@ -117,7 +117,7 @@ final class ProfileQualityAnalyzerTests: XCTestCase {
             mixedPort: 7890,
             tunEnabled: true,
             snifferEnabled: true,
-            snifferPorts: "99999",
+            snifferHTTPPorts: "99999",
             dnsEnhancedMode: "unknown-mode",
             dnsNameservers: ["https://1.1.1.1/dns-query"]
         )
@@ -131,7 +131,7 @@ final class ProfileQualityAnalyzerTests: XCTestCase {
         )
 
         XCTAssertTrue(report.issues.contains { $0.title == "DNS enhanced-mode 可疑" })
-        XCTAssertTrue(report.issues.contains { $0.title == "Sniffer 端口可疑" })
+        XCTAssertTrue(report.issues.contains { $0.title == "域名嗅探端口可疑" })
         XCTAssertTrue(report.issues.contains { $0.title == "HTTP Provider 缺少 URL" })
         XCTAssertTrue(report.issues.contains { $0.title == "Provider path 不安全" })
     }
@@ -179,7 +179,7 @@ final class ProfileQualityAnalyzerTests: XCTestCase {
         )
 
         XCTAssertTrue(report.issues.contains { $0.title == "DNS nameserver 格式可疑" })
-        XCTAssertTrue(report.issues.contains { $0.title == "Sniffer domain 格式可疑" })
+        XCTAssertTrue(report.issues.contains { $0.title == "域名嗅探规则格式可疑" })
         XCTAssertTrue(report.issues.contains { $0.title == "Rule Provider behavior 可疑" })
     }
 

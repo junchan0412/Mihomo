@@ -75,7 +75,7 @@ extension AppStore {
 
     private func controllerEventStreamClient() -> MihomoControllerEventStream {
         MihomoControllerEventStream(
-            host: settings.controllerHost,
+            host: settings.localControlHost,
             port: settings.controllerPort,
             secret: settings.controllerSecret
         )

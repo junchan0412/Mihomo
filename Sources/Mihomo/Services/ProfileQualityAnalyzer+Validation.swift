@@ -145,8 +145,8 @@ extension ProfileQualityAnalyzer {
             if parts.count < 2 || Int(parts.last ?? "").map({ (1...65_535).contains($0) }) != true {
                 issues.append(.init(
                     severity: .error,
-                    title: "Controller 地址无效",
-                    detail: "external-controller 应包含有效端口，当前为 \(controller)。"
+                    title: "核心控制地址无效",
+                    detail: "应用生成的 external-controller 应包含有效端口，当前为 \(controller)。"
                 ))
             }
         }
@@ -214,21 +214,24 @@ extension ProfileQualityAnalyzer {
             }
         }
 
-        if settings.snifferEnabled {
+        if settings.snifferManagedByApp && settings.snifferEnabled {
             if let sniffer = root["sniffer"] as? YAMLMap {
                 if boolValue(sniffer["enable"]) == false {
-                    issues.append(.init(severity: .warning, title: "Sniffer 未启用", detail: "设置中开启了 Sniffer，但最终 sniffer.enable 不是 true。"))
+                    issues.append(.init(severity: .warning, title: "域名嗅探未启用", detail: "网络设置中开启了域名嗅探，但最终 sniffer.enable 不是 true。"))
                 }
                 if (sniffer["sniff"] as? YAMLMap)?.isEmpty != false {
-                    issues.append(.init(severity: .warning, title: "Sniffer sniff 规则缺失", detail: "最终 runtime config 未包含 HTTP/TLS sniff 端口。"))
+                    issues.append(.init(severity: .warning, title: "域名嗅探协议规则缺失", detail: "最终 runtime config 未包含 HTTP、TLS 或 QUIC 嗅探端口。"))
                 }
             } else {
-                issues.append(.init(severity: .warning, title: "Sniffer 配置缺失", detail: "设置中开启了 Sniffer，但最终 runtime config 没有 sniffer 字段。"))
+                issues.append(.init(severity: .warning, title: "域名嗅探配置缺失", detail: "网络设置中开启了域名嗅探，但最终 runtime config 没有 sniffer 字段。"))
             }
-            for port in lineList(settings.snifferPorts) where isValidSnifferPortToken(port) == false {
+            let configuredPorts = lineList(settings.snifferHTTPPorts)
+                + lineList(settings.snifferTLSPorts)
+                + lineList(settings.snifferQUICPorts)
+            for port in configuredPorts where isValidSnifferPortToken(port) == false {
                 issues.append(.init(
                     severity: .warning,
-                    title: "Sniffer 端口可疑",
+                    title: "域名嗅探端口可疑",
                     detail: "端口 \(port) 不是 1...65535 的整数或 start-end 范围。"
                 ))
             }
@@ -236,8 +239,16 @@ extension ProfileQualityAnalyzer {
             where isValidSnifferDomainToken(domain) == false {
                 issues.append(.init(
                     severity: .warning,
-                    title: "Sniffer domain 格式可疑",
-                    detail: "Sniffer domain \(domain) 不应包含协议、路径或空白字符。"
+                    title: "域名嗅探规则格式可疑",
+                    detail: "域名 \(domain) 不应包含协议、路径或空白字符。"
+                ))
+            }
+            for address in lineList(settings.snifferSkipDestinationAddresses) + lineList(settings.snifferSkipSourceAddresses)
+            where isValidSnifferAddressToken(address) == false {
+                issues.append(.init(
+                    severity: .warning,
+                    title: "域名嗅探地址格式可疑",
+                    detail: "地址 \(address) 应为 IPv4、IPv6 或 CIDR。"
                 ))
             }
         }

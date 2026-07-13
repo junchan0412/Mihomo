@@ -105,7 +105,7 @@ struct PolicyStartupEmptyState: View {
                 Button {
                     refreshController()
                 } label: {
-                    Label("刷新 Controller", systemImage: "arrow.clockwise")
+                    Label("刷新核心状态", systemImage: "arrow.clockwise")
                 }
 
                 Button {
@@ -143,7 +143,7 @@ struct PolicyStartupEmptyState: View {
     }
 
     private var title: String {
-        isCoreRunning ? "Controller 暂无策略组" : "mihomo 未启动"
+        isCoreRunning ? "运行中的核心暂未返回策略组" : "mihomo 未启动"
     }
 
     private var message: String {

@@ -147,6 +147,7 @@ enum NetworkSecuritySnapshotKind: String, Hashable {
 enum NetworkWorkspaceTab: String, CaseIterable, Identifiable {
     case overview
     case dns
+    case domainSniffing
     case recovery
 
     var id: String { rawValue }
@@ -155,6 +156,7 @@ enum NetworkWorkspaceTab: String, CaseIterable, Identifiable {
         switch self {
         case .overview: return "概览"
         case .dns: return "DNS"
+        case .domainSniffing: return "域名嗅探"
         case .recovery: return "恢复"
         }
     }
@@ -163,6 +165,7 @@ enum NetworkWorkspaceTab: String, CaseIterable, Identifiable {
         switch self {
         case .overview: return "rectangle.grid.2x2"
         case .dns: return "server.rack"
+        case .domainSniffing: return "viewfinder"
         case .recovery: return "arrow.uturn.backward.circle"
         }
     }

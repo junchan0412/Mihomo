@@ -28,6 +28,24 @@ enum SettingsMigrator {
             case 3:
                 migrated.settingsSchemaVersion = 4
                 log.append("v4：加入订阅失败通知偏好与菜单栏速率显示偏好，默认保持非打扰与原有显示行为。")
+            case 4:
+                let legacyPorts = migrated.snifferPorts.trimmingCharacters(in: .whitespacesAndNewlines)
+                migrated.controllerHost = migrated.localControlHost
+                migrated.snifferManagedByApp = true
+                migrated.snifferHTTPPorts = legacyPorts.isEmpty ? "80,443" : legacyPorts
+                migrated.snifferTLSPorts = legacyPorts.isEmpty ? "443" : legacyPorts
+                migrated.snifferQUICPorts = ""
+                if migrated.remoteAPIEnabled {
+                    if migrated.remoteAPIBindAddress == "127.0.0.1" || migrated.remoteAPIBindAddress == "localhost" {
+                        migrated.remoteAPIBindAddress = "0.0.0.0"
+                    }
+                    if migrated.controllerSecret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        migrated.controllerSecret = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+                            + UUID().uuidString.replacingOccurrences(of: "-", with: "")
+                    }
+                }
+                migrated.settingsSchemaVersion = 5
+                log.append("v5：本机控制通道改为应用自动管理；域名嗅探升级为按 HTTP、TLS、QUIC 和高级规则配置。")
             default:
                 throw NSError(
                     domain: "Mihomo.SettingsMigration",

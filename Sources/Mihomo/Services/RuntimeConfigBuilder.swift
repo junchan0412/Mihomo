@@ -21,7 +21,9 @@ struct RuntimeConfigBuilder {
 
         filterDisabledRules(in: &configuredMap, disabledRules: disabledRules)
 
-        let finalMap = deepMerge(generatedOverlay(settings: settings), configuredMap)
+        var finalMap = deepMerge(generatedOverlay(settings: settings), configuredMap)
+        enforceAppManagedControlChannel(in: &finalMap, settings: settings)
+        enforceAppManagedSniffer(in: &finalMap, settings: settings)
 
         let dumped = try Yams.dump(object: finalMap, sortKeys: false)
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -60,7 +62,7 @@ struct RuntimeConfigBuilder {
             overlay["dns"] = dnsMap(settings)
         }
 
-        if settings.snifferEnabled {
+        if settings.snifferManagedByApp && settings.snifferEnabled {
             overlay["sniffer"] = snifferMap(settings)
         }
 
@@ -82,30 +84,74 @@ struct RuntimeConfigBuilder {
     }
 
     private func snifferMap(_ settings: AppSettings) -> YAMLMap {
-        let ports: [Any] = lineList(settings.snifferPorts).map { value in
-            if let port = Int(value) {
-                return port
-            }
-            return value
+        let httpPorts = portList(settings.snifferHTTPPorts, fallback: [80, 443])
+        let tlsPorts = portList(settings.snifferTLSPorts, fallback: [443])
+        let quicPorts = portList(settings.snifferQUICPorts, fallback: [])
+        var sniff: YAMLMap = [
+            "HTTP": [
+                "ports": httpPorts,
+                "override-destination": settings.snifferOverrideDestination
+            ],
+            "TLS": ["ports": tlsPorts]
+        ]
+        if quicPorts.isEmpty == false {
+            sniff["QUIC"] = ["ports": quicPorts]
         }
-        let effectivePorts: [Any] = ports.isEmpty ? [80, 443] : ports
+
         var map: YAMLMap = [
             "enable": true,
-            "sniff": [
-                "HTTP": ["ports": effectivePorts],
-                "TLS": ["ports": effectivePorts]
-            ]
+            "parse-pure-ip": settings.snifferParsePureIP,
+            "force-dns-mapping": settings.snifferForceDNSMapping,
+            "override-destination": settings.snifferOverrideDestination,
+            "sniff": sniff
         ]
 
         let forceDomains = lineList(settings.snifferForceDomains)
         let skipDomains = lineList(settings.snifferSkipDomains)
+        let skipDestinationAddresses = lineList(settings.snifferSkipDestinationAddresses)
+        let skipSourceAddresses = lineList(settings.snifferSkipSourceAddresses)
         if forceDomains.isEmpty == false {
             map["force-domain"] = forceDomains
         }
         if skipDomains.isEmpty == false {
             map["skip-domain"] = skipDomains
         }
+        if skipDestinationAddresses.isEmpty == false {
+            map["skip-dst-address"] = skipDestinationAddresses
+        }
+        if skipSourceAddresses.isEmpty == false {
+            map["skip-src-address"] = skipSourceAddresses
+        }
         return map
+    }
+
+    private func enforceAppManagedControlChannel(in map: inout YAMLMap, settings: AppSettings) {
+        map["external-controller"] = "\(controllerBindHost(settings)):\(settings.controllerPort)"
+        map.removeValue(forKey: "external-controller-unix")
+        map.removeValue(forKey: "external-controller-pipe")
+
+        let secret = settings.controllerSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        if secret.isEmpty {
+            map.removeValue(forKey: "secret")
+        } else {
+            map["secret"] = secret
+        }
+    }
+
+    private func enforceAppManagedSniffer(in map: inout YAMLMap, settings: AppSettings) {
+        guard settings.snifferManagedByApp else { return }
+        if settings.snifferEnabled {
+            map["sniffer"] = snifferMap(settings)
+        } else {
+            map.removeValue(forKey: "sniffer")
+        }
+    }
+
+    private func portList(_ text: String, fallback: [Int]) -> [Any] {
+        let values: [Any] = lineList(text).map { value in
+            Int(value).map { $0 as Any } ?? value
+        }
+        return values.isEmpty ? fallback.map { $0 as Any } : values
     }
 
     private func dnsMap(_ settings: AppSettings) -> YAMLMap {

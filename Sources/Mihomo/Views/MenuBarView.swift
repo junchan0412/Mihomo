@@ -81,7 +81,7 @@ struct MenuBarView: View {
             }
 
             Menu("模块") {
-                Button("刷新 Controller") {
+                Button("刷新核心状态") {
                     Task { await store.refreshController() }
                 }
 

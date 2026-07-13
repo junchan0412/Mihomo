@@ -143,12 +143,12 @@ append_page_checklist "Profiles" "Profile list, quality analyzer pane, editor en
 append_page_checklist "Policies" "Policy group table, proxy candidates, search/sort controls, delay tests, and offline preview."
 append_page_checklist "Rules" "Rule table, checkbox state, multi-selection, edit/delete confirmation, hit counts, and inspector."
 append_page_checklist "Overrides" "YAML and JS Transform fragments, scope, multi-selection, editor, delete confirmation, and Undo/Redo."
-append_page_checklist "Network" "System proxy, TUN, runtime/system DNS, recovery snapshots, confirmation dialogs, and status values."
+append_page_checklist "Network" "System proxy, TUN, runtime/system DNS, domain sniffing, protocol ports, exception rules, recovery snapshots, confirmation dialogs, and status values."
 append_page_checklist "Resources" "Rule/Proxy Provider rows, Geo resources, update history, rollback controls, and readiness filters."
 append_page_checklist "Logs" "Category sidebar, structured table, filters, pause/resume, multi-row copy, clear confirmation, and retention controls."
 append_page_checklist "Diagnostics" "Helper audit, network takeover diagnostics, redacted export actions, and warning/error rows."
 append_page_checklist "Advanced" "Backups, secret restore indicators, managed artifacts, Age encryption, External UI, Geo, and config preview."
-append_page_checklist "Settings" "Separate Settings scene, general/remote/advanced panes, notification permission purpose text, draft preservation, Apply, and window close/reopen behavior."
+append_page_checklist "Settings" "Separate Settings scene, user-facing remote management without internal Controller terminology, automatic access-key generation, notification purpose text, draft preservation, Apply/restart, and window close/reopen behavior."
 
 cat >>"$OUTPUT_PATH" <<'FOOTER'
 ## Sign-off

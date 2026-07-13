@@ -157,7 +157,7 @@ struct ProfileQualityAnalyzer {
         return [
             .init(title: "Mixed Port", value: stringValue(root["mixed-port"]), detail: "最终运行端口；配置声明优先于应用默认"),
             .init(title: "SOCKS Port", value: stringValue(root["socks-port"]), detail: root["socks-port"] == nil ? "未启用独立 SOCKS 端口" : "来自 App 设置"),
-            .init(title: "Controller", value: stringValue(root["external-controller"]), detail: "外部控制器监听地址"),
+            .init(title: "控制通道", value: stringValue(root["external-controller"]), detail: "由 Mihomo 自动管理；远程管理开启时使用指定监听范围"),
             .init(title: "DNS", value: dns == nil ? "未启用" : "\(stringValue(dns?["enhanced-mode"])) · \(arrayCount(dns?["nameserver"])) 个 nameserver", detail: "最终运行配置；未声明字段使用应用默认"),
             .init(title: "TUN", value: boolValue(tun?["enable"]) ? "已启用" : "未启用", detail: tun?["stack"].map { "stack: \($0)" } ?? "未写入 tun 配置"),
             .init(title: "Provider", value: "Proxy \(proxyProviders.count) / Rule \(ruleProviders.count)", detail: "最终 runtime config 中的 Provider 数量"),
@@ -200,13 +200,19 @@ struct ProfileQualityAnalyzer {
             let finalValue = generatedRoot[key]
             let hasAppDefault = appDefaultKeys.contains(key)
             guard finalValue != nil || hasAppDefault else { return nil }
-            let source = sourceTitle(
-                for: key,
-                hasAppDefault: hasAppDefault,
-                originalRoot: originalRoot,
-                transformedRoot: transformedRoot,
-                yamlFragmentKeys: yamlFragmentKeys
-            )
+            let source: String
+            if ["external-controller", "secret"].contains(key)
+                || (key == "sniffer" && settings.snifferManagedByApp) {
+                source = "应用托管"
+            } else {
+                source = sourceTitle(
+                    for: key,
+                    hasAppDefault: hasAppDefault,
+                    originalRoot: originalRoot,
+                    transformedRoot: transformedRoot,
+                    yamlFragmentKeys: yamlFragmentKeys
+                )
+            }
             return RuntimeConfigSourceItem(
                 path: key,
                 source: source,
@@ -217,7 +223,7 @@ struct ProfileQualityAnalyzer {
                     hasAppDefault: hasAppDefault,
                     value: finalValue
                 ),
-                usesAppDefault: source == "应用默认"
+                usesAppDefault: source == "应用默认" || source == "应用托管"
             )
         }
     }
@@ -244,6 +250,11 @@ struct ProfileQualityAnalyzer {
 
     private func sourceDetail(for key: String, source: String, hasAppDefault: Bool, value: Any?) -> String {
         switch source {
+        case "应用托管":
+            if key == "sniffer" {
+                return "由网络工作区的域名嗅探设置管理；关闭应用管理后才会遵循 Profile 中的 sniffer 字段。"
+            }
+            return "为保证客户端始终能连接运行中的核心，此字段由 Mihomo 管理；远程管理设置决定监听范围与访问密钥。"
         case "YAML 覆写":
             return "由启用的 YAML 覆写片段合并，优先级高于 Profile、JS Transform 与应用内设置。"
         case "JS Transform":
@@ -276,7 +287,7 @@ struct ProfileQualityAnalyzer {
             "allow-lan",
             "external-controller",
             settings.dnsNameservers.isEmpty && settings.dnsFallbacks.isEmpty ? nil : "dns",
-            settings.snifferEnabled ? "sniffer" : nil,
+            settings.snifferManagedByApp && settings.snifferEnabled ? "sniffer" : nil,
             settings.tunEnabled ? "tun" : nil
         ].compactMap { $0 }
 

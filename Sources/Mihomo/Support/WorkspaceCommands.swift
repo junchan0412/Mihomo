@@ -66,8 +66,8 @@ enum MihomoSearchFocus {
 }
 
 struct MihomoCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
     @ObservedObject var store: AppStore
-    let openWindow: OpenWindowAction
     @FocusedValue(\.workspaceCommands) private var workspaceCommands
 
     var body: some Commands {
@@ -192,7 +192,7 @@ struct MihomoCommands: Commands {
             .keyboardShortcut("r", modifiers: .command)
             .disabled(workspaceCommands?.refresh == nil)
 
-            Button("刷新 Controller") {
+            Button("刷新核心状态") {
                 Task { await store.refreshController() }
             }
             .keyboardShortcut("r", modifiers: [.command, .control])
