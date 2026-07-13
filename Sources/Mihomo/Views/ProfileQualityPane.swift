@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ProfileQualityPane: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var report: ProfileQualityReport
     @State private var section: ProfileQualitySection = .overview
 
@@ -41,8 +42,8 @@ struct ProfileQualityPane: View {
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .transition(.opacity)
             }
-            .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .animation(.easeInOut(duration: 0.16), value: section)
+            .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: section)
         }
         .padding(16)
         .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -62,7 +63,7 @@ struct ProfileQualityPane: View {
                     .stroke(scoreColor, style: StrokeStyle(lineWidth: 7, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 Text("\(report.score)")
-                    .font(.system(size: 25, weight: .bold, design: .rounded))
+                    .font(.title.weight(.bold))
                     .monospacedDigit()
             }
             .frame(width: 68, height: 68)
@@ -213,7 +214,7 @@ private struct QualityPanel<Content: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(12)
-        .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 

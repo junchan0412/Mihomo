@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct MihomoSidebarView: View {
+    @Environment(\.openSettings) private var openSettings
     @EnvironmentObject private var store: AppStore
     @Binding var selection: AppSection
 
@@ -8,25 +9,40 @@ struct MihomoSidebarView: View {
     private let engineSections: [AppSection] = [.networkSecurity, .advanced, .diagnostics]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            brandHeader
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    sidebarGroup(title: "常规", sections: mainSections)
-                    sidebarGroup(title: "引擎", sections: engineSections)
-                    sidebarGroup(title: "应用", sections: [.settings])
-                }
-                .padding(.horizontal, 10)
-                .padding(.top, 2)
+        List(selection: $selection) {
+            Section("常规") {
+                sidebarRows(mainSections)
             }
 
-            statusFooter
-                .padding(.horizontal, 14)
-                .padding(.bottom, 12)
+            Section("引擎") {
+                sidebarRows(engineSections)
+            }
+
+            Section("应用") {
+                Button {
+                    openSettings()
+                } label: {
+                    Label("设置", systemImage: "gearshape")
+                }
+                .buttonStyle(.plain)
+            }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.bar)
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            brandHeader
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            statusFooter
+        }
+    }
+
+    @ViewBuilder
+    private func sidebarRows(_ sections: [AppSection]) -> some View {
+        ForEach(sections) { section in
+            Label(section.sidebarTitle, systemImage: section.systemImage)
+                .tag(section)
+                .help(section.title)
+        }
     }
 
     private var brandHeader: some View {
@@ -35,45 +51,18 @@ struct MihomoSidebarView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Mihomo")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.headline)
                 Text(appVersion)
-                    .font(MihomoUI.Fonts.caption)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
         }
-        .padding(.top, 12)
         .padding(.horizontal, 14)
-        .padding(.bottom, 10)
-    }
-
-    private var appVersion: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
-        return build.isEmpty ? "v\(version)" : "v\(version) (\(build))"
-    }
-
-    private func sidebarGroup(title: String? = nil, sections: [AppSection]) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            if let title {
-                Text(title)
-                    .font(MihomoUI.Fonts.caption)
-                    .foregroundStyle(.secondary)
-                    .textCase(.uppercase)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 2)
-            }
-
-            ForEach(sections) { section in
-                SidebarSectionButton(
-                    section: section,
-                    isSelected: selection == section
-                ) {
-                    selection = section
-                }
-            }
-        }
+        .padding(.vertical, 10)
+        .background(.bar)
+        .accessibilityElement(children: .combine)
     }
 
     private var statusFooter: some View {
@@ -82,8 +71,12 @@ struct MihomoSidebarView: View {
             sidebarStatus("TUN", isOn: store.settings.tunEnabled, activeColor: .purple)
             sidebarStatus("核心", isOn: store.isCoreRunning, activeColor: .red)
         }
-        .font(MihomoUI.Fonts.caption)
+        .font(.caption)
         .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.bar)
     }
 
     private func sidebarStatus(_ title: String, isOn: Bool, activeColor: Color) -> some View {
@@ -92,38 +85,19 @@ struct MihomoSidebarView: View {
                 .fill(isOn ? activeColor : Color.secondary.opacity(0.35))
                 .frame(width: 6, height: 6)
             Text(title)
+            Spacer()
+            Text(isOn ? "开" : "关")
+                .foregroundStyle(.tertiary)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn ? "已启用" : "未启用")
     }
-}
 
-private struct SidebarSectionButton: View {
-    let section: AppSection
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: section.systemImage)
-                    .font(.system(size: 14, weight: .medium))
-                    .symbolRenderingMode(.hierarchical)
-                    .frame(width: 18)
-                Text(section.sidebarTitle)
-                    .font(MihomoUI.Fonts.sidebar)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 10)
-            .frame(height: 30)
-            .foregroundStyle(isSelected ? Color.accentColor : Color.primary)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.accentColor.opacity(0.14) : Color.clear)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 8))
-        }
-        .buttonStyle(.plain)
-        .help(section.title)
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        return build.isEmpty ? "v\(version)" : "v\(version) (\(build))"
     }
 }
 

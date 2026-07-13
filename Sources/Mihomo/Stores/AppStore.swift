@@ -47,14 +47,15 @@ final class AppStore: ObservableObject {
     @Published var helperStatus = "Helper 未检查"
     @Published var softwareUpdateStatus = "未检查"
     @Published var availableUpdate: AppUpdateManifest?
-    @Published var profileEditorProfileID: UUID?
     @Published var connectionDetailConnectionID: String?
     @Published var policyGroupIconImages: [String: NSImage] = [:]
     @Published var networkTakeoverStates: [NetworkTakeoverState] = []
     @Published var settingsMigrationLog: [String] = []
     @Published var diagnosticExportStatus = "尚未导出诊断包"
+    @Published var lastDiagnosticBundleURL: URL?
     @Published var ruleFocusQuery = ""
     @Published var networkWorkspaceTab: NetworkWorkspaceTab = .overview
+    @Published var isLightweightModeActive = false
 
     let logStore = LogStore()
     let activityStore = RuntimeActivityStore()
@@ -116,6 +117,7 @@ final class AppStore: ObservableObject {
     let softwareUpdateManager = SoftwareUpdateManager()
     let profileQualityAnalyzer = ProfileQualityAnalyzer()
     let logPersistenceWriter = LogPersistenceWriter()
+    let spotlightIndexer = SpotlightIndexer()
     var pollingTask: Task<Void, Never>?
     var profileRefreshTask: Task<Void, Never>?
     var profileRefreshQueueRunning = false
@@ -212,7 +214,6 @@ final class AppStore: ObservableObject {
             helperStatus = helperService.statusDescription
             refreshConfigArtifacts()
             syncLaunchAtLoginSetting(reportSuccess: false)
-            notificationManager.prepare()
             appendLog("info", "已加载 \(profiles.count) 个配置")
             startPolling()
             startProfileAutoRefreshIfNeeded()
@@ -233,6 +234,14 @@ final class AppStore: ObservableObject {
             var normalized = settings
             normalized.managedCoreEnabled = normalized.coreSource == .managed
             let previous = self.settings
+            if previous.notifyProfileRefreshFailures == false,
+               normalized.notifyProfileRefreshFailures {
+                let authorized = await notificationManager.requestAuthorization()
+                if authorized == false {
+                    normalized.notifyProfileRefreshFailures = false
+                    appendLog("warning", "通知权限未授予；已保持订阅失败通知关闭。")
+                }
+            }
             if previous.profileEncryptionEnabled != normalized.profileEncryptionEnabled {
                 try profileStore.migrateProfileEncryption(profiles, settings: normalized)
             }
@@ -254,6 +263,7 @@ final class AppStore: ObservableObject {
     }
 
     func enterLightweightMode() {
+        isLightweightModeActive = true
         NSApp.hide(nil)
         appendLog("info", "已进入轻量模式，主窗口隐藏，菜单栏保留。")
     }

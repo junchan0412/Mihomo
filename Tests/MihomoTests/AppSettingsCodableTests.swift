@@ -6,7 +6,7 @@ final class AppSettingsCodableTests: XCTestCase {
     func testRoundTripPreservesNonDefaultSettings() throws {
         let profileID = UUID(uuidString: "8C08A1E5-8DF4-48BE-9E15-5503C3176AE6")!
         let settings = AppSettings(
-            settingsSchemaVersion: 3,
+            settingsSchemaVersion: 4,
             mihomoPath: "/opt/mihomo/bin/mihomo",
             coreSource: .local,
             activeProfileID: profileID,
@@ -24,6 +24,7 @@ final class AppSettingsCodableTests: XCTestCase {
             maxCrashRestarts: 5,
             autoRefreshProfiles: true,
             profileRefreshIntervalHours: 6,
+            notifyProfileRefreshFailures: true,
             lightweightMode: true,
             restoreSystemProxyOnQuit: false,
             delayTestURL: "https://example.com/generate_204",
@@ -35,6 +36,7 @@ final class AppSettingsCodableTests: XCTestCase {
             delayTestConcurrency: 9,
             logRetentionDays: 14,
             logMaxFileSizeMB: 32,
+            showMenuBarTrafficRates: false,
             managedCoreEnabled: false,
             managedCoreDownloadURL: "https://example.com/mihomo.gz",
             managedCoreSHA256: String(repeating: "a", count: 64),

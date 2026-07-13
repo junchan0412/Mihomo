@@ -1,8 +1,10 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var openMainWindow: (() -> Void)?
+    weak var store: AppStore?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -15,6 +17,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         openMainWindow?()
         return openMainWindow == nil
+    }
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        menu.addItem(dockItem("显示主窗口", action: #selector(showMainWindowFromDock)))
+        menu.addItem(.separator())
+
+        let coreTitle = store?.isCoreRunning == true ? "停止核心" : "启动核心"
+        menu.addItem(dockItem(coreTitle, action: #selector(toggleCoreFromDock)))
+
+        let proxyTitle = store?.systemProxyEnabled == true ? "关闭系统代理" : "开启系统代理"
+        menu.addItem(dockItem(proxyTitle, action: #selector(toggleSystemProxyFromDock)))
+        menu.addItem(.separator())
+
+        menu.addItem(modeDockItem("规则模式", mode: "rule"))
+        menu.addItem(modeDockItem("全局模式", mode: "global"))
+        menu.addItem(modeDockItem("直连模式", mode: "direct"))
+        return menu
+    }
+
+    @objc private func showMainWindowFromDock() {
+        store?.isLightweightModeActive = false
+        openMainWindow?()
+    }
+
+    @objc private func toggleCoreFromDock() {
+        guard let store else { return }
+        Task { await store.toggleCore() }
+    }
+
+    @objc private func toggleSystemProxyFromDock() {
+        guard let store else { return }
+        Task { await store.toggleSystemProxy() }
+    }
+
+    @objc private func setModeFromDock(_ sender: NSMenuItem) {
+        guard let mode = sender.representedObject as? String, let store else { return }
+        Task { await store.setMode(mode) }
+    }
+
+    private func dockItem(_ title: String, action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.target = self
+        return item
+    }
+
+    private func modeDockItem(_ title: String, mode: String) -> NSMenuItem {
+        let item = dockItem(title, action: #selector(setModeFromDock(_:)))
+        item.representedObject = mode
+        item.state = store?.currentMode == mode ? .on : .off
+        item.isEnabled = store?.isCoreRunning == true
+        return item
     }
 }
 
@@ -40,105 +94,28 @@ struct MihomoApp: App {
                 .onOpenURL { url in
                     Task { await store.handleDeepLink(url) }
                 }
-                .background(MainWindowOpenBridge(openWindow: openWindow, appDelegate: appDelegate))
+                .background(MainWindowOpenBridge(store: store, openWindow: openWindow, appDelegate: appDelegate))
         }
         .defaultSize(width: 1180, height: 780)
         .windowResizability(.contentMinSize)
         .commands {
-            CommandGroup(replacing: .newItem) {}
-            CommandGroup(replacing: .appSettings) {
-                Button("设置...") {
-                    store.selectedSection = .settings
-                    MainWindowPresenter.present(openWindow: openWindow)
-                }
-                .keyboardShortcut(",", modifiers: [.command])
-            }
-            CommandMenu("控制") {
-                Button("显示主窗口") {
-                    MainWindowPresenter.present(openWindow: openWindow)
-                }
-                .keyboardShortcut("m", modifiers: [.command])
-
-                Button(store.isCoreRunning ? "停止核心" : "启动核心") {
-                    Task { await store.toggleCore() }
-                }
-                .keyboardShortcut("r", modifiers: [.command, .shift])
-
-                Button("重启核心") {
-                    Task { await store.restartCore() }
-                }
-                .keyboardShortcut("r", modifiers: [.command, .option])
-
-                Button("刷新 Controller") {
-                    Task { await store.refreshController() }
-                }
-                .keyboardShortcut("r", modifiers: [.command])
-
-                Button(store.systemProxyEnabled ? "关闭系统代理" : "开启系统代理") {
-                    Task { await store.toggleSystemProxy() }
-                }
-                .keyboardShortcut("p", modifiers: [.command, .shift])
-
-                Button(store.settings.tunEnabled ? "关闭 TUN" : "开启 TUN") {
-                    Task { await store.setTunEnabled(!store.settings.tunEnabled) }
-                }
-                .keyboardShortcut("t", modifiers: [.command, .option])
-
-                Button(store.settings.autoSetSystemDNS ? "关闭系统 DNS 接管" : "开启系统 DNS 接管") {
-                    var updated = store.settings
-                    updated.autoSetSystemDNS.toggle()
-                    Task { await store.saveSettings(updated) }
-                }
-                .keyboardShortcut("n", modifiers: [.command, .option])
-
-                Button("刷新所有订阅") {
-                    Task { await store.refreshAllRemoteProfiles() }
-                }
-                .keyboardShortcut("u", modifiers: [.command, .shift])
-
-                Button("检查更新...") {
-                    openWindow(id: "software-update")
-                    Task { await store.checkForSoftwareUpdate() }
-                }
-                .keyboardShortcut("u", modifiers: [.command, .option])
-
-                if let update = store.availableUpdate {
-                    Button("安装更新 \(update.version)") {
-                        Task { await store.installSoftwareUpdate() }
-                    }
-                }
-
-                Button("测试全部节点延迟") {
-                    Task { await store.testAllProxyDelays() }
-                }
-                .keyboardShortcut("t", modifiers: [.command, .shift])
-
-                Button("切换日志暂停") {
-                    store.toggleLogPause()
-                }
-                .keyboardShortcut("p", modifiers: [.command, .option])
-
-                Button("运行诊断") {
-                    Task { await store.runDiagnostics() }
-                }
-                .keyboardShortcut("d", modifiers: [.command])
-
-                Button("导出诊断包") {
-                    store.exportDiagnosticBundle()
-                }
-                .keyboardShortcut("d", modifiers: [.command, .option])
-
-                Button("进入轻量模式") {
-                    store.enterLightweightMode()
-                }
-                .keyboardShortcut("l", modifiers: [.command, .option])
-            }
+            MihomoCommands(store: store, openWindow: openWindow)
         }
 
-        WindowGroup("配置编辑器", id: "profile-editor") {
-            ProfileEditorWindowView()
+        Settings {
+            SettingsRootView()
                 .environmentObject(store)
-                .frame(minWidth: 860, minHeight: 620)
+                .frame(minWidth: 760, minHeight: 600)
+        }
+
+        WindowGroup("配置编辑器", for: UUID.self) { $profileID in
+            if let profileID {
+                ProfileEditorWindowView(profileID: profileID)
+                    .environmentObject(store)
+                    .frame(minWidth: 860, minHeight: 620)
+            } else {
+                ContentUnavailableView("未选择配置", systemImage: "doc.text.magnifyingglass")
+            }
         }
         .defaultSize(width: 980, height: 720)
 
@@ -171,14 +148,13 @@ struct MihomoApp: App {
 private struct MenuBarStatusLabel: View {
     @ObservedObject var store: AppStore
     @ObservedObject var activityStore: RuntimeActivityStore
-    @AppStorage("menuBar.showTrafficRates") private var showsTrafficRates = true
 
     var body: some View {
         HStack(spacing: 4) {
             MenuBarBrandMark(mode: store.currentMode)
                 .frame(width: 24, height: 18)
 
-            if showsTrafficRates {
+            if store.settings.showMenuBarTrafficRates {
                 VStack(alignment: .trailing, spacing: -2) {
                     Text("↓ \(Formatters.rate(activityStore.downloadRate))")
                     Text("↑ \(Formatters.rate(activityStore.uploadRate))")
@@ -235,6 +211,7 @@ enum MenuBarPresentation {
 }
 
 private struct MainWindowOpenBridge: View {
+    @ObservedObject var store: AppStore
     let openWindow: OpenWindowAction
     let appDelegate: AppDelegate
 
@@ -242,7 +219,9 @@ private struct MainWindowOpenBridge: View {
         Color.clear
             .frame(width: 0, height: 0)
             .onAppear {
+                appDelegate.store = store
                 appDelegate.openMainWindow = {
+                    store.isLightweightModeActive = false
                     MainWindowPresenter.present(openWindow: openWindow)
                 }
             }

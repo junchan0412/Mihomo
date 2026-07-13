@@ -60,7 +60,7 @@ struct PolicyStatusStrip: View {
         .font(.callout)
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -79,7 +79,7 @@ struct PolicyStartupEmptyState: View {
             Spacer(minLength: 0)
 
             Image(systemName: isCoreRunning ? "point.3.connected.trianglepath.dotted" : "power.circle")
-                .font(.system(size: 34, weight: .semibold))
+                .font(.largeTitle.weight(.semibold))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(.secondary)
 
@@ -184,7 +184,7 @@ struct PolicySearchEmptyState: View {
             Spacer(minLength: 0)
 
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 30, weight: .semibold))
+                .font(.largeTitle.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 5) {

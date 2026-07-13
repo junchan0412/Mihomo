@@ -1,8 +1,12 @@
+import AppKit
 import SwiftUI
 
 struct ConfigFragmentsEditorView: View {
+    @Environment(\.undoManager) private var undoManager
     @EnvironmentObject private var store: AppStore
-    @State private var selectedFragmentID: UUID?
+    @State private var selectedFragmentIDs: Set<UUID> = []
+    @State private var searchText = ""
+    @FocusState private var searchIsFocused: Bool
     @State private var fragmentName = ""
     @State private var fragmentKind: ConfigFragmentKind = .yaml
     @State private var fragmentEnabled = true
@@ -10,10 +14,24 @@ struct ConfigFragmentsEditorView: View {
     @State private var fragmentAppliesGlobally = true
     @State private var fragmentProfileIDs: Set<UUID> = []
     @State private var isCreating = false
+    @State private var confirmsDeletion = false
 
     private var selectedFragment: ConfigFragment? {
-        guard let selectedFragmentID else { return nil }
+        guard selectedFragmentIDs.count == 1, let selectedFragmentID = selectedFragmentIDs.first else { return nil }
         return store.configFragments.first { $0.id == selectedFragmentID }
+    }
+
+    private var selectedFragments: [ConfigFragment] {
+        store.configFragments.filter { selectedFragmentIDs.contains($0.id) }
+    }
+
+    private var visibleFragments: [ConfigFragment] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else { return store.configFragments }
+        return store.configFragments.filter {
+            $0.name.localizedCaseInsensitiveContains(query)
+                || $0.content.localizedCaseInsensitiveContains(query)
+        }
     }
 
     var body: some View {
@@ -24,9 +42,23 @@ struct ConfigFragmentsEditorView: View {
             fragmentInformationPane
                 .frame(minWidth: 470, maxWidth: .infinity, maxHeight: .infinity)
         }
+        .searchable(text: $searchText, placement: .toolbar, prompt: "搜索覆写")
+        .compatibleSearchFocused($searchIsFocused)
+        .focusedSceneValue(\.workspaceCommands, commandContext)
         .onAppear { ensureSelection() }
         .onChange(of: store.configFragments) { ensureSelection() }
-        .onChange(of: selectedFragmentID) { loadSelection() }
+        .onChange(of: selectedFragmentIDs) { loadSelection() }
+        .confirmationDialog("删除所选覆写？", isPresented: $confirmsDeletion, titleVisibility: .visible) {
+            Button("删除 \(selectedFragments.count) 个覆写", role: .destructive) {
+                let fragments = selectedFragments
+                selectedFragmentIDs.removeAll()
+                store.deleteConfigFragments(fragments, undoManager: undoManager)
+                ensureSelection()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("覆写会从运行时配置链中移除。完成后可使用 Command-Z 撤销。")
+        }
     }
 
     private var fragmentListPane: some View {
@@ -61,17 +93,22 @@ struct ConfigFragmentsEditorView: View {
                 ContentUnavailableView("没有覆写", systemImage: "doc.badge.plus", description: Text("新增一个 YAML 或 JavaScript 覆写。"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(selection: $selectedFragmentID) {
-                    ForEach(store.configFragments) { fragment in
+                List(selection: $selectedFragmentIDs) {
+                    ForEach(visibleFragments) { fragment in
                         ConfigFragmentListRow(fragment: fragment)
                             .tag(fragment.id)
                             .contextMenu {
                                 Button(fragment.enabled ? "停用" : "启用") {
                                     toggle(fragment)
                                 }
+                                Button("复制内容") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(fragment.content, forType: .string)
+                                }
                                 Divider()
                                 Button("删除", role: .destructive) {
-                                    store.deleteConfigFragment(fragment)
+                                    selectedFragmentIDs = [fragment.id]
+                                    requestDeleteSelection()
                                 }
                             }
                     }
@@ -174,7 +211,7 @@ struct ConfigFragmentsEditorView: View {
                         }
                     }
                     .padding(.horizontal, 10)
-                    .background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 8))
+                    .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
                 }
             }
 
@@ -192,7 +229,7 @@ struct ConfigFragmentsEditorView: View {
                     .font(.system(.body, design: .monospaced))
                     .scrollContentBackground(.hidden)
                     .padding(8)
-                    .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 8))
+                    .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(MihomoUI.cardStroke, lineWidth: 1)
@@ -203,7 +240,7 @@ struct ConfigFragmentsEditorView: View {
             HStack {
                 if selectedFragment != nil && isCreating == false {
                     Button("删除", role: .destructive) {
-                        deleteSelection()
+                        requestDeleteSelection()
                     }
                 }
 
@@ -237,10 +274,13 @@ struct ConfigFragmentsEditorView: View {
 
     private func ensureSelection() {
         if isCreating { return }
-        if let selectedFragmentID, store.configFragments.contains(where: { $0.id == selectedFragmentID }) {
+        selectedFragmentIDs.formIntersection(Set(store.configFragments.map(\.id)))
+        if selectedFragmentIDs.isEmpty == false {
             return
         }
-        selectedFragmentID = store.configFragments.first?.id
+        if let firstID = visibleFragments.first?.id ?? store.configFragments.first?.id {
+            selectedFragmentIDs = [firstID]
+        }
         loadSelection()
     }
 
@@ -266,7 +306,7 @@ struct ConfigFragmentsEditorView: View {
 
     private func beginCreating() {
         isCreating = true
-        selectedFragmentID = nil
+        selectedFragmentIDs.removeAll()
         fragmentName = ""
         fragmentKind = .yaml
         fragmentEnabled = true
@@ -278,18 +318,16 @@ struct ConfigFragmentsEditorView: View {
     private func save() {
         let normalizedName = fragmentName.trimmingCharacters(in: .whitespacesAndNewlines)
         if isCreating {
-            store.addConfigFragment(
-                name: normalizedName,
+            let created = ConfigFragment(
+                name: normalizedName.isEmpty ? "YAML 片段" : normalizedName,
                 kind: fragmentKind,
-                content: fragmentContent
+                enabled: fragmentEnabled,
+                content: fragmentContent,
+                appliesGlobally: fragmentAppliesGlobally,
+                profileIDs: Array(fragmentProfileIDs)
             )
-            if var created = store.configFragments.last {
-                created.enabled = fragmentEnabled
-                created.appliesGlobally = fragmentAppliesGlobally
-                created.profileIDs = Array(fragmentProfileIDs)
-                store.updateConfigFragment(created)
-                selectedFragmentID = created.id
-            }
+            store.addConfigFragment(created, undoManager: undoManager)
+            selectedFragmentIDs = [created.id]
             isCreating = false
             return
         }
@@ -300,7 +338,7 @@ struct ConfigFragmentsEditorView: View {
         fragment.content = fragmentContent
         fragment.appliesGlobally = fragmentAppliesGlobally
         fragment.profileIDs = Array(fragmentProfileIDs)
-        store.updateConfigFragment(fragment)
+        store.updateConfigFragment(fragment, undoManager: undoManager)
     }
 
     private var saveDisabled: Bool {
@@ -308,17 +346,28 @@ struct ConfigFragmentsEditorView: View {
             || (fragmentAppliesGlobally == false && fragmentProfileIDs.isEmpty)
     }
 
-    private func deleteSelection() {
-        guard let fragment = selectedFragment else { return }
-        store.deleteConfigFragment(fragment)
-        selectedFragmentID = nil
-        ensureSelection()
+    private func requestDeleteSelection() {
+        guard selectedFragments.isEmpty == false else { return }
+        confirmsDeletion = true
     }
 
     private func toggle(_ fragment: ConfigFragment) {
         var updated = fragment
         updated.enabled.toggle()
-        store.updateConfigFragment(updated)
+        store.updateConfigFragment(updated, undoManager: undoManager)
+    }
+
+    private var commandContext: WorkspaceCommandContext {
+        WorkspaceCommandContext(
+            search: {
+                searchIsFocused = true
+                MihomoSearchFocus.request()
+            },
+            refresh: store.refreshConfigArtifacts,
+            activateSelection: searchIsFocused || selectedFragment == nil ? nil : loadSelection,
+            previewSelection: searchIsFocused || selectedFragment == nil ? nil : loadSelection,
+            deleteSelection: searchIsFocused || selectedFragments.isEmpty ? nil : requestDeleteSelection
+        )
     }
 }
 

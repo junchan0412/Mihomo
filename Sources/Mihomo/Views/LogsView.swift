@@ -5,7 +5,10 @@ struct LogsView: View {
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var logStore: LogStore
     @State private var searchText = ""
+    @FocusState private var searchIsFocused: Bool
     @State private var selectedCategory: LogCategory = .all
+    @State private var selectedRowIDs: Set<UUID> = []
+    @State private var confirmsClear = false
 
     private var rows: [LogPresentationRow] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -37,6 +40,21 @@ struct LogsView: View {
         .background(MihomoUI.pageBackground)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("日志")
+        .searchable(text: $searchText, placement: .toolbar, prompt: "搜索日志")
+        .compatibleSearchFocused($searchIsFocused)
+        .focusedSceneValue(\.workspaceCommands, commandContext)
+        .onChange(of: rows) {
+            selectedRowIDs.formIntersection(Set(rows.map(\.id)))
+        }
+        .confirmationDialog("清空当前日志？", isPresented: $confirmsClear, titleVisibility: .visible) {
+            Button("全部清除", role: .destructive) {
+                selectedRowIDs.removeAll()
+                store.clearVisibleLogs()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("这只会清空当前界面的日志与缓冲；已落盘日志文件不会被删除。")
+        }
     }
 
     private var logHeader: some View {
@@ -50,21 +68,6 @@ struct LogsView: View {
             }
 
             Spacer()
-
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("搜索", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(MihomoUI.Fonts.body)
-            }
-            .padding(.horizontal, 12)
-            .frame(width: 280, height: 34)
-            .background(MihomoUI.mutedFill, in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(MihomoUI.cardStroke, lineWidth: 1)
-            }
 
             Text("\(rows.count)")
                 .font(MihomoUI.Fonts.bodyMedium)
@@ -83,15 +86,25 @@ struct LogsView: View {
     private var logTable: some View {
         AppKitTable(
             rows: rows,
-            selection: .constant(nil),
+            selection: $selectedRowIDs,
             columns: [
                 .init(title: "时间", width: 160) { $0.time },
                 .init(title: "分类", width: 110, textColor: { $0.category.color }) { $0.category.title },
                 .init(title: "标题", width: 360) { $0.title },
                 .init(title: "详情", width: 680) { $0.detail }
             ],
+            allowsMultipleSelection: true,
+            onActivate: { copyRows($0) },
+            onPreview: { copyRows($0) },
             hasHorizontalScroller: true,
-            borderType: .noBorder
+            borderType: .noBorder,
+            contextMenuActions: [
+                .init("复制") { copyRows($0) },
+                .init("按此分类过滤", isEnabled: { $0.count == 1 }) { selected in
+                    guard let row = selected.first else { return }
+                    selectedCategory = row.category
+                }
+            ]
         )
         .overlay {
             if rows.isEmpty {
@@ -111,7 +124,7 @@ struct LogsView: View {
             }
 
             Button("全部清除") {
-                store.clearVisibleLogs()
+                confirmsClear = true
             }
             .disabled(logStore.entries.isEmpty)
 
@@ -145,5 +158,28 @@ struct LogsView: View {
             return "已暂停，缓冲 \(logStore.bufferedCount) 条 · \(retention)"
         }
         return retention
+    }
+
+    private var selectedRows: [LogPresentationRow] {
+        rows.filter { selectedRowIDs.contains($0.id) }
+    }
+
+    private func copyRows(_ rows: [LogPresentationRow]) {
+        guard rows.isEmpty == false else { return }
+        let text = rows.map { "\($0.time) [\($0.level)] \($0.title) — \($0.detail)" }.joined(separator: "\n")
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private var commandContext: WorkspaceCommandContext {
+        WorkspaceCommandContext(
+            search: {
+                searchIsFocused = true
+                MihomoSearchFocus.request()
+            },
+            refresh: { Task { await store.refreshController() } },
+            activateSelection: searchIsFocused || selectedRows.isEmpty ? nil : { copyRows(selectedRows) },
+            previewSelection: searchIsFocused || selectedRows.isEmpty ? nil : { copyRows(selectedRows) }
+        )
     }
 }

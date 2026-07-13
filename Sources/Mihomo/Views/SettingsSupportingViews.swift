@@ -195,8 +195,8 @@ struct SettingsSection<Content: View>: View {
             }
 
             VStack(spacing: 0) { content }
-                .background(.quaternary.opacity(0.26), in: RoundedRectangle(cornerRadius: 10))
-                .overlay { RoundedRectangle(cornerRadius: 10).stroke(.quaternary, lineWidth: 1) }
+                .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 10))
+                .overlay { RoundedRectangle(cornerRadius: 10).stroke(MihomoUI.cardStroke, lineWidth: 1) }
         }
     }
 }

@@ -32,7 +32,7 @@ struct SoftwareUpdateWindowView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
-                    .font(.system(size: 25, weight: .bold))
+                    .font(.title.weight(.bold))
                 Text(summary)
                     .font(.title3)
                     .foregroundStyle(.secondary)
@@ -81,12 +81,12 @@ struct SoftwareUpdateWindowView: View {
                 .foregroundStyle(.secondary)
             }
             .padding(20)
-            .background(.quaternary.opacity(0.22), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay { RoundedRectangle(cornerRadius: 14).stroke(MihomoUI.cardStroke) }
         } else {
             ContentUnavailableView(title, systemImage: statusIcon, description: Text(store.softwareUpdateStatus))
                 .frame(maxWidth: .infinity, minHeight: 250)
-                .background(.quaternary.opacity(0.18), in: RoundedRectangle(cornerRadius: 14))
+                .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 14))
         }
     }
 

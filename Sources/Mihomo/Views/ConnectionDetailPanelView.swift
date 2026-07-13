@@ -144,7 +144,7 @@ private struct TrafficValueTile: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

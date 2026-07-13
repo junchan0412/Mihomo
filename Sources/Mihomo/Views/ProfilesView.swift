@@ -4,10 +4,14 @@ import UniformTypeIdentifiers
 
 struct ProfilesView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.undoManager) private var undoManager
     @EnvironmentObject private var store: AppStore
-    @State private var selectedProfileID: UUID?
+    @State private var selectedProfileIDs: Set<UUID> = []
+    @State private var searchText = ""
+    @FocusState private var searchIsFocused: Bool
     @State private var isDropTargeted = false
     @State private var showingRemoteImport = false
+    @State private var confirmsDeletion = false
 
     var body: some View {
         ScrollView {
@@ -25,17 +29,34 @@ struct ProfilesView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("配置")
+        .searchable(text: $searchText, placement: .toolbar, prompt: "搜索配置名称或来源")
+        .compatibleSearchFocused($searchIsFocused)
+        .focusedSceneValue(\.workspaceCommands, commandContext)
         .overlay {
             DropTargetOverlay(isTargeted: isDropTargeted)
         }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
         .onAppear {
-            selectedProfileID = store.settings.activeProfileID ?? store.profiles.first?.id
+            if let profileID = store.settings.activeProfileID ?? store.profiles.first?.id {
+                selectedProfileIDs = [profileID]
+            }
         }
         .onChange(of: store.profiles) {
-            if selectedProfileID == nil || store.profiles.contains(where: { $0.id == selectedProfileID }) == false {
-                selectedProfileID = store.settings.activeProfileID ?? store.profiles.first?.id
+            selectedProfileIDs.formIntersection(Set(store.profiles.map(\.id)))
+            if selectedProfileIDs.isEmpty,
+               let profileID = store.settings.activeProfileID ?? store.profiles.first?.id {
+                selectedProfileIDs = [profileID]
             }
+        }
+        .confirmationDialog("删除所选配置？", isPresented: $confirmsDeletion, titleVisibility: .visible) {
+            Button("删除 \(selectedProfiles.count) 个配置", role: .destructive) {
+                let profiles = selectedProfiles
+                selectedProfileIDs.removeAll()
+                Task { await store.deleteProfiles(profiles, undoManager: undoManager) }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("配置文件将从 Mihomo 的配置目录移除。完成后可使用 Command-Z 撤销。")
         }
         .sheet(isPresented: $showingRemoteImport) {
             RemoteProfileImportSheet()
@@ -104,11 +125,24 @@ struct ProfilesView: View {
             }
 
             AppKitTable(
-                rows: store.profiles,
-                selection: $selectedProfileID,
+                rows: visibleProfiles,
+                selection: $selectedProfileIDs,
                 columns: profileColumns,
+                allowsMultipleSelection: true,
+                onDoubleClick: { profile in
+                    selectedProfileIDs = [profile.id]
+                    openProfileEditor()
+                },
+                onActivate: { profiles in
+                    guard let profile = profiles.first else { return }
+                    selectedProfileIDs = [profile.id]
+                    openProfileEditor()
+                },
+                onPreview: { profiles in previewProfiles(profiles) },
+                onDelete: { _ in requestDeleteSelectedProfiles() },
                 hasHorizontalScroller: false,
-                allowsParentScrollPassthrough: true
+                allowsParentScrollPassthrough: true,
+                contextMenuActions: profileContextMenuActions
             )
             .overlay {
                 if store.profiles.isEmpty {
@@ -135,13 +169,11 @@ struct ProfilesView: View {
                 .disabled(selectedProfile == nil)
 
                 Button {
-                    if let selectedProfile {
-                        Task { await store.refreshProfile(selectedProfile) }
-                    }
+                    refreshSelectedProfiles()
                 } label: {
                     Label("刷新", systemImage: "arrow.clockwise")
                 }
-                .disabled(selectedProfile?.isRemote != true)
+                .disabled(selectedProfiles.contains(where: \.isRemote) == false)
 
                 Button {
                     Task { await store.refreshAllRemoteProfiles() }
@@ -161,14 +193,20 @@ struct ProfilesView: View {
                     Label("从 URL 安装配置...", systemImage: "link.badge.plus")
                 }
 
+                if let selectedProfile {
+                    ShareLink(item: store.profileStore.profileFile(selectedProfile, settings: store.settings)) {
+                        Label("分享", systemImage: "square.and.arrow.up")
+                    }
+                }
+
                 Spacer()
 
                 Button(role: .destructive) {
-                    deleteSelectedProfile()
+                    requestDeleteSelectedProfiles()
                 } label: {
                     Label("删除", systemImage: "trash")
                 }
-                .disabled(selectedProfile == nil || store.profiles.count <= 1)
+                .disabled(selectedProfiles.isEmpty || selectedProfiles.count >= store.profiles.count)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -189,12 +227,26 @@ struct ProfilesView: View {
     }
 
     private var selectedProfile: ProfileItem? {
-        guard let selectedProfileID else { return nil }
+        guard selectedProfileIDs.count == 1, let selectedProfileID = selectedProfileIDs.first else { return nil }
         return store.profiles.first { $0.id == selectedProfileID }
     }
 
+    private var selectedProfiles: [ProfileItem] {
+        store.profiles.filter { selectedProfileIDs.contains($0.id) }
+    }
+
+    private var visibleProfiles: [ProfileItem] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else { return store.profiles }
+        return store.profiles.filter {
+            $0.name.localizedCaseInsensitiveContains(query)
+                || $0.location.localizedCaseInsensitiveContains(query)
+                || $0.fileName.localizedCaseInsensitiveContains(query)
+        }
+    }
+
     private var profileTableHeight: CGFloat {
-        let visibleRows = max(store.profiles.count, 1)
+        let visibleRows = max(visibleProfiles.count, 1)
         let naturalHeight = 30 + CGFloat(visibleRows) * 28
         return min(max(naturalHeight, 176), 280)
     }
@@ -214,14 +266,77 @@ struct ProfilesView: View {
     }
 
     private func openProfileEditor() {
-        guard let selectedProfileID else { return }
-        store.profileEditorProfileID = selectedProfileID
-        openWindow(id: "profile-editor")
+        guard let selectedProfileID = selectedProfile?.id else { return }
+        openWindow(value: selectedProfileID)
     }
 
-    private func deleteSelectedProfile() {
-        guard let selectedProfile else { return }
-        Task { await store.deleteProfile(selectedProfile) }
+    private func requestDeleteSelectedProfiles() {
+        guard selectedProfiles.isEmpty == false,
+              selectedProfiles.count < store.profiles.count
+        else { return }
+        confirmsDeletion = true
+    }
+
+    private func refreshSelectedProfiles() {
+        let profiles = selectedProfiles.filter(\.isRemote)
+        Task {
+            for profile in profiles {
+                await store.refreshProfile(profile)
+            }
+        }
+    }
+
+    private func previewProfiles(_ profiles: [ProfileItem]) {
+        let urls = profiles.map { store.profileStore.profileFile($0, settings: store.settings) }
+        QuickLookPreviewer.shared.present(urls)
+    }
+
+    private var profileContextMenuActions: [AppKitTableContextAction<ProfileItem>] {
+        [
+            .init("启用", isEnabled: { $0.count == 1 }) { profiles in
+                guard let profile = profiles.first else { return }
+                Task { await store.setActiveProfile(profile) }
+            },
+            .init("编辑", isEnabled: { $0.count == 1 }) { profiles in
+                guard let profile = profiles.first else { return }
+                selectedProfileIDs = [profile.id]
+                openProfileEditor()
+            },
+            .init("刷新", isEnabled: { $0.contains(where: \.isRemote) }) { profiles in
+                selectedProfileIDs = Set(profiles.map(\.id))
+                refreshSelectedProfiles()
+            },
+            .init("快速查看") { profiles in
+                previewProfiles(profiles)
+            },
+            .init("在 Finder 中显示") { profiles in
+                let urls = profiles.map { store.profileStore.profileFile($0, settings: store.settings) }
+                NSWorkspace.shared.activateFileViewerSelecting(urls)
+            },
+            .init(
+                "删除",
+                isDestructive: true,
+                isEnabled: { $0.isEmpty == false && $0.count < store.profiles.count }
+            ) { profiles in
+                selectedProfileIDs = Set(profiles.map(\.id))
+                requestDeleteSelectedProfiles()
+            }
+        ]
+    }
+
+    private var commandContext: WorkspaceCommandContext {
+        WorkspaceCommandContext(
+            search: {
+                searchIsFocused = true
+                MihomoSearchFocus.request()
+            },
+            refresh: { Task { await store.refreshAllRemoteProfiles() } },
+            activateSelection: searchIsFocused || selectedProfile == nil ? nil : openProfileEditor,
+            previewSelection: searchIsFocused || selectedProfiles.isEmpty ? nil : { previewProfiles(selectedProfiles) },
+            deleteSelection: searchIsFocused || selectedProfiles.isEmpty || selectedProfiles.count >= store.profiles.count
+                ? nil
+                : requestDeleteSelectedProfiles
+        )
     }
 
     private func importLocal() {

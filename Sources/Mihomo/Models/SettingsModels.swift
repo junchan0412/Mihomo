@@ -19,6 +19,7 @@ struct AppSettings: Codable, Hashable {
     var maxCrashRestarts: Int
     var autoRefreshProfiles: Bool
     var profileRefreshIntervalHours: Int
+    var notifyProfileRefreshFailures: Bool
     var lightweightMode: Bool
     var restoreSystemProxyOnQuit: Bool
     var delayTestURL: String
@@ -30,6 +31,7 @@ struct AppSettings: Codable, Hashable {
     var delayTestConcurrency: Int
     var logRetentionDays: Int
     var logMaxFileSizeMB: Int
+    var showMenuBarTrafficRates: Bool
     var managedCoreEnabled: Bool
     var managedCoreDownloadURL: String
     var managedCoreSHA256: String
@@ -73,7 +75,7 @@ struct AppSettings: Codable, Hashable {
     static let `default` = AppSettings()
 
     init(
-        settingsSchemaVersion: Int = 3,
+        settingsSchemaVersion: Int = 4,
         mihomoPath: String = "",
         coreSource: CoreSource = .managed,
         activeProfileID: UUID? = nil,
@@ -91,6 +93,7 @@ struct AppSettings: Codable, Hashable {
         maxCrashRestarts: Int = 3,
         autoRefreshProfiles: Bool = false,
         profileRefreshIntervalHours: Int = 24,
+        notifyProfileRefreshFailures: Bool = false,
         lightweightMode: Bool = false,
         restoreSystemProxyOnQuit: Bool = true,
         delayTestURL: String = "https://cp.cloudflare.com/generate_204",
@@ -102,6 +105,7 @@ struct AppSettings: Codable, Hashable {
         delayTestConcurrency: Int = 6,
         logRetentionDays: Int = 7,
         logMaxFileSizeMB: Int = 8,
+        showMenuBarTrafficRates: Bool = true,
         managedCoreEnabled: Bool? = nil,
         managedCoreDownloadURL: String = "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.28/mihomo-darwin-arm64-v1.19.28.gz",
         managedCoreSHA256: String = "40cdae2fab4b18df15f40eaa9dc3af70ab3d8be7f77164ae1e5f1af3a2a4fb44",
@@ -160,6 +164,7 @@ struct AppSettings: Codable, Hashable {
         self.maxCrashRestarts = maxCrashRestarts
         self.autoRefreshProfiles = autoRefreshProfiles
         self.profileRefreshIntervalHours = profileRefreshIntervalHours
+        self.notifyProfileRefreshFailures = notifyProfileRefreshFailures
         self.lightweightMode = lightweightMode
         self.restoreSystemProxyOnQuit = restoreSystemProxyOnQuit
         self.delayTestURL = delayTestURL
@@ -171,6 +176,7 @@ struct AppSettings: Codable, Hashable {
         self.delayTestConcurrency = delayTestConcurrency
         self.logRetentionDays = logRetentionDays
         self.logMaxFileSizeMB = logMaxFileSizeMB
+        self.showMenuBarTrafficRates = showMenuBarTrafficRates
         self.managedCoreEnabled = managedCoreEnabled ?? (coreSource == .managed)
         self.managedCoreDownloadURL = managedCoreDownloadURL
         self.managedCoreSHA256 = managedCoreSHA256
@@ -231,6 +237,7 @@ struct AppSettings: Codable, Hashable {
         case maxCrashRestarts
         case autoRefreshProfiles
         case profileRefreshIntervalHours
+        case notifyProfileRefreshFailures
         case lightweightMode
         case restoreSystemProxyOnQuit
         case delayTestURL
@@ -242,6 +249,7 @@ struct AppSettings: Codable, Hashable {
         case delayTestConcurrency
         case logRetentionDays
         case logMaxFileSizeMB
+        case showMenuBarTrafficRates
         case managedCoreEnabled
         case managedCoreDownloadURL
         case managedCoreSHA256
@@ -306,6 +314,7 @@ struct AppSettings: Codable, Hashable {
         maxCrashRestarts = try container.decodeIfPresent(Int.self, forKey: .maxCrashRestarts) ?? fallback.maxCrashRestarts
         autoRefreshProfiles = try container.decodeIfPresent(Bool.self, forKey: .autoRefreshProfiles) ?? fallback.autoRefreshProfiles
         profileRefreshIntervalHours = try container.decodeIfPresent(Int.self, forKey: .profileRefreshIntervalHours) ?? fallback.profileRefreshIntervalHours
+        notifyProfileRefreshFailures = try container.decodeIfPresent(Bool.self, forKey: .notifyProfileRefreshFailures) ?? fallback.notifyProfileRefreshFailures
         lightweightMode = try container.decodeIfPresent(Bool.self, forKey: .lightweightMode) ?? fallback.lightweightMode
         restoreSystemProxyOnQuit = try container.decodeIfPresent(Bool.self, forKey: .restoreSystemProxyOnQuit) ?? fallback.restoreSystemProxyOnQuit
         delayTestURL = try container.decodeIfPresent(String.self, forKey: .delayTestURL) ?? fallback.delayTestURL
@@ -317,6 +326,7 @@ struct AppSettings: Codable, Hashable {
         delayTestConcurrency = try container.decodeIfPresent(Int.self, forKey: .delayTestConcurrency) ?? fallback.delayTestConcurrency
         logRetentionDays = try container.decodeIfPresent(Int.self, forKey: .logRetentionDays) ?? fallback.logRetentionDays
         logMaxFileSizeMB = try container.decodeIfPresent(Int.self, forKey: .logMaxFileSizeMB) ?? fallback.logMaxFileSizeMB
+        showMenuBarTrafficRates = try container.decodeIfPresent(Bool.self, forKey: .showMenuBarTrafficRates) ?? fallback.showMenuBarTrafficRates
         managedCoreEnabled = legacyManagedCoreEnabled ?? (coreSource == .managed)
         managedCoreDownloadURL = try container.decodeIfPresent(String.self, forKey: .managedCoreDownloadURL) ?? fallback.managedCoreDownloadURL
         managedCoreSHA256 = try container.decodeIfPresent(String.self, forKey: .managedCoreSHA256) ?? fallback.managedCoreSHA256

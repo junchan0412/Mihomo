@@ -2,61 +2,20 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.8.85`
+当前版本：`v1.9.0`
 
-## v1.8.85 修复重点
+## v1.9.0 更新重点
 
-- 品牌图标重绘为纯 M 形，移除中间圆圈和双向箭头；light/dark 与菜单栏图形统一。
-- 修复菜单栏只显示模式字母的问题，M 图形改用原生 SwiftUI Shape。
-- 概览策略组支持用户自定义最多四个常用组。
-- 流量统计名称列缩短，策略展开动画改为显式 snappy 动画。
-- 网络、高级工具、诊断、设置按“实时控制 / 维护工件 / 检查导出 / 偏好”重新划分职责。
-- 流量时间轴仅使用直连 cyan 与代理 indigo 两种语义颜色。
+- 主导航改为原生 Source List，设置迁移到标准 `Settings` Scene，`⌘,` 打开独立设置窗口。
+- Toolbar 支持系统自定义，路由模式置于 principal 区域；新增 `⌘1…9`、`⌘F`、`⌘R` 以及 Return、Space、Delete 等桌面键盘操作。
+- 表格支持 Command/Shift 多选、批量 Context Menu、确认对话框和可恢复编辑操作；Profile 编辑器支持多个独立窗口。
+- 连接工作区保留“最近的请求 / 活动连接 / DNS / 流量统计”，移除设备和日志簿；连接列缩短，DNS 为只读观测页面。
+- 流量时间轴只使用“直连”和“代理”两种语义颜色，并适配 Increase Contrast、Reduce Transparency 与 Reduce Motion。
+- 日志页按全部、常规、网络切换和 DHCP 分类重构，不提供 Mihomo 尚不支持的脚本类型。
+- 新增 Dock Menu、App Shortcuts、Spotlight 索引、Quick Look 与 ShareLink；通知权限仅在用户主动开启失败通知时请求。
+- 危险操作统一增加确认，Profile、规则与覆写的编辑操作支持 Undo/Redo。
 
-## v1.8.84 修复重点
-
-- 软件更新 manifest 自动嵌入完整 Release Notes，更新窗口不再只显示版本标题。
-- 菜单栏使用与应用图标一致的 M 形品牌标志，并以 R、D、G 角标显示规则、直连和全局模式。
-- 菜单栏上传/下载速率支持在菜单或设置中自由显示和隐藏，偏好会持久保存。
-
-## v1.8.83 修复重点
-
-- 流量时间轴增加横轴时间、分段配色，并将可见柱数限制为 48。
-- 连接侧栏选中项增加更清晰的背景和描边。
-- Provider 行 chevron 可直接展开/收起。
-- Provider 最后更新时间使用标准化持久化键，重启后仍能正确匹配。
-- 菜单栏切换为可靠的系统单色 Symbol，修复黑色方块。
-
-- 修复菜单栏模板图尺寸与动态文字混排问题。
-- Provider 缓存支持 YAML、Base64 订阅和分享链接列表，离线节点名称可稳定显示。
-- 规则启用状态改为原生复选框，可在表格中直接启用或禁用。
-- 资源表支持右键单独更新；更新历史容量提升，批量更新后状态不再回退为“未更新”。
-- 设置迁入应用内主导航，`⌘,` 直接切换到应用内设置页面。
-
-- 软件更新窗口采用原生 Release 展示结构，支持跳过版本、稍后提醒与自动下载偏好。
-- 新增 light/dark App 图标、ICNS 与菜单栏模板图，侧栏品牌标识同步更新。
-- 资源入口移入常规区，Provider 批量更新并发可独立设置；Provider 节点与策略组采用一致的页内展开交互。
-- 网络、高级工具、诊断和设置重新组织信息层级，诊断拆分为概览、检查结果和修复中心。
-
-- 连接工作区重构为“最近的请求 / 活动连接 / DNS / 流量统计”四个页内分段；DNS 不再跳转设置或网络页，设备与日志簿入口已移除。
-- 连接表缩短 ID、客户端和策略列，最近请求与活动连接使用独立数据源，窄窗口下分段导航会自动换行而不截断标题。
-- DNS 使用连接观测表展示域名、地址与 DNS 服务器；流量统计按策略、进程或主机名展示今天及 5 分钟至 12 小时窗口。
-- 独立日志页改为“类型侧栏 + 时间/分类/标题/详情表格”，支持常规、网络切换和 DHCP 分类，不提供 Mihomo 尚不支持的脚本类型。
-- 将覆写从配置页完全拆分为独立主导航页面，明确最终优先级：`YAML 覆写 > JS Transform > Profile 配置 > 应用默认`。
-- 字段来源、最终值、简要说明和 hover 详情统一展示；应用设置只补齐配置未声明的字段。
-- 资源页缩短名称列，调整为“名称 / 类型 / 最后更新 / 状态 / 路径”，移除无关 Controller 信息，并支持远程下载与本地资源重新载入。
-- 未就绪过滤使用稳定空态与固定详情区，避免布局跳动。
-- 设置重构为“通用 / 远程访问 / 高级”；高级工具只保留安装、维护、备份、安全与诊断能力，避免与常用设置重复。
-- 网络页重构为“概览 / DNS / 恢复”，区分 mihomo 运行时 DNS 与 macOS 系统 DNS。
-- 策略页重做为单列 Provider/策略组工作区，并保留节点详情、测速与 GUI 策略组编辑入口；规则页恢复全宽表格和双击编辑。
-- Provider 缓存节点无需启动核心即可浏览；策略组支持页内展开、图标、隐藏组与不可用节点筛选，顶部操作收敛为折叠、全量测速和筛选。
-- 配置质量总览改为连续分段容器并消除空白；只有 `proxies` 与 `proxy-providers` 同时为空时才提示缺少出站来源。
-- 覆写片段可作用于全部配置或指定配置，并在运行时合并与质量分析中按 Profile 范围过滤。
-- 默认托管内核升级为官方 MetaCubeX/mihomo `v1.19.28`，内置真实 SHA-256 校验值。
-- Provider 批量更新同时处理远程与本地资源；本地文件会执行路径、存在性、非空和可读性校验。
-- 资源详情隐藏远程 URL query/fragment，避免订阅 token 出现在界面中。
-
-完整变更见 [v1.8.85 Release Notes](docs/releases/v1.8.85.md)，架构与开发约定见 [开发文档](Mihomo-macOS-development-report.md)。
+完整变更见 [v1.9.0 Release Notes](docs/releases/v1.9.0.md)，架构与开发约定见 [开发文档](Mihomo-macOS-development-report.md)。
 
 ## 功能范围
 
@@ -117,7 +76,7 @@ git diff --check
 ./script/build_and_run.sh --verify
 ```
 
-当前测试集包含 100 个 XCTest，覆盖 Activity/日志展示、规则参数与稳定命中计数、覆写作用域、配置质量、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、Provider 更新与回滚、网络请求超时、Controller WebSocket 恢复、Helper 路径边界、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
+当前测试集包含 106 个 XCTest，覆盖 Activity/日志展示、两色流量语义、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域、配置质量、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、Provider 更新与回滚、网络请求超时、Controller WebSocket 恢复、Helper 路径边界、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
 
 网络恢复与辅助功能人工检查：
 
@@ -151,16 +110,16 @@ JS 输出
 export https_proxy=http://127.0.0.1:6152
 export http_proxy=http://127.0.0.1:6152
 export all_proxy=socks5://127.0.0.1:6153
-./script/package_release.sh 1.8.85
-./script/release_smoke_test.sh 1.8.85
+./script/package_release.sh 1.9.0
+./script/release_smoke_test.sh 1.9.0
 ```
 
 产物位于 `dist/releases/`：
 
-- `Mihomo-1.8.85-macOS-arm64.zip`
-- `Mihomo-1.8.85-update.json`
+- `Mihomo-1.9.0-macOS-arm64.zip`
+- `Mihomo-1.9.0-update.json`
 - `mihomo-update.json`
-- `Mihomo-1.8.85-provenance.md`
+- `Mihomo-1.9.0-provenance.md`
 
 Release 必须上传 zip 和 `mihomo-update.json`，否则应用内更新无法发现或验证新版本。manifest 使用 Ed25519 签名，私钥从 `MIHOMO_UPDATE_PRIVATE_KEY` 或 `~/.mihomo-update-signing/ed25519.private` 读取。
 

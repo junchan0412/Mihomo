@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 enum MihomoUI {
     static let cornerRadius: CGFloat = 8
@@ -9,23 +10,29 @@ enum MihomoUI {
     static let cardPadding: CGFloat = 18
 
     enum Fonts {
-        static let pageTitle: Font = .system(size: 20, weight: .semibold)
-        static let pageSubtitle: Font = .system(size: 12, weight: .medium)
-        static let sectionTitle: Font = .system(size: 13, weight: .semibold)
-        static let body: Font = .system(size: 13, weight: .regular)
-        static let bodyMedium: Font = .system(size: 13, weight: .medium)
-        static let metric: Font = .system(size: 20, weight: .semibold)
-        static let metricLarge: Font = .system(size: 24, weight: .semibold)
-        static let caption: Font = .system(size: 11, weight: .medium)
-        static let sidebar: Font = .system(size: 13, weight: .medium)
+        static let pageTitle: Font = .title2.weight(.semibold)
+        static let pageSubtitle: Font = .callout
+        static let sectionTitle: Font = .headline
+        static let body: Font = .body
+        static let bodyMedium: Font = .body.weight(.medium)
+        static let metric: Font = .title2.weight(.semibold)
+        static let metricLarge: Font = .title.weight(.semibold)
+        static let caption: Font = .caption
+        static let sidebar: Font = .body
     }
 
     static var cardFill: Color {
-        Color(nsColor: .controlBackgroundColor).opacity(0.66)
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+            return Color(nsColor: .controlBackgroundColor)
+        }
+        return Color(nsColor: .controlBackgroundColor).opacity(0.72)
     }
 
     static var cardStroke: Color {
-        Color(nsColor: .separatorColor).opacity(0.28)
+        if NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast {
+            return Color(nsColor: .labelColor).opacity(0.58)
+        }
+        return Color(nsColor: .separatorColor).opacity(0.42)
     }
 
     static var pageBackground: Color {
@@ -33,7 +40,10 @@ enum MihomoUI {
     }
 
     static var mutedFill: Color {
-        Color(nsColor: .quaternaryLabelColor).opacity(0.14)
+        if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
+            return Color(nsColor: .unemphasizedSelectedContentBackgroundColor)
+        }
+        return Color(nsColor: .quaternaryLabelColor).opacity(0.18)
     }
 }
 

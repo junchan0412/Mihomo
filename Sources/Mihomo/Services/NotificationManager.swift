@@ -2,8 +2,12 @@ import Foundation
 import UserNotifications
 
 final class NotificationManager {
-    func prepare() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    func requestAuthorization() async -> Bool {
+        do {
+            return try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+        } catch {
+            return false
+        }
     }
 
     func notify(title: String, body: String) {

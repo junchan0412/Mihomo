@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct OverviewView: View {
+    @Environment(\.colorSchemeContrast) private var contrast
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var activityStore: RuntimeActivityStore
 
@@ -107,10 +108,10 @@ struct OverviewView: View {
                         let mix = timelineRoutingMix(at: index)
                         VStack(spacing: 0) {
                             Rectangle()
-                                .fill(Color.indigo.opacity(0.78))
+                                .fill(proxyRoutingColor)
                                 .frame(height: timelineHeight(for: sample) * mix.proxyRatio)
                             Rectangle()
-                                .fill(Color.cyan.opacity(0.72))
+                                .fill(directRoutingColor)
                                 .frame(height: timelineHeight(for: sample) * mix.directRatio)
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 2))
@@ -140,6 +141,14 @@ struct OverviewView: View {
         case "direct": return "直连"
         default: return "规则"
         }
+    }
+
+    private var directRoutingColor: Color {
+        contrast == .increased ? .blue : .cyan.opacity(0.82)
+    }
+
+    private var proxyRoutingColor: Color {
+        contrast == .increased ? .purple : .indigo.opacity(0.86)
     }
 
     private var greeting: String {

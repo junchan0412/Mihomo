@@ -139,7 +139,7 @@ struct ConnectionInlineDetailView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(connection.processName)
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.title3.weight(.semibold))
                     .lineLimit(1)
                 HStack(spacing: 8) {
                     ConnectionBadge(connection.displayMethod, tint: .green)
@@ -310,7 +310,7 @@ private struct ConnectionBadge: View {
 
     var body: some View {
         Text(title)
-            .font(.system(size: 11, weight: .semibold))
+            .font(.caption.weight(.semibold))
             .foregroundStyle(tint)
             .lineLimit(1)
             .padding(.horizontal, 7)

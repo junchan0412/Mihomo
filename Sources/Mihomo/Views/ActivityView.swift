@@ -2,16 +2,21 @@ import AppKit
 import SwiftUI
 
 struct ActivityView: View {
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var activityStore: RuntimeActivityStore
-    @State private var selectedRowID: String?
+    @State private var selectedRowIDs: Set<String> = []
     @State private var filterText = ""
+    @FocusState private var searchIsFocused: Bool
     @State private var grouping: ConnectionSidebarGrouping = .client
     @State private var selectedFilterID = ActivityConnectionFilter.allID
     @State private var moduleTab: ActivityModuleTab = .recent
     @State private var detailTab: ActivityConnectionDetailTab = .general
     @State private var dnsFilter: ActivityDNSFilter = .all
     @State private var trafficGrouping: ActivityTrafficGrouping = .policy
+    @State private var confirmsClearingRecent = false
+    @State private var confirmsClosingAll = false
+    @State private var confirmsClosingSelection = false
 
     private var connectionSource: [ConnectionItem] {
         switch moduleTab {
@@ -77,10 +82,21 @@ struct ActivityView: View {
     }
 
     private var selectedConnection: ConnectionItem? {
-        guard let selectedRowID,
+        guard selectedRowIDs.count == 1,
+              let selectedRowID = selectedRowIDs.first,
               let row = tableRows.first(where: { $0.id == selectedRowID })
         else { return nil }
         return row.connection
+    }
+
+    private var selectedRows: [ConnectionTableRow] {
+        tableRows.filter { selectedRowIDs.contains($0.id) }
+    }
+
+    private var selectedActiveConnections: [ConnectionItem] {
+        selectedRows.map(\.connection).filter { connection in
+            activityStore.connections.contains { $0.id == connection.id }
+        }
     }
 
     private var selectedConnectionIsActive: Bool {
@@ -119,19 +135,48 @@ struct ActivityView: View {
         .background(MihomoUI.pageBackground)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("活动")
-        .onChange(of: selectedRowID) {
+        .searchable(text: $filterText, placement: .toolbar, prompt: "搜索连接、客户端、规则或地址")
+        .compatibleSearchFocused($searchIsFocused)
+        .focusedSceneValue(\.workspaceCommands, commandContext)
+        .confirmationDialog("清空最近请求？", isPresented: $confirmsClearingRecent, titleVisibility: .visible) {
+            Button("清空记录", role: .destructive) {
+                selectedRowIDs.removeAll()
+                activityStore.clearRecentConnections()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("这会删除当前保存的最近请求记录，但不会关闭活动连接。")
+        }
+        .confirmationDialog("关闭全部活动连接？", isPresented: $confirmsClosingAll, titleVisibility: .visible) {
+            Button("关闭全部", role: .destructive) {
+                selectedRowIDs.removeAll()
+                Task { await store.closeAllConnections() }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("所有正在传输的连接都会立即中断，此操作无法撤销。")
+        }
+        .confirmationDialog("关闭所选连接？", isPresented: $confirmsClosingSelection, titleVisibility: .visible) {
+            Button("关闭 \(selectedActiveConnections.count) 个连接", role: .destructive) {
+                closeSelectedConnectionsImmediately()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("所选活动连接会立即中断，此操作无法撤销。")
+        }
+        .onChange(of: selectedRowIDs) {
             store.connectionDetailConnectionID = selectedConnection?.id
         }
         .onChange(of: grouping) {
             selectedFilterID = ActivityConnectionFilter.allID
-            selectedRowID = nil
+            selectedRowIDs.removeAll()
         }
         .onChange(of: selectedFilterID) {
-            selectedRowID = nil
+            selectedRowIDs.removeAll()
         }
         .onChange(of: filterText) {
             if selectedConnection == nil {
-                selectedRowID = nil
+                selectedRowIDs = selectedRowIDs.intersection(Set(tableRows.map(\.id)))
             }
         }
     }
@@ -158,8 +203,6 @@ struct ActivityView: View {
                 moduleTabs
                     .frame(minWidth: 480, maxWidth: 720, alignment: .leading)
 
-                connectionSearchField
-
                 connectionCount(rowCount)
             }
 
@@ -168,7 +211,6 @@ struct ActivityView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 10) {
-                    connectionSearchField
                     Spacer(minLength: 8)
                     connectionCount(rowCount)
                 }
@@ -187,7 +229,7 @@ struct ActivityView: View {
     private var moduleTabs: some View {
         ActivityModuleTabs(selection: moduleTab) { tab in
             moduleTab = tab
-            selectedRowID = nil
+            selectedRowIDs.removeAll()
             filterText = ""
         }
     }
@@ -204,7 +246,7 @@ struct ActivityView: View {
                     connection: selectedConnection,
                     tab: $detailTab,
                     close: { connection in
-                        selectedRowID = nil
+                        selectedRowIDs.removeAll()
                         Task { await store.closeConnection(connection.id) }
                     },
                     focusRule: { store.focusRule(for: $0) },
@@ -228,23 +270,6 @@ struct ActivityView: View {
         }
     }
 
-    private var connectionSearchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("搜索", text: $filterText)
-                .textFieldStyle(.plain)
-                .font(MihomoUI.Fonts.body)
-        }
-        .padding(.horizontal, 12)
-        .frame(width: 240, height: 34)
-        .background(MihomoUI.mutedFill, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(MihomoUI.cardStroke, lineWidth: 1)
-        }
-    }
-
     private func connectionCount(_ rowCount: Int) -> some View {
         Text("\(rowCount)")
             .font(MihomoUI.Fonts.bodyMedium)
@@ -256,11 +281,10 @@ struct ActivityView: View {
     private var activityActionBar: some View {
         HStack(spacing: 8) {
             Button(moduleTab == .recent ? "清空记录" : "关闭全部") {
-                selectedRowID = nil
                 if moduleTab == .recent {
-                    activityStore.clearRecentConnections()
+                    confirmsClearingRecent = true
                 } else {
-                    Task { await store.closeAllConnections() }
+                    confirmsClosingAll = true
                 }
             }
             .disabled(connectionSource.isEmpty)
@@ -270,11 +294,9 @@ struct ActivityView: View {
             }
 
             Button("关闭连接") {
-                guard let selectedConnection else { return }
-                selectedRowID = nil
-                Task { await store.closeConnection(selectedConnection.id) }
+                requestCloseSelectedConnections()
             }
-            .disabled(!selectedConnectionIsActive)
+            .disabled(selectedActiveConnections.isEmpty)
 
             Button("查看规则") {
                 guard let selectedConnection else { return }
@@ -309,7 +331,7 @@ struct ActivityView: View {
     private func connectionTable(rows: [ConnectionTableRow]) -> some View {
         AppKitTable(
             rows: rows,
-            selection: $selectedRowID,
+            selection: $selectedRowIDs,
             columns: [
                 .init(title: "ID", width: 74, textColor: { $0.statusColor }) { $0.idText },
                 .init(title: "时间", width: 86) { $0.timeText },
@@ -322,11 +344,27 @@ struct ActivityView: View {
                 .init(title: "方法", width: 82) { $0.methodText },
                 .init(title: "地址", width: 300) { $0.addressText }
             ],
+            allowsMultipleSelection: true,
             onDoubleClick: { row in
-                selectedRowID = row.id
+                selectedRowIDs = [row.id]
+                openSelectedConnectionDetail()
+            },
+            onActivate: { selectedRows in
+                guard let row = selectedRows.first else { return }
+                selectedRowIDs = [row.id]
+                openSelectedConnectionDetail()
+            },
+            onPreview: { selectedRows in
+                guard let row = selectedRows.first else { return }
+                selectedRowIDs = [row.id]
+                openSelectedConnectionDetail()
+            },
+            onDelete: { _ in
+                requestCloseSelectedConnections()
             },
             hasHorizontalScroller: true,
-            borderType: .noBorder
+            borderType: .noBorder,
+            contextMenuActions: connectionContextMenuActions
         )
         .overlay {
             if rows.isEmpty {
@@ -335,6 +373,68 @@ struct ActivityView: View {
                     systemImage: "network",
                     description: Text(moduleTab == .recent ? "新的连接请求会显示在这里。" : "核心当前没有活动连接。")
                 )
+            }
+        }
+    }
+
+    private var connectionContextMenuActions: [AppKitTableContextAction<ConnectionTableRow>] {
+        [
+            .init(
+                "关闭所选连接",
+                isDestructive: true,
+                isEnabled: { rows in rows.contains(where: { row in activityStore.connections.contains { $0.id == row.id } }) }
+            ) { _ in
+                requestCloseSelectedConnections()
+            },
+            .init("复制地址") { rows in
+                let addresses = rows.map(\.addressText).filter { $0.isEmpty == false }
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(addresses.joined(separator: "\n"), forType: .string)
+            },
+            .init("查看规则", isEnabled: { $0.count == 1 }) { rows in
+                guard let connection = rows.first?.connection else { return }
+                store.focusRule(for: connection)
+            },
+            .init("定位 Provider", isEnabled: { $0.count == 1 }) { _ in
+                store.selectedSection = .resources
+            }
+        ]
+    }
+
+    private var commandContext: WorkspaceCommandContext {
+        WorkspaceCommandContext(
+            search: {
+                searchIsFocused = true
+                MihomoSearchFocus.request()
+            },
+            refresh: { Task { await store.refreshController() } },
+            activateSelection: searchIsFocused || selectedConnection == nil ? nil : openSelectedConnectionDetail,
+            previewSelection: searchIsFocused || selectedConnection == nil ? nil : openSelectedConnectionDetail,
+            deleteSelection: searchIsFocused || selectedActiveConnections.isEmpty ? nil : requestCloseSelectedConnections
+        )
+    }
+
+    private func openSelectedConnectionDetail() {
+        guard let selectedConnection else { return }
+        store.connectionDetailConnectionID = selectedConnection.id
+        openWindow(id: "connection-detail")
+    }
+
+    private func requestCloseSelectedConnections() {
+        guard selectedActiveConnections.isEmpty == false else { return }
+        if selectedActiveConnections.count > 1 {
+            confirmsClosingSelection = true
+        } else {
+            closeSelectedConnectionsImmediately()
+        }
+    }
+
+    private func closeSelectedConnectionsImmediately() {
+        let ids = selectedActiveConnections.map(\.id)
+        selectedRowIDs.subtract(ids)
+        Task {
+            for id in ids {
+                await store.closeConnection(id)
             }
         }
     }

@@ -214,7 +214,7 @@ struct ActivityConnectionSidebar: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+        .background(MihomoUI.cardFill)
         .onChange(of: items) {
             guard selectedFilter == nil else { return }
             selectedFilterID = ActivityConnectionFilter.allID
@@ -246,7 +246,7 @@ private struct ActivityConnectionFilterRow: View {
                 Spacer(minLength: 4)
 
                 Text("\(item.count)")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.caption.weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 6)
@@ -292,6 +292,6 @@ private struct ActivityConnectionFilterIcon: View {
         }
         .frame(width: 24, height: 24)
         .padding(2)
-        .background(.quaternary.opacity(0.55), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }

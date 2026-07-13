@@ -142,7 +142,9 @@ extension AppStore {
                 let profileName = profileRefreshQueue.first { $0.profileID == result.profileID }?.profileName ?? "订阅"
                 let message = result.errorMessage ?? "未知错误"
                 markRefreshJob(profileID: result.profileID, state: .failed, message: message, finishedAt: Date())
-                notificationManager.notify(title: "订阅刷新失败", body: "\(profileName)：\(message)")
+                if settings.notifyProfileRefreshFailures {
+                    notificationManager.notify(title: "订阅刷新失败", body: "\(profileName)：\(message)")
+                }
                 appendLog("error", "订阅刷新失败 \(profileName)：\(message)")
             }
             profileAutoRefreshStatus = "队列运行中：\(completed)/\(remoteProfiles.count)，成功 \(succeeded)，失败 \(failed)"
@@ -174,41 +176,155 @@ extension AppStore {
         }
     }
 
-    func saveProfileEditor(profileID: UUID, name: String, content: String) async {
+    func saveProfileEditor(
+        profileID: UUID,
+        name: String,
+        content: String,
+        undoManager: UndoManager? = nil
+    ) async {
         guard let index = profiles.firstIndex(where: { $0.id == profileID }) else { return }
         do {
             var profile = profiles[index]
+            let before = ProfileEditorSnapshot(
+                name: profile.name,
+                content: try profileStore.loadProfileContent(profile, settings: settings)
+            )
             profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? profile.name : name
             let updated = try profileStore.saveProfileContent(profile, content: content, settings: settings)
             profiles[index] = updated
             try profileStore.saveProfiles(profiles)
             refreshConfigArtifacts()
             appendLog("info", "已保存配置 \(updated.name)")
+            if let undoManager {
+                registerProfileEditorUndo(
+                    profileID: profileID,
+                    snapshot: before,
+                    inverse: ProfileEditorSnapshot(name: updated.name, content: content),
+                    undoManager: undoManager
+                )
+            }
         } catch {
             appendLog("error", "保存配置失败：\(error.localizedDescription)")
         }
     }
 
-    func deleteProfile(_ profile: ProfileItem) async {
-        guard let index = profiles.firstIndex(where: { $0.id == profile.id }) else { return }
-        do {
-            let file = profileStore.profileFile(profile, settings: settings)
-            profiles.remove(at: index)
-            if FileManager.default.fileExists(atPath: file.path) {
-                try FileManager.default.removeItem(at: file)
+    private func registerProfileEditorUndo(
+        profileID: UUID,
+        snapshot: ProfileEditorSnapshot,
+        inverse: ProfileEditorSnapshot,
+        undoManager: UndoManager
+    ) {
+        undoManager.registerUndo(withTarget: self) { target in
+            Task {
+                await target.applyProfileEditorSnapshot(
+                    profileID: profileID,
+                    snapshot: snapshot,
+                    inverse: inverse,
+                    undoManager: undoManager
+                )
             }
-            if settings.activeProfileID == profile.id {
+        }
+        undoManager.setActionName("编辑配置")
+    }
+
+    private func applyProfileEditorSnapshot(
+        profileID: UUID,
+        snapshot: ProfileEditorSnapshot,
+        inverse: ProfileEditorSnapshot,
+        undoManager: UndoManager
+    ) async {
+        guard let index = profiles.firstIndex(where: { $0.id == profileID }) else { return }
+        do {
+            var profile = profiles[index]
+            profile.name = snapshot.name
+            let updated = try profileStore.saveProfileContent(profile, content: snapshot.content, settings: settings)
+            profiles[index] = updated
+            try profileStore.saveProfiles(profiles)
+            refreshConfigArtifacts()
+            registerProfileEditorUndo(
+                profileID: profileID,
+                snapshot: inverse,
+                inverse: snapshot,
+                undoManager: undoManager
+            )
+            appendLog("info", "已执行配置编辑撤销/重做")
+        } catch {
+            appendLog("error", "配置编辑撤销/重做失败：\(error.localizedDescription)")
+        }
+    }
+
+    func deleteProfiles(_ profilesToDelete: [ProfileItem], undoManager: UndoManager? = nil) async {
+        let identifiers = Set(profilesToDelete.map(\.id))
+        guard identifiers.isEmpty == false, profiles.count - identifiers.count >= 1 else { return }
+
+        do {
+            let snapshots = try profiles.enumerated().compactMap { index, profile -> DeletedProfileSnapshot? in
+                guard identifiers.contains(profile.id) else { return nil }
+                return DeletedProfileSnapshot(
+                    profile: profile,
+                    content: try profileStore.loadProfileContent(profile, settings: settings),
+                    index: index,
+                    wasActive: settings.activeProfileID == profile.id
+                )
+            }
+
+            for snapshot in snapshots {
+                let file = profileStore.profileFile(snapshot.profile, settings: settings)
+                if FileManager.default.fileExists(atPath: file.path) {
+                    try FileManager.default.removeItem(at: file)
+                }
+            }
+
+            profiles.removeAll { identifiers.contains($0.id) }
+            if let activeProfileID = settings.activeProfileID, identifiers.contains(activeProfileID) {
                 settings.activeProfileID = profiles.first?.id
                 try profileStore.saveSettings(settings)
             }
             try profileStore.saveProfiles(profiles)
-            if profileEditorProfileID == profile.id {
-                profileEditorProfileID = settings.activeProfileID
-            }
             refreshConfigArtifacts()
-            appendLog("info", "已删除配置 \(profile.name)")
+            appendLog("info", "已删除 \(snapshots.count) 个配置")
+
+            if let undoManager {
+                undoManager.registerUndo(withTarget: self) { target in
+                    Task { await target.restoreDeletedProfiles(snapshots, undoManager: undoManager) }
+                }
+                undoManager.setActionName(snapshots.count == 1 ? "删除配置" : "删除多个配置")
+            }
         } catch {
             appendLog("error", "删除配置失败：\(error.localizedDescription)")
+        }
+    }
+
+    private func restoreDeletedProfiles(_ snapshots: [DeletedProfileSnapshot], undoManager: UndoManager?) async {
+        do {
+            for snapshot in snapshots.sorted(by: { $0.index < $1.index }) {
+                let restored = try profileStore.saveProfileContent(
+                    snapshot.profile,
+                    content: snapshot.content,
+                    settings: settings
+                )
+                let insertionIndex = min(snapshot.index, profiles.count)
+                profiles.insert(restored, at: insertionIndex)
+                if snapshot.wasActive {
+                    settings.activeProfileID = restored.id
+                }
+            }
+            try profileStore.saveProfiles(profiles)
+            try profileStore.saveSettings(settings)
+            refreshConfigArtifacts()
+            appendLog("info", "已撤销删除 \(snapshots.count) 个配置")
+
+            if let undoManager {
+                let restoredProfiles = snapshots.compactMap { snapshot in
+                    profiles.first { $0.id == snapshot.profile.id }
+                }
+                undoManager.registerUndo(withTarget: self) { target in
+                    Task { await target.deleteProfiles(restoredProfiles, undoManager: undoManager) }
+                }
+                undoManager.setActionName(snapshots.count == 1 ? "重新删除配置" : "重新删除多个配置")
+            }
+        } catch {
+            appendLog("error", "恢复配置失败：\(error.localizedDescription)")
         }
     }
 
@@ -337,6 +453,18 @@ extension AppStore {
             profileRefreshQueue[index].finishedAt = finishedAt
         }
     }
+}
+
+private struct DeletedProfileSnapshot {
+    var profile: ProfileItem
+    var content: String
+    var index: Int
+    var wasActive: Bool
+}
+
+private struct ProfileEditorSnapshot {
+    var name: String
+    var content: String
 }
 
 private struct ProfileRefreshResult {
