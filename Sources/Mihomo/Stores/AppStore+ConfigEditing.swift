@@ -221,11 +221,12 @@ extension AppStore {
         publishIfChanged(\.providers, updatedProviders)
     }
 
-    private func commitConfigFragments(
+    @discardableResult
+    func commitConfigFragments(
         _ next: [ConfigFragment],
         actionName: String,
         undoManager: UndoManager?
-    ) {
+    ) -> Bool {
         let previous = configFragments
         configFragments = next
         do {
@@ -240,9 +241,11 @@ extension AppStore {
                     undoManager: undoManager
                 )
             }
+            return true
         } catch {
             configFragments = previous
             appendLog("error", "覆写片段保存失败：\(error.localizedDescription)")
+            return false
         }
     }
 

@@ -118,6 +118,17 @@ struct MihomoApp: App {
         }
         .defaultSize(width: 980, height: 720)
 
+        WindowGroup("覆写编辑器", for: ConfigFragmentEditorRoute.self) { $route in
+            if let route {
+                ConfigFragmentEditorWindowView(route: route)
+                    .environmentObject(store)
+                    .frame(minWidth: 720, minHeight: 620)
+            } else {
+                ContentUnavailableView("未选择覆写", systemImage: "doc.text.magnifyingglass")
+            }
+        }
+        .defaultSize(width: 840, height: 720)
+
         Window("连接详情", id: "connection-detail") {
             ConnectionDetailPanelView()
                 .environmentObject(store)

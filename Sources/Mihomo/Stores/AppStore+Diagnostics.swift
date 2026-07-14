@@ -111,8 +111,10 @@ extension AppStore {
 
         results.append(.init(
             title: "订阅自动刷新",
-            detail: settings.autoRefreshProfiles ? "\(profileAutoRefreshStatus)，并发 \(settings.profileRefreshMaxConcurrent)，失败通知 \(profileRefreshFailureCount) 条。" : "未启用。",
-            state: profileRefreshFailureCount > 0 ? .warning : (settings.autoRefreshProfiles ? .ok : .warning)
+            detail: settings.autoRefreshProfiles
+                ? "Profile：\(profileAutoRefreshStatus)；覆写：\(configFragmentRefreshStatus)。并发 \(settings.profileRefreshMaxConcurrent)，失败 \(profileRefreshFailureCount + configFragmentRefreshFailureCount) 条。"
+                : "未启用。",
+            state: (profileRefreshFailureCount + configFragmentRefreshFailureCount) > 0 ? .warning : (settings.autoRefreshProfiles ? .ok : .warning)
         ))
 
         results.append(.init(

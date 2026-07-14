@@ -180,7 +180,7 @@ extension AppStore {
         case let .setMode(mode):
             await setMode(mode)
         case .refreshSubscriptions:
-            await refreshAllRemoteProfiles()
+            await refreshAllRemoteSubscriptions()
         case .runDiagnostics:
             selectedSection = .diagnostics
             await runDiagnostics()

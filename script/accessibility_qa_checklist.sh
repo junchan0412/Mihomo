@@ -142,7 +142,7 @@ append_page_checklist "Activity" "Recent requests, active connections, read-only
 append_page_checklist "Profiles" "Profile list, quality analyzer pane, editor entry points, import/refresh/delete actions, and statistics."
 append_page_checklist "Policies" "Policy group table, proxy candidates, search/sort controls, delay tests, and offline preview."
 append_page_checklist "Rules" "Rule table, checkbox state, multi-selection, edit/delete confirmation, hit counts, and inspector."
-append_page_checklist "Overrides" "YAML and JS Transform fragments, scope, multi-selection, editor, delete confirmation, and Undo/Redo."
+append_page_checklist "Overrides" "Profile-matched table layout, local/URL import, remote refresh, source and scope columns, multi-selection, Quick Look, separate editor window, delete confirmation, and Undo/Redo."
 append_page_checklist "Network" "System proxy, TUN, runtime/system DNS, domain sniffing, protocol ports, exception rules, recovery snapshots, confirmation dialogs, and status values."
 append_page_checklist "Resources" "Rule/Proxy Provider rows, Geo resources, update history, rollback controls, and readiness filters."
 append_page_checklist "Logs" "Category sidebar, structured table, filters, pause/resume, multi-row copy, clear confirmation, and retention controls."

@@ -86,7 +86,7 @@ struct MenuBarView: View {
                 }
 
                 Button("刷新订阅") {
-                    Task { await store.refreshAllRemoteProfiles() }
+                    Task { await store.refreshAllRemoteSubscriptions() }
                 }
 
                 Button("更新 Geo 数据") {

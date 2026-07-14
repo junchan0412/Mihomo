@@ -198,7 +198,7 @@ struct MihomoCommands: Commands {
             .keyboardShortcut("r", modifiers: [.command, .control])
 
             Button("刷新所有订阅") {
-                Task { await store.refreshAllRemoteProfiles() }
+                Task { await store.refreshAllRemoteSubscriptions() }
             }
             .keyboardShortcut("u", modifiers: [.command, .shift])
 

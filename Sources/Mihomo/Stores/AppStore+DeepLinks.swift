@@ -32,16 +32,38 @@ extension AppStore {
                 appendLog("info", "深链已导入配置")
             case "install-fragment", "fragment":
                 let kind = ConfigFragmentKind(rawValue: query["kind"] ?? "yaml") ?? .yaml
-                let content: String
                 if let value = query["content"] {
-                    content = value
-                } else if let value = query["url"], let remote = URL(string: value) {
-                    let (data, _) = try await NetworkClient.data(from: remote)
-                    content = String(data: data, encoding: .utf8) ?? ""
+                    try configFragmentStore.validateFragmentContent(value, kind: kind)
+                    addConfigFragment(name: query["name"] ?? "", kind: kind, content: value)
+                } else if let value = query["url"], let importURL = URL(string: value) {
+                    let succeeded: Bool
+                    if importURL.isFileURL {
+                        succeeded = await importLocalConfigFragment(
+                            url: importURL,
+                            name: query["name"],
+                            kind: kind
+                        )
+                    } else {
+                        succeeded = await importRemoteConfigFragment(
+                            urlString: value,
+                            name: query["name"] ?? "",
+                            kind: kind
+                        )
+                    }
+                    guard succeeded else {
+                        throw NSError(
+                            domain: "Mihomo.DeepLink",
+                            code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: configFragmentImportStatus]
+                        )
+                    }
                 } else {
-                    content = ""
+                    throw NSError(
+                        domain: "Mihomo.DeepLink",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "覆写深链缺少 content 或 url"]
+                    )
                 }
-                addConfigFragment(name: query["name"] ?? "", kind: kind, content: content)
                 appendLog("info", "深链已导入覆写片段")
             default:
                 appendLog("warning", "未知深链命令：\(command)")

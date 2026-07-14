@@ -30,6 +30,9 @@ final class AppStore: ObservableObject {
     @Published var delayTestFailureSummary = ""
     @Published var offlineProxyGroups: [ProxyGroup] = []
     @Published var configFragments: [ConfigFragment] = []
+    @Published var configFragmentRefreshStatus = "没有远程覆写"
+    @Published var configFragmentRefreshFailureCount = 0
+    @Published var configFragmentImportStatus = ""
     @Published var disabledRules: Set<String> = []
     @Published var rules: [RuleItem] = []
     @Published var providers: [ProviderItem] = []
@@ -359,7 +362,7 @@ final class AppStore: ObservableObject {
         profileRefreshTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: interval)
-                await self?.refreshAllRemoteProfiles()
+                await self?.refreshAllRemoteSubscriptions()
             }
         }
     }

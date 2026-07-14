@@ -12,6 +12,18 @@ enum ConfigFragmentKind: String, Codable, CaseIterable, Hashable {
     }
 }
 
+enum ConfigFragmentSource: String, Codable, CaseIterable, Hashable {
+    case local
+    case remote
+
+    var title: String {
+        switch self {
+        case .local: return "本地"
+        case .remote: return "远程"
+        }
+    }
+}
+
 struct ConfigFragment: Identifiable, Codable, Hashable {
     var id = UUID()
     var name: String
@@ -21,6 +33,11 @@ struct ConfigFragment: Identifiable, Codable, Hashable {
     var updatedAt = Date()
     var appliesGlobally = true
     var profileIDs: [UUID] = []
+    var source: ConfigFragmentSource = .local
+    var location = ""
+    var certificateFingerprint: String?
+
+    var isRemote: Bool { source == .remote }
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -31,6 +48,9 @@ struct ConfigFragment: Identifiable, Codable, Hashable {
         case updatedAt
         case appliesGlobally
         case profileIDs
+        case source
+        case location
+        case certificateFingerprint
     }
 
     init(
@@ -41,7 +61,10 @@ struct ConfigFragment: Identifiable, Codable, Hashable {
         content: String,
         updatedAt: Date = Date(),
         appliesGlobally: Bool = true,
-        profileIDs: [UUID] = []
+        profileIDs: [UUID] = [],
+        source: ConfigFragmentSource = .local,
+        location: String = "",
+        certificateFingerprint: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -51,6 +74,9 @@ struct ConfigFragment: Identifiable, Codable, Hashable {
         self.updatedAt = updatedAt
         self.appliesGlobally = appliesGlobally
         self.profileIDs = profileIDs
+        self.source = source
+        self.location = location
+        self.certificateFingerprint = certificateFingerprint
     }
 
     init(from decoder: Decoder) throws {
@@ -63,6 +89,9 @@ struct ConfigFragment: Identifiable, Codable, Hashable {
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
         appliesGlobally = try container.decodeIfPresent(Bool.self, forKey: .appliesGlobally) ?? true
         profileIDs = try container.decodeIfPresent([UUID].self, forKey: .profileIDs) ?? []
+        source = try container.decodeIfPresent(ConfigFragmentSource.self, forKey: .source) ?? .local
+        location = try container.decodeIfPresent(String.self, forKey: .location) ?? ""
+        certificateFingerprint = try container.decodeIfPresent(String.self, forKey: .certificateFingerprint)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -75,10 +104,26 @@ struct ConfigFragment: Identifiable, Codable, Hashable {
         try container.encode(updatedAt, forKey: .updatedAt)
         try container.encode(appliesGlobally, forKey: .appliesGlobally)
         try container.encode(profileIDs, forKey: .profileIDs)
+        try container.encode(source, forKey: .source)
+        try container.encode(location, forKey: .location)
+        try container.encodeIfPresent(certificateFingerprint, forKey: .certificateFingerprint)
     }
 
     func applies(to profileID: UUID) -> Bool {
         enabled && (appliesGlobally || profileIDs.contains(profileID))
+    }
+}
+
+struct ConfigFragmentEditorRoute: Codable, Hashable {
+    var fragmentID: UUID?
+    var windowID: UUID
+
+    static func editing(_ fragmentID: UUID) -> Self {
+        Self(fragmentID: fragmentID, windowID: fragmentID)
+    }
+
+    static func creating() -> Self {
+        Self(fragmentID: nil, windowID: UUID())
     }
 }
 
