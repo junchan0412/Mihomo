@@ -115,6 +115,27 @@ struct SettingsRootView: View {
                 SettingsRow("登录项状态") { Text(store.loginItemStatus).foregroundStyle(.secondary) }
             }
 
+            SettingsSection(
+                title: "延迟测试",
+                subtitle: "代理节点通过核心测试；DIRECT 使用系统直连请求，二者可以选择不同目标。",
+                systemImage: "speedometer"
+            ) {
+                SettingsRow("代理节点测试 URL") {
+                    TextField("https://cp.cloudflare.com/generate_204", text: $draft.delayTestURL)
+                }
+                SettingsRow("DIRECT 测试 URL") {
+                    TextField("https://www.gstatic.com/generate_204", text: $draft.directDelayTestURL)
+                }
+                SettingsRow("超时（ms）") {
+                    TextField("8000", value: $draft.delayTestTimeoutMS, format: .number)
+                        .frame(width: 140)
+                }
+                SettingsRow("并发数") {
+                    TextField("6", value: $draft.delayTestConcurrency, format: .number)
+                        .frame(width: 140)
+                }
+            }
+
             SettingsSection(title: "日志", subtitle: "限制本地日志体积，减少长期运行时的磁盘与内存压力。", systemImage: "text.alignleft") {
                 SettingsRow("日志等级") {
                     Picker("日志等级", selection: $draft.logLevel) {

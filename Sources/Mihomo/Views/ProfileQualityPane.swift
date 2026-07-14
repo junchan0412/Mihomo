@@ -227,8 +227,16 @@ private struct ProfileQualityIssueRow: View {
                 .foregroundStyle(color)
                 .frame(width: 16)
             VStack(alignment: .leading, spacing: 2) {
-                Text(issue.title)
-                    .font(MihomoUI.Fonts.bodyMedium)
+                HStack(spacing: 7) {
+                    Text(issue.title)
+                        .font(MihomoUI.Fonts.bodyMedium)
+                    Text(issue.source.title)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(sourceColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(sourceColor.opacity(0.12), in: Capsule())
+                }
                 Text(issue.detail)
                     .font(MihomoUI.Fonts.caption)
                     .foregroundStyle(.secondary)
@@ -250,6 +258,15 @@ private struct ProfileQualityIssueRow: View {
         case .info: return .secondary
         case .warning: return .orange
         case .error: return .red
+        }
+    }
+
+    private var sourceColor: Color {
+        switch issue.source {
+        case .profile: return .blue
+        case .appSettings: return .purple
+        case .override: return .orange
+        case .runtime: return .secondary
         }
     }
 }

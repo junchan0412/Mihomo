@@ -50,6 +50,10 @@ enum SettingsMigrator {
                 migrated.snifferManagedByApp = true
                 migrated.settingsSchemaVersion = 6
                 log.append("v6：移除 App 内置 External UI 管理，并补齐 Country.mmdb 与 ASN.mmdb 默认 Geo 数据。")
+            case 6:
+                migrated.directDelayTestURL = AppSettings.default.directDelayTestURL
+                migrated.settingsSchemaVersion = 7
+                log.append("v7：为 DIRECT 直连测速加入独立测试 URL，并保留原有代理节点测速 URL。")
             default:
                 throw NSError(
                     domain: "Mihomo.SettingsMigration",

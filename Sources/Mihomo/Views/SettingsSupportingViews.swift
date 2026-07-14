@@ -79,23 +79,6 @@ struct SettingsRemoteAccessPane: View {
                 )
             }
 
-            SettingsSection(
-                title: "延迟测试",
-                subtitle: "策略页测速使用的目标、超时与并发限制。",
-                systemImage: "speedometer"
-            ) {
-                SettingsRow("测试 URL") {
-                    TextField("https://cp.cloudflare.com/generate_204", text: $draft.delayTestURL)
-                }
-                SettingsRow("超时（ms）") {
-                    TextField("8000", value: $draft.delayTestTimeoutMS, format: .number)
-                        .frame(width: 140)
-                }
-                SettingsRow("并发数") {
-                    TextField("6", value: $draft.delayTestConcurrency, format: .number)
-                        .frame(width: 140)
-                }
-            }
         }
     }
 

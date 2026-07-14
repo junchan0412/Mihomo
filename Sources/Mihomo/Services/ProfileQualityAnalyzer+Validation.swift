@@ -217,7 +217,7 @@ extension ProfileQualityAnalyzer {
         if settings.snifferManagedByApp && settings.snifferEnabled {
             if let sniffer = root["sniffer"] as? YAMLMap {
                 if boolValue(sniffer["enable"]) == false {
-                    issues.append(.init(severity: .warning, title: "域名嗅探未启用", detail: "网络设置中开启了域名嗅探，但最终 sniffer.enable 不是 true。"))
+                issues.append(.init(severity: .warning, title: "域名嗅探未启用", detail: "网络设置中开启了域名嗅探，但最终 sniffer.enable 不是 true。"))
                 }
                 if (sniffer["sniff"] as? YAMLMap)?.isEmpty != false {
                     issues.append(.init(severity: .warning, title: "域名嗅探协议规则缺失", detail: "最终 runtime config 未包含 HTTP、TLS 或 QUIC 嗅探端口。"))
@@ -232,7 +232,8 @@ extension ProfileQualityAnalyzer {
                 issues.append(.init(
                     severity: .warning,
                     title: "域名嗅探端口可疑",
-                    detail: "端口 \(port) 不是 1...65535 的整数或 start-end 范围。"
+                    detail: "端口 \(port) 不是 1...65535 的整数或 start-end 范围。",
+                    source: .appSettings
                 ))
             }
             for domain in lineList(settings.snifferForceDomains) + lineList(settings.snifferSkipDomains)
@@ -240,7 +241,8 @@ extension ProfileQualityAnalyzer {
                 issues.append(.init(
                     severity: .warning,
                     title: "域名嗅探规则格式可疑",
-                    detail: "域名 \(domain) 不应包含协议、路径或空白字符。"
+                    detail: "域名 \(domain) 不应包含协议、路径或空白字符。",
+                    source: .appSettings
                 ))
             }
             for address in lineList(settings.snifferSkipDestinationAddresses) + lineList(settings.snifferSkipSourceAddresses)
@@ -248,7 +250,8 @@ extension ProfileQualityAnalyzer {
                 issues.append(.init(
                     severity: .warning,
                     title: "域名嗅探地址格式可疑",
-                    detail: "地址 \(address) 应为 IPv4、IPv6 或 CIDR。"
+                    detail: "地址 \(address) 应为 IPv4、IPv6 或 CIDR。",
+                    source: .appSettings
                 ))
             }
         }

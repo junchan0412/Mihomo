@@ -12,6 +12,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     case advanced
     case logs
     case diagnostics
+    case settings
 
     var id: String { rawValue }
 
@@ -32,6 +33,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .advanced: return "高级工具"
         case .logs: return "日志"
         case .diagnostics: return "诊断"
+        case .settings: return "设置"
         }
     }
 
@@ -48,6 +50,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .advanced: return "wrench.and.screwdriver"
         case .logs: return "terminal"
         case .diagnostics: return "stethoscope"
+        case .settings: return "gearshape"
         }
     }
 }

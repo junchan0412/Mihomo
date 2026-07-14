@@ -6,7 +6,7 @@ final class AppSettingsCodableTests: XCTestCase {
     func testRoundTripPreservesNonDefaultSettings() throws {
         let profileID = UUID(uuidString: "8C08A1E5-8DF4-48BE-9E15-5503C3176AE6")!
         let settings = AppSettings(
-            settingsSchemaVersion: 6,
+            settingsSchemaVersion: 7,
             mihomoPath: "/opt/mihomo/bin/mihomo",
             coreSource: .local,
             activeProfileID: profileID,
@@ -28,6 +28,7 @@ final class AppSettingsCodableTests: XCTestCase {
             lightweightMode: true,
             restoreSystemProxyOnQuit: false,
             delayTestURL: "https://example.com/generate_204",
+            directDelayTestURL: "https://direct.example.com/generate_204",
             delayTestTimeoutMS: 2500,
             launchAtLogin: true,
             restoreTunOnStop: false,
@@ -113,6 +114,7 @@ final class AppSettingsCodableTests: XCTestCase {
         XCTAssertEqual(decoded.countryMMDBURL, AppSettings.default.countryMMDBURL)
         XCTAssertEqual(decoded.asnMMDBURL, AppSettings.default.asnMMDBURL)
         XCTAssertEqual(decoded.ageDownloadSHA256, AppSettings.default.ageDownloadSHA256)
+        XCTAssertEqual(decoded.directDelayTestURL, AppSettings.default.directDelayTestURL)
     }
 
     func testLegacyManagedCoreEnabledMigratesCoreSource() throws {

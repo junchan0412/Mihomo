@@ -215,7 +215,7 @@ struct OverridesView: View {
                 profiles: store.profiles,
                 editFragment: openFragmentEditor
             )
-            ConfigFragmentContentPane(fragment: selectedFragment)
+            ConfigFragmentOverviewPane(fragment: selectedFragment)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -313,24 +313,9 @@ struct OverridesView: View {
     }
 
     private func previewFragments(_ fragments: [ConfigFragment]) {
-        let urls = fragments.compactMap(materializedPreviewURL)
-        guard urls.isEmpty == false else { return }
-        QuickLookPreviewer.shared.present(urls)
-    }
-
-    private func materializedPreviewURL(_ fragment: ConfigFragment) -> URL? {
-        do {
-            let directory = FileManager.default.temporaryDirectory
-                .appendingPathComponent("Mihomo-Override-Preview", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let pathExtension = fragment.kind == .yaml ? "yaml" : "js"
-            let url = directory.appendingPathComponent("\(fragment.id.uuidString).\(pathExtension)")
-            try fragment.content.write(to: url, atomically: true, encoding: .utf8)
-            return url
-        } catch {
-            store.appendLog("error", "覆写预览生成失败：\(error.localizedDescription)")
-            return nil
-        }
+        let ids = fragments.map(\.id)
+        guard ids.isEmpty == false else { return }
+        openWindow(value: ConfigFragmentPreviewRoute(fragmentIDs: ids))
     }
 
     private func exportSelectedFragment() {

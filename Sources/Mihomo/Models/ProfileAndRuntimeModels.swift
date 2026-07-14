@@ -127,6 +127,10 @@ struct ConfigFragmentEditorRoute: Codable, Hashable {
     }
 }
 
+struct ConfigFragmentPreviewRoute: Codable, Hashable {
+    var fragmentIDs: [UUID]
+}
+
 struct RuleItem: Identifiable, Hashable {
     var id: String { "\(index)-\(content)" }
     var index: Int
@@ -193,6 +197,29 @@ struct ProfileQualityIssue: Identifiable, Hashable {
     var severity: ProfileQualitySeverity
     var title: String
     var detail: String
+    var source: ProfileQualityIssueSource = .runtime
+
+    func sourced(_ source: ProfileQualityIssueSource) -> Self {
+        var copy = self
+        copy.source = source
+        return copy
+    }
+}
+
+enum ProfileQualityIssueSource: String, Hashable {
+    case profile
+    case appSettings
+    case override
+    case runtime
+
+    var title: String {
+        switch self {
+        case .profile: return "当前 Profile"
+        case .appSettings: return "App 设置"
+        case .override: return "覆写"
+        case .runtime: return "最终配置"
+        }
+    }
 }
 
 struct RuntimeInspectorItem: Identifiable, Hashable {

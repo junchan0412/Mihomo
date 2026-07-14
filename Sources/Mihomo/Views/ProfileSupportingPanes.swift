@@ -130,6 +130,7 @@ struct ProfileSummaryPane: View {
                 .frame(width: 280)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay {

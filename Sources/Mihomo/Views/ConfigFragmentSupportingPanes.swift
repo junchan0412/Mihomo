@@ -192,14 +192,15 @@ struct ConfigFragmentSummaryPane: View {
     }
 }
 
-struct ConfigFragmentContentPane: View {
+struct ConfigFragmentOverviewPane: View {
     var fragment: ConfigFragment?
+    private let analyzer = ConfigFragmentAnalyzer()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("覆写内容")
+                    Text("覆写概览")
                         .font(.headline)
                     Text(sourceDescription)
                         .font(.caption)
@@ -208,28 +209,34 @@ struct ConfigFragmentContentPane: View {
                         .truncationMode(.middle)
                 }
                 Spacer()
-                if let fragment {
-                    Text(fragment.kind == .yaml ? "YAML 顶层映射" : "JavaScript transform(config)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
 
             if let fragment {
-                ScrollView([.vertical, .horizontal]) {
-                    Text(fragment.content)
-                        .font(.system(.callout, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .padding(10)
+                let report = analyzer.analyze(fragment)
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], alignment: .leading, spacing: 10) {
+                    OverviewMetric(title: "语法状态", value: report.statusTitle, color: statusColor(report))
+                    OverviewMetric(title: "行数", value: "\(report.lineCount)")
+                    OverviewMetric(title: "大小", value: Formatters.bytes(Int64(report.byteCount)))
+                    OverviewMetric(
+                        title: fragment.kind == .yaml ? "顶层键" : "入口函数",
+                        value: fragment.kind == .yaml ? topLevelKeySummary(report) : "transform(config)"
+                    )
                 }
-                .frame(minHeight: 150, maxHeight: 260)
-                .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(MihomoUI.cardStroke, lineWidth: 1)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("问题定位")
+                        .font(.callout.weight(.semibold))
+                    if report.issues.isEmpty {
+                        Label("未发现 YAML/JavaScript 语法或结构问题", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    } else {
+                        ForEach(report.issues) { issue in
+                            ConfigFragmentAnalysisIssueRow(issue: issue)
+                        }
+                    }
                 }
-                .accessibilityLabel("覆写内容预览")
             } else {
                 ContentUnavailableView("未选择覆写", systemImage: "doc.text.magnifyingglass")
                     .frame(maxWidth: .infinity, minHeight: 150)
@@ -244,11 +251,45 @@ struct ConfigFragmentContentPane: View {
     }
 
     private var sourceDescription: String {
-        guard let fragment else { return "选择覆写后查看内容。" }
+        guard let fragment else { return "选择覆写后查看结构、统计与问题定位。" }
         if fragment.location.isEmpty {
             return fragment.source == .remote ? "远程来源" : "手动创建"
         }
         return fragment.location
+    }
+
+    private func statusColor(_ report: ConfigFragmentOverviewReport) -> Color {
+        if report.errorCount > 0 { return .red }
+        if report.warningCount > 0 { return .orange }
+        return .green
+    }
+
+    private func topLevelKeySummary(_ report: ConfigFragmentOverviewReport) -> String {
+        guard report.topLevelKeys.isEmpty == false else { return "无" }
+        let visible = report.topLevelKeys.prefix(4).joined(separator: "、")
+        return report.topLevelKeys.count > 4 ? "\(visible) 等 \(report.topLevelKeys.count) 项" : visible
+    }
+}
+
+private struct OverviewMetric: View {
+    var title: String
+    var value: String
+    var color: Color = .primary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(color)
+                .lineLimit(2)
+                .help(value)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

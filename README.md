@@ -2,21 +2,21 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.11.1`
+当前版本：`v1.11.2`
 
-## v1.11.1 更新重点
+## v1.11.2 更新重点
 
-- 覆写工作区按配置页结构重构为存储位置、订阅状态、表格操作、摘要与内容预览。
-- 覆写支持手动创建、本地文件导入、拖放、URL 导入、远程刷新、导出和 Quick Look。
-- 远程覆写保存来源 URL 与 TLS 证书指纹；自动刷新订阅时同时刷新远程 Profile 和远程覆写。
-- 双击或编辑覆写会打开独立编辑器窗口，支持作用范围、Undo/Redo 和 YAML/JavaScript 内容校验。
-- 旧版覆写 JSON 自动按本地来源读取，无需手工迁移。
+- 覆写 Space 快速查看改为应用自有窗口，提供行号、语法高亮、元数据、问题列表和多选前后切换。
+- 覆写页底部改为“覆写概览”，汇总行数、大小、顶层键，并定位 YAML、JavaScript 与 Sniffer 规则问题。
+- 配置摘要卡填满内容宽度；配置质量问题明确标注“当前 Profile / App 设置 / 覆写 / 最终配置”来源。
+- 设置改为主窗口侧栏页面，侧栏、菜单栏与 `Command-,` 使用同一导航入口。
+- 延迟测试移入通用设置，保留代理节点测试 URL，并新增独立的 DIRECT 测试 URL。
 
-完整变更见 [v1.11.1 Release Notes](docs/releases/v1.11.1.md)，架构与开发约定见 [开发文档](Mihomo-macOS-development-report.md)。
+完整变更见 [v1.11.2 Release Notes](docs/releases/v1.11.2.md)，架构与开发约定见 [开发文档](Mihomo-macOS-development-report.md)。
 
 ## 功能范围
 
-- 原生侧栏、Toolbar、Settings window 与 Menu Bar Extra。
+- 原生侧栏、Toolbar、主窗口设置页与 Menu Bar Extra。
 - Core、系统代理、TUN、系统 DNS 的独立控制、状态检测、快照和恢复。
 - 本地/远程 Profile 与覆写订阅、自动刷新、运行时预览与 `mihomo -t` 校验。
 - GUI 策略组和规则编辑，离线策略预览，节点切换与延迟测试。
@@ -73,7 +73,7 @@ git diff --check
 ./script/build_and_run.sh --verify
 ```
 
-当前测试集包含 120 个 XCTest，覆盖 Activity/日志展示、两色流量语义、Profile↔App 设置同步、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、Provider 更新与回滚、网络请求超时、核心实时状态恢复、Helper 路径边界、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
+当前测试集包含 128 个 XCTest，覆盖 Activity/日志展示、两色流量语义、Profile↔App 设置同步、覆写 YAML/JavaScript 分析、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量来源、DIRECT/代理测速设置、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、Provider 更新与回滚、网络请求超时、核心实时状态恢复、Helper 路径边界、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
 
 网络恢复与辅助功能人工检查：
 
@@ -119,16 +119,16 @@ JS 输出
 export https_proxy=http://127.0.0.1:6152
 export http_proxy=http://127.0.0.1:6152
 export all_proxy=socks5://127.0.0.1:6153
-./script/package_release.sh 1.11.1
-./script/release_smoke_test.sh 1.11.1
+./script/package_release.sh 1.11.2
+./script/release_smoke_test.sh 1.11.2
 ```
 
 产物位于 `dist/releases/`：
 
-- `Mihomo-1.11.1-macOS-arm64.zip`
-- `Mihomo-1.11.1-update.json`
+- `Mihomo-1.11.2-macOS-arm64.zip`
+- `Mihomo-1.11.2-update.json`
 - `mihomo-update.json`
-- `Mihomo-1.11.1-provenance.md`
+- `Mihomo-1.11.2-provenance.md`
 
 Release 必须上传 zip 和 `mihomo-update.json`，否则应用内更新无法发现或验证新版本。manifest 使用 Ed25519 签名，私钥从 `MIHOMO_UPDATE_PRIVATE_KEY` 或 `~/.mihomo-update-signing/ed25519.private` 读取。
 

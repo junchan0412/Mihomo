@@ -46,7 +46,8 @@ struct ProfileQualityAnalyzer {
                 issues.append(.init(
                     severity: .error,
                     title: "JS Transform 失败",
-                    detail: error.localizedDescription
+                    detail: error.localizedDescription,
+                    source: .override
                 ))
             }
         }
@@ -58,7 +59,8 @@ struct ProfileQualityAnalyzer {
             issues.append(.init(
                 severity: .error,
                 title: "Profile YAML 结构不可解析",
-                detail: error.localizedDescription
+                detail: error.localizedDescription,
+                source: .profile
             ))
             return makeReport(
                 issues: issues,
@@ -78,9 +80,11 @@ struct ProfileQualityAnalyzer {
         }
 
         let providers = fragmentStore.parseProviders(profileContent: transformedContent)
-        issues.append(contentsOf: profileHealthIssues(profile: profile, snapshot: snapshot, providers: providers, settings: settings))
+        issues.append(contentsOf: profileHealthIssues(profile: profile, snapshot: snapshot, providers: providers, settings: settings).map { issue in
+            issue.sourced(issue.title == "JS Transform 已启用" ? .override : .profile)
+        })
         for rule in snapshot.rules {
-            issues.append(contentsOf: validateRule(rule, snapshot: snapshot, providers: providers))
+            issues.append(contentsOf: validateRule(rule, snapshot: snapshot, providers: providers).map { $0.sourced(.profile) })
         }
 
         let generatedConfig: String
@@ -317,7 +321,7 @@ struct ProfileQualityAnalyzer {
     ) -> ProfileQualityReport {
         var seenIssues = Set<String>()
         let uniqueIssues = issues.filter { issue in
-            let key = "\(issue.severity.rawValue)\u{1f}\(issue.title)\u{1f}\(issue.detail)"
+            let key = "\(issue.severity.rawValue)\u{1f}\(issue.source.rawValue)\u{1f}\(issue.title)\u{1f}\(issue.detail)"
             return seenIssues.insert(key).inserted
         }
         .sorted { lhs, rhs in

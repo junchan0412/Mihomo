@@ -73,6 +73,13 @@ struct MihomoCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {}
 
+        CommandGroup(replacing: .appSettings) {
+            Button("设置…") {
+                navigate(to: .settings)
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
+
         CommandGroup(after: .pasteboard) {
             Divider()
 
@@ -238,11 +245,15 @@ struct MihomoCommands: Commands {
     @ViewBuilder
     private func navigationButton(_ section: AppSection, key: KeyEquivalent) -> some View {
         Button(section.title) {
-            store.selectedSection = section
-            store.isLightweightModeActive = false
-            MainWindowPresenter.present(openWindow: openWindow)
+            navigate(to: section)
         }
         .keyboardShortcut(key, modifiers: .command)
+    }
+
+    private func navigate(to section: AppSection) {
+        store.selectedSection = section
+        store.isLightweightModeActive = false
+        MainWindowPresenter.present(openWindow: openWindow)
     }
 
     @ViewBuilder

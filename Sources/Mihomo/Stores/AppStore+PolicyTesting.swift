@@ -29,7 +29,8 @@ extension AppStore {
     }
 
     func testProxyDelay(group: String, proxy: String) async {
-        let urls = normalizedDelayTestURLs
+        let proxyURLs = normalizedDelayTestURLs
+        let directURLs = normalizedDirectDelayTestURLs
         let timeout = normalizedDelayTestTimeout
         let proxyType = proxyNodeType(group: group, proxy: proxy)
         var failures: [String] = []
@@ -43,7 +44,7 @@ extension AppStore {
 
         do {
             if Self.isDirectProxy(type: proxyType, name: proxy) {
-                let delay = try await Self.measureDirectDelay(urls: urls, timeout: timeout)
+                let delay = try await Self.measureDirectDelay(urls: directURLs, timeout: timeout)
                 updateDelay(proxy: proxy, delay: delay)
                 delayTestStatus = "\(proxy)：\(delay) ms（直连）"
                 delayTestFailureSummary = ""
@@ -52,7 +53,7 @@ extension AppStore {
             }
 
             let client = controllerClient()
-            for url in urls {
+            for url in proxyURLs {
                 do {
                     let delay = try await client.proxyDelay(proxy: proxy, url: url, timeout: timeout)
                     updateDelay(proxy: proxy, delay: delay)
@@ -127,6 +128,7 @@ extension AppStore {
                 let port = settings.controllerPort
                 let secret = settings.controllerSecret
                 let urls = normalizedDelayTestURLs
+                let directURLs = normalizedDirectDelayTestURLs
                 let timeout = normalizedDelayTestTimeout
                 runningTasks.append(Task {
                     if Self.isRejectProxy(type: target.type, name: target.proxy) {
@@ -134,7 +136,7 @@ extension AppStore {
                     }
                     if Self.isDirectProxy(type: target.type, name: target.proxy) {
                         do {
-                            let delay = try await Self.measureDirectDelay(urls: urls, timeout: timeout)
+                            let delay = try await Self.measureDirectDelay(urls: directURLs, timeout: timeout)
                             return ProxyDelayResult(proxy: target.proxy, delay: delay, errorMessage: nil, skippedMessage: nil)
                         } catch {
                             return ProxyDelayResult(proxy: target.proxy, delay: nil, errorMessage: error.localizedDescription, skippedMessage: nil)
@@ -178,20 +180,12 @@ extension AppStore {
         appendLog("info", "\(label) 测速完成：成功 \(succeeded)，失败 \(failed)，跳过 \(skipped)")
     }
 
-    private var normalizedDelayTestURL: String {
-        let value = settings.delayTestURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        return value.isEmpty ? AppSettings.default.delayTestURL : value
+    private var normalizedDelayTestURLs: [String] {
+        DelayTestURLSelection.proxyURLs(settings: settings)
     }
 
-    private var normalizedDelayTestURLs: [String] {
-        var seen: Set<String> = []
-        var urls: [String] = []
-        for url in [normalizedDelayTestURL, AppSettings.default.delayTestURL, "https://www.gstatic.com/generate_204"] {
-            let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard trimmed.isEmpty == false, seen.insert(trimmed).inserted else { continue }
-            urls.append(trimmed)
-        }
-        return urls
+    private var normalizedDirectDelayTestURLs: [String] {
+        DelayTestURLSelection.directURLs(settings: settings)
     }
 
     private var normalizedDelayTestTimeout: Int {
@@ -296,6 +290,33 @@ extension AppStore {
             .prefix(3)
             .map { "\($0.key) x\($0.value)" }
             .joined(separator: "，")
+    }
+}
+
+enum DelayTestURLSelection {
+    static func proxyURLs(settings: AppSettings) -> [String] {
+        let configured = settings.delayTestURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let primary = configured.isEmpty ? AppSettings.default.delayTestURL : configured
+        return unique([
+            primary,
+            AppSettings.default.delayTestURL,
+            "https://www.gstatic.com/generate_204"
+        ])
+    }
+
+    static func directURLs(settings: AppSettings) -> [String] {
+        let configured = settings.directDelayTestURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let primary = configured.isEmpty ? AppSettings.default.directDelayTestURL : configured
+        return unique([primary, AppSettings.default.directDelayTestURL])
+    }
+
+    private static func unique(_ candidates: [String]) -> [String] {
+        var seen: Set<String> = []
+        return candidates.compactMap { candidate in
+            let value = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard value.isEmpty == false, seen.insert(value).inserted else { return nil }
+            return value
+        }
     }
 }
 

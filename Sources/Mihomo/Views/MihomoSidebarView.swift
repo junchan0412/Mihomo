@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct MihomoSidebarView: View {
-    @Environment(\.openSettings) private var openSettings
     @EnvironmentObject private var store: AppStore
     @Binding var selection: AppSection
 
@@ -19,12 +18,7 @@ struct MihomoSidebarView: View {
             }
 
             Section("应用") {
-                Button {
-                    openSettings()
-                } label: {
-                    Label("设置", systemImage: "gearshape")
-                }
-                .buttonStyle(.plain)
+                sidebarRows([.settings])
             }
         }
         .listStyle(.sidebar)

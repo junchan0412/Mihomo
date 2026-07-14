@@ -365,4 +365,30 @@ final class ProfileQualityAnalyzerTests: XCTestCase {
         XCTAssertTrue(report.issues.contains { $0.title == "策略组 Provider 类型不匹配" })
         XCTAssertTrue(report.issues.contains { $0.title == "Proxy Provider 不存在" })
     }
+
+    func testSnifferRuleIssueIdentifiesAppSettingsAsSource() {
+        let profile = ProfileItem(
+            id: UUID(),
+            name: "Source Labels",
+            source: .local,
+            location: "/tmp/source-labels.yaml",
+            fileName: "source-labels.yaml",
+            updatedAt: Date()
+        )
+        var settings = AppSettings.default
+        settings.snifferManagedByApp = true
+        settings.snifferEnabled = true
+        settings.snifferSkipDomains = "https://example.com/path"
+
+        let report = ProfileQualityAnalyzer().analyze(
+            profile: profile,
+            profileContent: "proxies: [{name: direct, type: direct}]\nrules: [MATCH,DIRECT]\n",
+            settings: settings,
+            fragments: [],
+            disabledRules: []
+        )
+
+        let issue = report.issues.first { $0.title == "域名嗅探规则格式可疑" }
+        XCTAssertEqual(issue?.source, .appSettings)
+    }
 }

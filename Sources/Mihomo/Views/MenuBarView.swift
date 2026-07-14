@@ -102,8 +102,8 @@ struct MenuBarView: View {
                 sectionButton("规则", .rules)
                 sectionButton("资源", .resources)
                 sectionButton("诊断", .diagnostics)
-                SettingsLink {
-                    Text("设置")
+                Button("设置") {
+                    show(.settings)
                 }
             }
 

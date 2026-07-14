@@ -23,6 +23,7 @@ struct AppSettings: Codable, Hashable {
     var lightweightMode: Bool
     var restoreSystemProxyOnQuit: Bool
     var delayTestURL: String
+    var directDelayTestURL: String
     var delayTestTimeoutMS: Int
     var launchAtLogin: Bool
     var restoreTunOnStop: Bool
@@ -84,7 +85,7 @@ struct AppSettings: Codable, Hashable {
     static let `default` = AppSettings()
 
     init(
-        settingsSchemaVersion: Int = 6,
+        settingsSchemaVersion: Int = 7,
         mihomoPath: String = "",
         coreSource: CoreSource = .managed,
         activeProfileID: UUID? = nil,
@@ -106,6 +107,7 @@ struct AppSettings: Codable, Hashable {
         lightweightMode: Bool = false,
         restoreSystemProxyOnQuit: Bool = true,
         delayTestURL: String = "https://cp.cloudflare.com/generate_204",
+        directDelayTestURL: String = "https://www.gstatic.com/generate_204",
         delayTestTimeoutMS: Int = 8000,
         launchAtLogin: Bool = false,
         restoreTunOnStop: Bool = true,
@@ -186,6 +188,7 @@ struct AppSettings: Codable, Hashable {
         self.lightweightMode = lightweightMode
         self.restoreSystemProxyOnQuit = restoreSystemProxyOnQuit
         self.delayTestURL = delayTestURL
+        self.directDelayTestURL = directDelayTestURL
         self.delayTestTimeoutMS = delayTestTimeoutMS
         self.launchAtLogin = launchAtLogin
         self.restoreTunOnStop = restoreTunOnStop
@@ -268,6 +271,7 @@ struct AppSettings: Codable, Hashable {
         case lightweightMode
         case restoreSystemProxyOnQuit
         case delayTestURL
+        case directDelayTestURL
         case delayTestTimeoutMS
         case launchAtLogin
         case restoreTunOnStop
@@ -354,6 +358,7 @@ struct AppSettings: Codable, Hashable {
         lightweightMode = try container.decodeIfPresent(Bool.self, forKey: .lightweightMode) ?? fallback.lightweightMode
         restoreSystemProxyOnQuit = try container.decodeIfPresent(Bool.self, forKey: .restoreSystemProxyOnQuit) ?? fallback.restoreSystemProxyOnQuit
         delayTestURL = try container.decodeIfPresent(String.self, forKey: .delayTestURL) ?? fallback.delayTestURL
+        directDelayTestURL = try container.decodeIfPresent(String.self, forKey: .directDelayTestURL) ?? fallback.directDelayTestURL
         delayTestTimeoutMS = try container.decodeIfPresent(Int.self, forKey: .delayTestTimeoutMS) ?? fallback.delayTestTimeoutMS
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? fallback.launchAtLogin
         restoreTunOnStop = try container.decodeIfPresent(Bool.self, forKey: .restoreTunOnStop) ?? fallback.restoreTunOnStop

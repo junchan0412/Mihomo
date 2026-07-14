@@ -101,12 +101,6 @@ struct MihomoApp: App {
             MihomoCommands(store: store)
         }
 
-        Settings {
-            SettingsRootView()
-                .environmentObject(store)
-                .frame(minWidth: 760, minHeight: 600)
-        }
-
         WindowGroup("配置编辑器", for: UUID.self) { $profileID in
             if let profileID {
                 ProfileEditorWindowView(profileID: profileID)
@@ -128,6 +122,17 @@ struct MihomoApp: App {
             }
         }
         .defaultSize(width: 840, height: 720)
+
+        WindowGroup("覆写快速查看", for: ConfigFragmentPreviewRoute.self) { $route in
+            if let route {
+                ConfigFragmentPreviewWindowView(route: route)
+                    .environmentObject(store)
+                    .frame(minWidth: 760, minHeight: 560)
+            } else {
+                ContentUnavailableView("未选择覆写", systemImage: "doc.text.magnifyingglass")
+            }
+        }
+        .defaultSize(width: 920, height: 720)
 
         Window("连接详情", id: "connection-detail") {
             ConnectionDetailPanelView()
