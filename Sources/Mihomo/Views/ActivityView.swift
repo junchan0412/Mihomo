@@ -73,10 +73,11 @@ struct ActivityView: View {
                     return lhs.id.localizedStandardCompare(rhs.id) == .orderedDescending
                 }
             }
-            .map { connection in
+            .enumerated().map { offset, connection in
                 ConnectionTableRow(
                     connection: connection,
-                    isActive: activityStore.connections.contains { $0.id == connection.id }
+                    isActive: activityStore.connections.contains { $0.id == connection.id },
+                    sequence: offset + 1
                 )
             }
     }
@@ -244,6 +245,7 @@ struct ActivityView: View {
             if let selectedConnection {
                 ConnectionInlineDetailView(
                     connection: selectedConnection,
+                    isActive: selectedConnectionIsActive,
                     tab: $detailTab,
                     close: { connection in
                         selectedRowIDs.removeAll()

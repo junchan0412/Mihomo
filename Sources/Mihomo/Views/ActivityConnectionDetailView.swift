@@ -21,12 +21,12 @@ enum ActivityConnectionDetailTab: String, CaseIterable, Identifiable {
 struct ConnectionTableRow: Identifiable, Hashable {
     var connection: ConnectionItem
     var isActive = true
+    var sequence: Int = 0
 
     var id: String { connection.id }
 
     var idText: String {
-        let compact = connection.id.count > 6 ? String(connection.id.suffix(6)) : connection.id
-        return "● \(compact)"
+        return "#\(sequence)"
     }
 
     var timeText: String {
@@ -93,6 +93,7 @@ struct ConnectionTableRow: Identifiable, Hashable {
 
 struct ConnectionInlineDetailView: View {
     let connection: ConnectionItem
+    var isActive: Bool = true
     @Binding var tab: ActivityConnectionDetailTab
     var close: (ConnectionItem) -> Void
     var focusRule: (ConnectionItem) -> Void
@@ -152,7 +153,7 @@ struct ConnectionInlineDetailView: View {
 
             Spacer()
 
-            ConnectionBadge("活跃", tint: .green)
+            ConnectionBadge(isActive ? "活跃" : "已结束", tint: isActive ? .green : .orange)
 
             Button {
                 close(connection)
@@ -161,6 +162,7 @@ struct ConnectionInlineDetailView: View {
             }
             .buttonStyle(.borderless)
             .help("关闭此连接")
+            .disabled(!isActive)
         }
     }
 

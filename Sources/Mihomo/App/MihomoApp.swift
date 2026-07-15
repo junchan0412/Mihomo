@@ -196,8 +196,13 @@ private struct MenuBarBrandMark: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            MihomoMarkShape()
-                .stroke(.primary, style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round))
+            Group {
+                if let image = Self.templateImage {
+                    Image(nsImage: image).resizable().scaledToFit()
+                } else {
+                    MihomoMarkShape().stroke(.primary, style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round))
+                }
+            }
                 .padding(.trailing, 5)
                 .padding(.vertical, 2)
 
@@ -209,6 +214,13 @@ private struct MenuBarBrandMark: View {
         }
         .accessibilityHidden(true)
     }
+
+    private static let templateImage: NSImage? = {
+        guard let url = Bundle.main.url(forResource: "MenuBarIconTemplate", withExtension: "png"),
+              let image = NSImage(contentsOf: url) else { return nil }
+        image.isTemplate = true
+        return image
+    }()
 
     private var modeLetter: String {
         MenuBarPresentation.modeLetter(for: mode)

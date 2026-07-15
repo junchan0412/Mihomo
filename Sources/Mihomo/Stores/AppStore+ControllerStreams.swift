@@ -2,12 +2,12 @@ import Foundation
 
 extension AppStore {
     var controllerPollingIntervalNanoseconds: UInt64 {
-        guard let controllerEventStreamLastEventAt,
-              Date().timeIntervalSince(controllerEventStreamLastEventAt) < 8
+        guard let controllerConnectionStreamLastEventAt,
+              Date().timeIntervalSince(controllerConnectionStreamLastEventAt) < 8
         else {
-            return 3_000_000_000
+            return 1_000_000_000
         }
-        return 8_000_000_000
+        return 3_000_000_000
     }
 
     func updateTrafficRates(uploadTotal: Int64, downloadTotal: Int64) {
@@ -49,16 +49,29 @@ extension AppStore {
         let client = controllerEventStreamClient()
         let logLevel = settings.logLevel
         controllerEventStreamLastEventAt = nil
+        controllerConnectionStreamLastEventAt = nil
         controllerEventStreamStatus = "连接中"
 
         controllerTrafficStreamTask = Task { [weak self] in
-            await self?.runControllerEventStream(label: "流量", makeStream: client.trafficEvents)
+            await self?.runControllerEventStream(
+                label: "流量",
+                makeStream: client.trafficEvents,
+                hasReceivedEvent: { [weak self] in self?.controllerEventStreamLastEventAt != nil }
+            )
         }
         controllerLogStreamTask = Task { [weak self] in
-            await self?.runControllerEventStream(label: "日志", makeStream: { client.logEvents(level: logLevel) })
+            await self?.runControllerEventStream(
+                label: "日志",
+                makeStream: { client.logEvents(level: logLevel) },
+                hasReceivedEvent: { [weak self] in self?.controllerEventStreamLastEventAt != nil }
+            )
         }
         controllerConnectionStreamTask = Task { [weak self] in
-            await self?.runControllerEventStream(label: "连接", makeStream: client.connectionEvents)
+            await self?.runControllerEventStream(
+                label: "连接",
+                makeStream: client.connectionEvents,
+                hasReceivedEvent: { [weak self] in self?.controllerConnectionStreamLastEventAt != nil }
+            )
         }
     }
 
@@ -70,6 +83,7 @@ extension AppStore {
         controllerLogStreamTask = nil
         controllerConnectionStreamTask = nil
         controllerEventStreamLastEventAt = nil
+        controllerConnectionStreamLastEventAt = nil
         controllerEventStreamStatus = status
     }
 
@@ -100,7 +114,8 @@ extension AppStore {
 
     private func runControllerEventStream(
         label: String,
-        makeStream: @escaping () -> AsyncThrowingStream<ControllerStreamEvent, Error>
+        makeStream: @escaping () -> AsyncThrowingStream<ControllerStreamEvent, Error>,
+        hasReceivedEvent: @escaping () -> Bool
     ) async {
         var recoveryState = ControllerEventStreamRecoveryState()
         while !Task.isCancelled && isCoreRunning {
@@ -112,7 +127,7 @@ extension AppStore {
                 }
             } catch {
                 guard !Task.isCancelled else { return }
-                let decision = recoveryState.recordFailure(hasReceivedEvent: controllerEventStreamLastEventAt != nil)
+                let decision = recoveryState.recordFailure(hasReceivedEvent: hasReceivedEvent())
                 controllerEventStreamStatus = decision.status
                 backoffSeconds = decision.backoffSeconds
                 if decision.shouldLogWarning {
@@ -139,6 +154,7 @@ extension AppStore {
         case .log(let level, let message):
             appendLog(level, message)
         case .connections(let items, let uploadTotal, let downloadTotal):
+            controllerConnectionStreamLastEventAt = Date()
             let connectionsChanged = connections != items
             publishIfChanged(\.connections, items)
             if connectionsChanged {

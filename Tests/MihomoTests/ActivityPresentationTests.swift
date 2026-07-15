@@ -2,10 +2,10 @@ import XCTest
 @testable import Mihomo
 
 final class ActivityPresentationTests: XCTestCase {
-    func testConnectionIDUsesCompactSuffix() {
-        let row = ConnectionTableRow(connection: connection(id: "12345678-abcdef"))
+    func testConnectionIDUsesSequenceNumber() {
+        let row = ConnectionTableRow(connection: connection(id: "12345678-abcdef"), sequence: 3)
 
-        XCTAssertEqual(row.idText, "● abcdef")
+        XCTAssertEqual(row.idText, "#3")
     }
 
     func testLogPresentationSplitsTitleAndDetail() {

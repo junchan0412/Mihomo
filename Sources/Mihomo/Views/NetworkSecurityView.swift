@@ -86,7 +86,7 @@ struct NetworkSecurityView: View {
         VStack(alignment: .leading, spacing: 16) {
             SettingsSection(
                 title: "接管方式",
-                subtitle: "系统代理适合日常使用；需要透明接管更多应用时切换到 TUN。两者自动互斥，系统 DNS 可独立开启。",
+                subtitle: "系统代理服务遵守 macOS 代理设置的应用；TUN 负责不遵守系统代理的透明流量。两者可以同时开启，分别处理不同流量范围。",
                 systemImage: "switch.2"
             ) {
                 takeoverRow(

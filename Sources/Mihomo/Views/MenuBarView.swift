@@ -15,9 +15,6 @@ struct MenuBarView: View {
 
             Divider()
 
-            Label(coreStateTitle, systemImage: store.isCoreRunning ? "play.circle.fill" : "stop.circle")
-                .foregroundStyle(store.isCoreRunning ? .green : .secondary)
-
             Menu("出站模式") {
                 modeButton("规则", mode: "rule")
                 modeButton("全局", mode: "global")
@@ -26,8 +23,10 @@ struct MenuBarView: View {
 
             Toggle("显示上传下载速率", isOn: $showsTrafficRates)
 
-            Button(store.isCoreRunning ? "停止核心" : "启动核心") {
+            Button {
                 Task { await store.toggleCore() }
+            } label: {
+                Label(store.isCoreRunning ? "停止核心" : "启动核心", systemImage: store.isCoreRunning ? "stop.circle.fill" : "play.circle.fill")
             }
 
             Button("重启核心") {

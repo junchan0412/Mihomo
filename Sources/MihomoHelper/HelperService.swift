@@ -143,7 +143,8 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
                 details.append(try tunTool.restore(
                     tunSnapshotPath: tunSnapshot
                 ))
-            } else if restoreDNS {
+            }
+            if restoreDNS {
                 steps.append("恢复系统 DNS 快照")
                 let restored = try networkTool.restoreDNS(snapshotPath: dnsSnapshot)
                 details.append("已恢复 \(restored) 个网络服务的系统 DNS 快照")

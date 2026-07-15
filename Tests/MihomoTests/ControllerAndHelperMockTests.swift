@@ -127,7 +127,7 @@ final class ControllerAndHelperMockTests: XCTestCase {
         let second = try XCTUnwrap(MihomoControllerClient.parseConnections(from: payload).0.first?.id)
 
         XCTAssertEqual(first, second)
-        XCTAssertTrue(first.contains("example.com"))
+        XCTAssertTrue(first.hasPrefix("connection-"))
     }
 
     func testMockControllerProviderParsing() {

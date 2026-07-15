@@ -105,7 +105,7 @@ struct MihomoControllerClient {
                 .filter { !$0.isEmpty }
                 .joined(separator: " ")
             return ConnectionItem(
-                id: row["id"] as? String ?? Self.fallbackConnectionID(metadata: metadata, chains: chains, index: index),
+                id: row["id"] as? String ?? Self.fallbackConnectionID(metadata: metadata, chains: chains, row: row, index: index),
                 host: (metadata["host"] as? String)
                     ?? (metadata["destinationIP"] as? String)
                     ?? (metadata["remoteDestination"] as? String)
@@ -129,6 +129,23 @@ struct MihomoControllerClient {
             )
         }
         return (items, uploadTotal, downloadTotal)
+    }
+
+    /// Older mihomo builds may omit `id`. Keep the fallback stable across polling
+    /// reordering so a connection remains one history item instead of becoming a duplicate.
+    private static func fallbackConnectionID(metadata: [String: Any], chains: [String], row: [String: Any], index: Int) -> String {
+        let fields = [
+            stringValue(metadata["type"]), stringValue(metadata["network"]),
+            stringValue(metadata["sourceIP"]), stringValue(metadata["sourcePort"]),
+            stringValue(metadata["destinationIP"]), stringValue(metadata["destinationPort"]),
+            stringValue(metadata["host"]), stringValue(metadata["remoteDestination"]),
+            stringValue(row["start"]), chains.joined(separator: "|")
+        ]
+        let key = fields.joined(separator: "|").trimmingCharacters(in: .whitespacesAndNewlines)
+        if key.isEmpty { return "connection-unknown-\(index)" }
+        var hash: UInt64 = 14695981039346656037
+        for byte in key.utf8 { hash ^= UInt64(byte); hash &*= 1099511628211 }
+        return "connection-" + String(hash, radix: 16)
     }
 
     private static func stringValue(_ value: Any?) -> String {
@@ -339,20 +356,6 @@ struct MihomoControllerClient {
         return 0
     }
 
-    private static func fallbackConnectionID(metadata: [String: Any], chains: [String], index: Int) -> String {
-        let parts = [
-            stringValue(metadata["sourceIP"]),
-            stringValue(metadata["sourcePort"]),
-            stringValue(metadata["host"]),
-            stringValue(metadata["destinationIP"]),
-            stringValue(metadata["destinationPort"]),
-            stringValue(metadata["network"]),
-            stringValue(metadata["processPath"]),
-            chains.joined(separator: ">")
-        ].filter { $0.isEmpty == false }
-
-        return parts.isEmpty ? "connection-\(index)" : parts.joined(separator: "|")
-    }
 }
 
 private extension String {

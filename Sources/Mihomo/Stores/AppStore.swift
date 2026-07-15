@@ -145,6 +145,7 @@ final class AppStore: ObservableObject {
     var controllerLogStreamTask: Task<Void, Never>?
     var controllerConnectionStreamTask: Task<Void, Never>?
     var controllerEventStreamLastEventAt: Date?
+    var controllerConnectionStreamLastEventAt: Date?
 
     var activeProfile: ProfileItem? {
         profiles.first { $0.id == settings.activeProfileID } ?? profiles.first
@@ -179,11 +180,8 @@ final class AppStore: ObservableObject {
     }
 
     var networkModeAdvisory: String? {
-        if settings.tunEnabled && systemProxyEnabled {
-            return "TUN 与系统代理被标记为同时开启；下一次切换会自动执行互斥恢复，优先保留最新选择。"
-        }
         if settings.tunEnabled && settings.autoSetSystemDNS {
-            return "TUN 与系统 DNS 接管同时开启；停止核心时会按设置恢复 DNS/TUN 快照，请确保 Helper 已注册。"
+            return "TUN 与系统 DNS 接管同时开启；TUN 负责透明流量，系统 DNS 负责本机解析，停止核心时会分别恢复。"
         }
         if systemProxyEnabled && settings.autoSetSystemDNS {
             return "系统代理与系统 DNS 接管同时开启；适合需要 DNS 统一出口的场景，退出前会尝试恢复快照。"

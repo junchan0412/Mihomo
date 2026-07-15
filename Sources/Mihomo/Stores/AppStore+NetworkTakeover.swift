@@ -10,10 +10,6 @@ extension AppStore {
                 recordNetworkOperation(.systemProxy, result: result)
                 appendLog("info", result.message)
             } else {
-                if settings.tunEnabled {
-                    appendLog("warning", "系统代理与 TUN 互斥：开启系统代理前将关闭 TUN。")
-                    await setTunEnabled(false)
-                }
                 let result = try await helperClient.setSystemProxy(host: "127.0.0.1", mixedPort: settings.mixedPort, socksPort: settings.socksPort)
                 systemProxyEnabled = true
                 lastSystemProxySnapshot = systemProxy.loadSnapshot()
@@ -29,20 +25,6 @@ extension AppStore {
     func setTunEnabled(_ enabled: Bool) async {
         guard settings.tunEnabled != enabled else { return }
         let shouldRestoreTunBeforeDisable = settings.tunEnabled && enabled == false && isCoreRunning && settings.restoreTunOnStop
-        if enabled && systemProxyEnabled {
-            do {
-                appendLog("warning", "TUN 与系统代理互斥：开启 TUN 前将关闭系统代理。")
-                let result = try await helperClient.restoreSystemProxy()
-                systemProxyEnabled = false
-                lastSystemProxySnapshot = systemProxy.loadSnapshot()
-                recordNetworkOperation(.systemProxy, result: result)
-                appendLog("info", result.message)
-            } catch {
-                appendLog("error", "关闭系统代理失败，已取消开启 TUN：\(error.localizedDescription)")
-                refreshNetworkTakeoverStates(force: true)
-                return
-            }
-        }
         if shouldRestoreTunBeforeDisable {
             do {
                 let result = try await helperClient.restoreTunSnapshot()
@@ -94,8 +76,6 @@ extension AppStore {
             let result = try await helperClient.restoreTunSnapshot()
             lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
             tunRecoveryStatus = result.message
-            systemProxyEnabled = false
-            lastSystemProxySnapshot = systemProxy.loadSnapshot()
             recordNetworkOperation(.tun, result: result)
             appendLog("info", result.message)
         } catch {
