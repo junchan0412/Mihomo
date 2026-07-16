@@ -2,7 +2,7 @@ import Foundation
 
 extension AppStore {
     func toggleCore() async {
-        isCoreRunning ? await stopCore() : await startCore()
+        isCoreRunning ? await stopCore(restoreSystemProxy: true) : await startCore()
     }
 
     func startCore() async {
@@ -75,7 +75,7 @@ extension AppStore {
         refreshNetworkTakeoverStates(force: true)
     }
 
-    func stopCore() async {
+    func stopCore(restoreSystemProxy: Bool = true) async {
         isExpectedCoreExit = true
         do {
             let result = try await helperClient.stopCore(
@@ -100,6 +100,16 @@ extension AppStore {
             stopControllerEventStreams(status: "轮询")
             appendLog("error", "Helper 停止核心失败：\(error.localizedDescription)")
         }
+        if restoreSystemProxy && systemProxyEnabled {
+            do {
+                let result = try await helperClient.restoreSystemProxy()
+                systemProxyEnabled = false
+                recordNetworkOperation(.systemProxy, result: result)
+                appendLog("info", "核心停止后已恢复系统代理：\(result.message)")
+            } catch {
+                appendLog("error", "核心停止后恢复系统代理失败：\(error.localizedDescription)")
+            }
+        }
         try? await Task.sleep(nanoseconds: 500_000_000)
         isExpectedCoreExit = false
         refreshNetworkTakeoverStates(force: true)
@@ -107,7 +117,7 @@ extension AppStore {
 
     func restartCore() async {
         appendLog("info", "正在重启核心")
-        await stopCore()
+        await stopCore(restoreSystemProxy: false)
         try? await Task.sleep(nanoseconds: 300_000_000)
         await startCore()
     }

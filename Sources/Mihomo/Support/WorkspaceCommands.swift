@@ -178,6 +178,7 @@ struct MihomoCommands: Commands {
                 Task { await store.toggleSystemProxy() }
             }
             .keyboardShortcut("p", modifiers: [.command, .shift])
+            .disabled(!store.isCoreRunning && !store.systemProxyEnabled)
 
             Button(store.settings.tunEnabled ? "关闭 TUN" : "开启 TUN") {
                 Task { await store.setTunEnabled(!store.settings.tunEnabled) }

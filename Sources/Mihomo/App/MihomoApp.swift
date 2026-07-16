@@ -28,7 +28,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(dockItem(coreTitle, action: #selector(toggleCoreFromDock)))
 
         let proxyTitle = store?.systemProxyEnabled == true ? "关闭系统代理" : "开启系统代理"
-        menu.addItem(dockItem(proxyTitle, action: #selector(toggleSystemProxyFromDock)))
+        let proxyItem = dockItem(proxyTitle, action: #selector(toggleSystemProxyFromDock))
+        proxyItem.isEnabled = store?.isCoreRunning == true || store?.systemProxyEnabled == true
+        menu.addItem(proxyItem)
         menu.addItem(.separator())
 
         menu.addItem(modeDockItem("规则模式", mode: "rule"))

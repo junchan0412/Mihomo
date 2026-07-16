@@ -41,6 +41,7 @@ struct RootView: View {
                 ) {
                     Task { await store.toggleSystemProxy() }
                 }
+                .disabled(!store.isCoreRunning && !store.systemProxyEnabled)
             }
 
             ToolbarItem(id: "tun-control", placement: .primaryAction) {

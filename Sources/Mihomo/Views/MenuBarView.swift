@@ -37,6 +37,7 @@ struct MenuBarView: View {
                 Task { await store.toggleSystemProxy() }
             }
             .keyboardShortcut("s", modifiers: [.command])
+            .disabled(!store.isCoreRunning && !store.systemProxyEnabled)
 
             Button(store.settings.tunEnabled ? "关闭 TUN" : "开启 TUN") {
                 Task { await store.setTunEnabled(!store.settings.tunEnabled) }

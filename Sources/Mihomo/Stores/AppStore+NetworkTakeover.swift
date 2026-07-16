@@ -10,6 +10,10 @@ extension AppStore {
                 recordNetworkOperation(.systemProxy, result: result)
                 appendLog("info", result.message)
             } else {
+                guard isCoreRunning else {
+                    appendLog("warning", "核心未运行，无法开启系统代理；请先启动核心。")
+                    return
+                }
                 let result = try await helperClient.setSystemProxy(host: "127.0.0.1", mixedPort: settings.mixedPort, socksPort: settings.socksPort)
                 systemProxyEnabled = true
                 lastSystemProxySnapshot = systemProxy.loadSnapshot()
