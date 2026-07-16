@@ -187,6 +187,20 @@ final class ControllerAndHelperMockTests: XCTestCase {
         }
     }
 
+    func testHelperCallCompletionCanOnlyFinishOnce() {
+        let completion = HelperCallCompletion()
+
+        XCTAssertTrue(completion.claim())
+        XCTAssertFalse(completion.claim())
+    }
+
+    func testHelperTimeoutErrorOffersRecoveryAction() {
+        let message = HelperCallError.timeout(seconds: 2).localizedDescription
+
+        XCTAssertTrue(message.contains("2 秒"))
+        XCTAssertTrue(message.contains("重新注册 Helper"))
+    }
+
     func testHelperRuntimeBindingAuditAcceptsCurrentAppVersionAndPath() {
         let appURL = URL(fileURLWithPath: "/Applications/Mihomo.app")
         let result = HelperRuntimeBindingAudit.evaluate(

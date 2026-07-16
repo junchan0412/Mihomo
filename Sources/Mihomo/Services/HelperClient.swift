@@ -60,13 +60,13 @@ final class HelperServiceManager {
 
 final class MihomoHelperClient {
     func version() async throws -> HelperOperationResult {
-        try await call { proxy, reply in
+        try await call(timeoutSeconds: 2) { proxy, reply in
             proxy.helperVersion(withReply: reply)
         }
     }
 
     func validateConfig(mihomoPath: String, configPath: URL, workDirectory: URL) async throws -> HelperOperationResult {
-        try await call { proxy, reply in
+        try await call(timeoutSeconds: 30) { proxy, reply in
             proxy.validateConfig(
                 mihomoPath: mihomoPath as NSString,
                 configPath: configPath.path as NSString,
@@ -85,7 +85,7 @@ final class MihomoHelperClient {
         dnsServers: [String],
         captureTun: Bool
     ) async throws -> HelperOperationResult {
-        try await call { proxy, reply in
+        try await call(timeoutSeconds: 30) { proxy, reply in
             proxy.prepareAndStartCore(
                 mihomoPath: mihomoPath as NSString,
                 configPath: configPath.path as NSString,
@@ -211,23 +211,32 @@ final class MihomoHelperClient {
         }
     }
 
-    private func call(_ invoke: @escaping (MihomoHelperXPCProtocol, @escaping (NSDictionary) -> Void) -> Void) async throws -> HelperOperationResult {
+    private func call(
+        timeoutSeconds: TimeInterval = 10,
+        _ invoke: @escaping (MihomoHelperXPCProtocol, @escaping (NSDictionary) -> Void) -> Void
+    ) async throws -> HelperOperationResult {
         try await withCheckedThrowingContinuation { continuation in
+            let completion = HelperCallCompletion()
             let connection = NSXPCConnection(
                 machServiceName: MihomoHelperConstants.machServiceName,
                 options: .privileged
             )
             connection.remoteObjectInterface = NSXPCInterface(with: MihomoHelperXPCProtocol.self)
-            connection.invalidationHandler = {}
-            connection.interruptionHandler = {}
-            connection.resume()
-
-            var didResume = false
             let finish: (Result<HelperOperationResult, Error>) -> Void = { result in
-                guard didResume == false else { return }
-                didResume = true
+                guard completion.claim() else { return }
                 connection.invalidate()
                 continuation.resume(with: result)
+            }
+            connection.invalidationHandler = {
+                finish(.failure(HelperCallError.connectionInvalidated))
+            }
+            connection.interruptionHandler = {
+                finish(.failure(HelperCallError.connectionInterrupted))
+            }
+            connection.resume()
+
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + timeoutSeconds) {
+                finish(.failure(HelperCallError.timeout(seconds: timeoutSeconds)))
             }
 
             let remote = connection.remoteObjectProxyWithErrorHandler { error in
@@ -248,6 +257,36 @@ final class MihomoHelperClient {
                     finish(.failure(error))
                 }
             }
+        }
+    }
+}
+
+final class HelperCallCompletion {
+    private let lock = NSLock()
+    private var finished = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard finished == false else { return false }
+        finished = true
+        return true
+    }
+}
+
+enum HelperCallError: LocalizedError {
+    case timeout(seconds: TimeInterval)
+    case connectionInvalidated
+    case connectionInterrupted
+
+    var errorDescription: String? {
+        switch self {
+        case .timeout(let seconds):
+            return "XPC Helper 在 \(Int(seconds)) 秒内没有响应，请在高级工具中重新注册 Helper。"
+        case .connectionInvalidated:
+            return "XPC Helper 连接已失效，请重新注册 Helper。"
+        case .connectionInterrupted:
+            return "XPC Helper 连接被中断，请稍后重试或重新注册 Helper。"
         }
     }
 }
