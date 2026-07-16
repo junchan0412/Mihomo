@@ -55,6 +55,12 @@ final class ControllerEventStreamTests: XCTestCase {
         XCTAssertEqual(items.first?.chain, "Auto -> node-a")
     }
 
+    func testIgnoresConnectionStatusFrameWithoutSnapshot() throws {
+        let data = try jsonData(["uploadTotal": 12, "downloadTotal": 34])
+
+        XCTAssertNil(MihomoControllerEventStream.parseConnectionEvent(data: data))
+    }
+
     func testBuildsControllerWebSocketRequestWithBoundedTimeoutAndAuthorization() throws {
         let stream = MihomoControllerEventStream(
             host: "127.0.0.1",

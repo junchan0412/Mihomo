@@ -35,6 +35,21 @@ final class RuntimeStoreIsolationTests: XCTestCase {
         XCTAssertEqual(store.connections.map(\.id), ["active"])
     }
 
+    func testConnectionSnapshotPromotesEndedActivityToHistoryWithoutDuplicates() {
+        let store = RuntimeActivityStore()
+        var item = connection(id: "c1")
+        item.upload = 10
+        store.replaceConnections([item])
+
+        item.upload = 20
+        store.replaceConnections([item])
+        store.replaceConnections([])
+
+        XCTAssertTrue(store.connections.isEmpty)
+        XCTAssertEqual(store.recentConnections.map(\.id), ["c1"])
+        XCTAssertEqual(store.recentConnections.first?.upload, 20)
+    }
+
     func testLogPublishingDoesNotInvalidateAppStore() {
         let store = AppStore()
         var appChanges = 0

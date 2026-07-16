@@ -78,6 +78,11 @@ struct MihomoControllerEventStream {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
+        // A connection frame is a complete snapshot. Ignore status/error
+        // frames without `connections` instead of erasing the active table.
+        guard object["connections"] is [[String: Any]] || object["connections"] is [Any] else {
+            return nil
+        }
         let (items, uploadTotal, downloadTotal) = MihomoControllerClient.parseConnections(from: object)
         return .connections(items: items, uploadTotal: uploadTotal, downloadTotal: downloadTotal)
     }
