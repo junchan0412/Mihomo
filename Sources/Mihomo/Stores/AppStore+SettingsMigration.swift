@@ -58,6 +58,10 @@ enum SettingsMigrator {
                 migrated.dnsEnabled = true
                 migrated.settingsSchemaVersion = 8
                 log.append("v8：将 Mihomo 内置 DNS 与 macOS 系统 DNS 改写拆分；现有配置默认保留内置 DNS。")
+            case 8:
+                migrated.systemProxyGuardEnabled = true
+                migrated.settingsSchemaVersion = 9
+                log.append("v9：增加系统代理漂移守护，代理被其他网络工具改写时可自动恢复。")
             default:
                 throw NSError(
                     domain: "Mihomo.SettingsMigration",

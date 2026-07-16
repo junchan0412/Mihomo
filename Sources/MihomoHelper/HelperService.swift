@@ -245,9 +245,9 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
         do {
             let proxySnapshot = try validatedProxySnapshotPath(proxySnapshotPath as String)
             steps.append("读取系统代理快照")
-            steps.append("恢复 HTTP/HTTPS/SOCKS 代理、绕过域名和 DNS")
-            let count = try networkTool.restore(snapshotPath: proxySnapshot)
-            reply(HelperReply.transactionOK("已恢复 \(count) 个网络服务的系统代理/DNS", steps: steps, rollbackSuggestion: "如快照不存在，Helper 已尝试关闭代理开关；仍异常时可在系统设置中手动检查网络服务。"))
+            steps.append("恢复 HTTP/HTTPS/SOCKS 代理与绕过域名")
+            let count = try networkTool.restoreProxy(snapshotPath: proxySnapshot)
+            reply(HelperReply.transactionOK("已恢复 \(count) 个网络服务的系统代理", steps: steps, rollbackSuggestion: "如快照不存在，Helper 已尝试关闭代理开关；仍异常时可在系统设置中手动检查网络服务。"))
         } catch {
             reply(HelperReply.error(error, steps: steps, rollbackSuggestion: "代理恢复失败。请检查网络服务名称是否变化，或在系统设置中手动关闭代理。"))
         }

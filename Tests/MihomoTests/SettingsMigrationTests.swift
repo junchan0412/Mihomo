@@ -21,6 +21,7 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v6：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v7：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v8：") })
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v9：") })
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -51,6 +52,7 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v6：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v7：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v8：") })
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v9：") })
     }
 
     func testV4MigrationMakesControlChannelLocalAndExpandsDomainSniffing() throws {

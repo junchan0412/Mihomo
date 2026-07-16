@@ -164,6 +164,33 @@ extension AppStore {
         ])
     }
 
+    func reconcileSystemProxyGuard() async {
+        guard settings.systemProxyGuardEnabled,
+              systemProxyEnabled,
+              isCoreRunning,
+              systemProxyGuardTask == nil,
+              Date().timeIntervalSince(lastSystemProxyGuardAttemptAt) >= 15
+        else { return }
+
+        guard let current = try? systemProxy.captureSnapshot(),
+              SystemProxyManager.matchReport(snapshot: current, mixedPort: settings.mixedPort, socksPort: settings.socksPort).isFullyMatched == false
+        else { return }
+
+        lastSystemProxyGuardAttemptAt = Date()
+        systemProxyGuardTask = Task { [weak self] in
+            guard let self else { return }
+            defer { systemProxyGuardTask = nil }
+            do {
+                let result = try await helperClient.setSystemProxy(host: "127.0.0.1", mixedPort: settings.mixedPort, socksPort: settings.socksPort)
+                recordNetworkOperation(.systemProxy, result: result)
+                appendLog("warning", "检测到系统代理被外部修改，已按守护策略恢复 Mihomo 代理。")
+                refreshNetworkTakeoverStates(force: true)
+            } catch {
+                appendLog("error", "系统代理守护恢复失败：\(error.localizedDescription)")
+            }
+        }
+    }
+
     func recordNetworkOperation(_ kind: NetworkTakeoverKind, result: HelperOperationResult) {
         let steps = result.payload["transactionSteps"]?.replacingOccurrences(of: "\n", with: " / ") ?? ""
         let suggestion = result.payload["rollbackSuggestion"].map { "；建议：\($0)" } ?? ""
@@ -173,26 +200,21 @@ extension AppStore {
 
     private func systemProxyTakeoverState(current: SystemProxySnapshot?) -> NetworkTakeoverState {
         let services = current?.services ?? []
-        let matched = services.filter { service in
-            let webMatches = service.web.enabled && service.web.server == "127.0.0.1" && service.web.port == settings.mixedPort
-            let secureMatches = service.secureWeb.enabled && service.secureWeb.server == "127.0.0.1" && service.secureWeb.port == settings.mixedPort
-            let socksMatches = settings.socksPort > 0 && service.socks.enabled && service.socks.server == "127.0.0.1" && service.socks.port == settings.socksPort
-            return webMatches || secureMatches || socksMatches
-        }
+        let report = current.map { SystemProxyManager.matchReport(snapshot: $0, mixedPort: settings.mixedPort, socksPort: settings.socksPort) }
         let desired = systemProxyEnabled ? "期望开启：127.0.0.1:\(settings.mixedPort)" : "期望关闭"
         let actual: String
         if services.isEmpty {
             actual = "未能读取网络服务"
-        } else if matched.isEmpty {
+        } else if report?.matchedServices == 0 {
             actual = "未检测到 Mihomo 系统代理"
         } else {
-            actual = "\(matched.count)/\(services.count) 个服务指向 Mihomo"
+            actual = "\(report?.matchedServices ?? 0)/\(services.count) 个服务指向 Mihomo"
         }
         let health: NetworkTakeoverHealth
         if systemProxyEnabled {
-            health = matched.isEmpty ? .warning : .ok
+            health = report?.isFullyMatched == true ? .ok : .warning
         } else {
-            health = matched.isEmpty ? .inactive : .warning
+            health = report?.matchedServices == 0 ? .inactive : .warning
         }
         return NetworkTakeoverState(
             kind: .systemProxy,

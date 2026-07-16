@@ -39,6 +39,7 @@ struct AppSettings: Codable, Hashable {
     var launchDaemonEnabled: Bool
     var dnsEnabled: Bool
     var autoSetSystemDNS: Bool
+    var systemProxyGuardEnabled: Bool
     var systemDNSServers: [String]
     var remoteAPIEnabled: Bool
     var remoteAPIBindAddress: String
@@ -86,7 +87,7 @@ struct AppSettings: Codable, Hashable {
     static let `default` = AppSettings()
 
     init(
-        settingsSchemaVersion: Int = 8,
+        settingsSchemaVersion: Int = 9,
         mihomoPath: String = "",
         coreSource: CoreSource = .managed,
         activeProfileID: UUID? = nil,
@@ -124,6 +125,7 @@ struct AppSettings: Codable, Hashable {
         launchDaemonEnabled: Bool = false,
         dnsEnabled: Bool = true,
         autoSetSystemDNS: Bool = false,
+        systemProxyGuardEnabled: Bool = true,
         systemDNSServers: [String] = ["1.1.1.1", "8.8.8.8"],
         remoteAPIEnabled: Bool = false,
         remoteAPIBindAddress: String = "127.0.0.1",
@@ -206,6 +208,7 @@ struct AppSettings: Codable, Hashable {
         self.launchDaemonEnabled = launchDaemonEnabled
         self.dnsEnabled = dnsEnabled
         self.autoSetSystemDNS = autoSetSystemDNS
+        self.systemProxyGuardEnabled = systemProxyGuardEnabled
         self.systemDNSServers = systemDNSServers
         self.remoteAPIEnabled = remoteAPIEnabled
         self.remoteAPIBindAddress = remoteAPIBindAddress
@@ -290,6 +293,7 @@ struct AppSettings: Codable, Hashable {
         case launchDaemonEnabled
         case dnsEnabled
         case autoSetSystemDNS
+        case systemProxyGuardEnabled
         case systemDNSServers
         case remoteAPIEnabled
         case remoteAPIBindAddress
@@ -378,6 +382,7 @@ struct AppSettings: Codable, Hashable {
         launchDaemonEnabled = try container.decodeIfPresent(Bool.self, forKey: .launchDaemonEnabled) ?? fallback.launchDaemonEnabled
         dnsEnabled = try container.decodeIfPresent(Bool.self, forKey: .dnsEnabled) ?? fallback.dnsEnabled
         autoSetSystemDNS = try container.decodeIfPresent(Bool.self, forKey: .autoSetSystemDNS) ?? fallback.autoSetSystemDNS
+        systemProxyGuardEnabled = try container.decodeIfPresent(Bool.self, forKey: .systemProxyGuardEnabled) ?? fallback.systemProxyGuardEnabled
         systemDNSServers = try container.decodeIfPresent([String].self, forKey: .systemDNSServers) ?? fallback.systemDNSServers
         remoteAPIEnabled = try container.decodeIfPresent(Bool.self, forKey: .remoteAPIEnabled) ?? fallback.remoteAPIEnabled
         remoteAPIBindAddress = try container.decodeIfPresent(String.self, forKey: .remoteAPIBindAddress) ?? fallback.remoteAPIBindAddress

@@ -236,6 +236,7 @@ struct NetworkSecurityView: View {
             ) {
                 SettingsToggleRow("停止核心时恢复 TUN、DNS 与路由", isOn: $draft.restoreTunOnStop)
                 SettingsToggleRow("退出应用时恢复系统代理", isOn: $draft.restoreSystemProxyOnQuit)
+                SettingsToggleRow("系统代理被外部修改时自动恢复", isOn: $draft.systemProxyGuardEnabled)
                 SettingsRow("状态") {
                     Text(store.tunRecoveryStatus).foregroundStyle(.secondary).textSelection(.enabled)
                 }

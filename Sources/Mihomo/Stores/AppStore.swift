@@ -139,6 +139,8 @@ final class AppStore: ObservableObject {
     var availableUpdateManifestURL: URL?
     var lastNetworkOperations: [NetworkTakeoverKind: String] = [:]
     var lastNetworkTakeoverRefreshAt = Date.distantPast
+    var lastSystemProxyGuardAttemptAt = Date.distantPast
+    var systemProxyGuardTask: Task<Void, Never>?
     var profileStatsCache: [UUID: ProfileStatsCacheEntry] = [:]
     var profileQualityCache: [UUID: ProfileQualityCacheEntry] = [:]
     var controllerTrafficStreamTask: Task<Void, Never>?

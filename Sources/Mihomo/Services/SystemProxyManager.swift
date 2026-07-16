@@ -20,6 +20,25 @@ struct SystemProxySnapshot: Codable, Hashable {
     var services: [NetworkServiceProxyState]
 }
 
+struct SystemProxyMatchReport: Equatable {
+    var totalServices: Int
+    var matchedServices: Int
+
+    var isFullyMatched: Bool { totalServices > 0 && totalServices == matchedServices }
+}
+
+extension SystemProxyManager {
+    static func matchReport(snapshot: SystemProxySnapshot, mixedPort: Int, socksPort: Int) -> SystemProxyMatchReport {
+        let matched = snapshot.services.filter { service in
+            let webMatches = service.web.enabled && service.web.server == "127.0.0.1" && service.web.port == mixedPort
+            let secureMatches = service.secureWeb.enabled && service.secureWeb.server == "127.0.0.1" && service.secureWeb.port == mixedPort
+            let socksMatches = socksPort > 0 && service.socks.enabled && service.socks.server == "127.0.0.1" && service.socks.port == socksPort
+            return webMatches && secureMatches && (socksPort <= 0 || socksMatches)
+        }.count
+        return SystemProxyMatchReport(totalServices: snapshot.services.count, matchedServices: matched)
+    }
+}
+
 final class SystemProxyManager {
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()

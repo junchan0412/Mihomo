@@ -136,11 +136,13 @@ extension AppStore {
                 publishIfChanged(\.coreStatus, "运行中")
             }
             refreshNetworkTakeoverStates()
+            await reconcileSystemProxyGuard()
         } catch {
             if isCoreRunning {
                 publishIfChanged(\.coreStatus, "控制器不可用")
             }
             refreshNetworkTakeoverStates()
+            await reconcileSystemProxyGuard()
         }
     }
 
@@ -223,6 +225,7 @@ extension AppStore {
     }
 
     func shutdown() async {
+        let recoveryPlan = ShutdownRecoveryPlan(settings: settings, systemProxyEnabled: systemProxyEnabled)
         shutdownRequested = true
         profileRefreshTask?.cancel()
         profileRefreshTask = nil
@@ -230,9 +233,17 @@ extension AppStore {
         pollingTask = nil
         stopControllerEventStreams(status: "轮询")
         _ = try? await helperClient.stopCore(
-            restoreDNS: settings.autoSetSystemDNS || (settings.restoreSystemProxyOnQuit && systemProxyEnabled),
-            restoreTun: settings.tunEnabled && settings.restoreTunOnStop
+            restoreDNS: recoveryPlan.restoreSystemDNS,
+            restoreTun: recoveryPlan.restoreTun
         )
+        if recoveryPlan.restoreSystemProxy {
+            do {
+                _ = try await helperClient.restoreSystemProxy()
+                systemProxyEnabled = false
+            } catch {
+                appendLog("error", "退出时恢复系统代理失败：\(error.localizedDescription)")
+            }
+        }
         await logPersistenceWriter.flush()
     }
 
@@ -331,5 +342,17 @@ extension AppStore {
 
     private func helperStartupError(_ message: String) -> NSError {
         NSError(domain: "MihomoHelperStartup", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+}
+
+struct ShutdownRecoveryPlan: Equatable {
+    let restoreSystemProxy: Bool
+    let restoreSystemDNS: Bool
+    let restoreTun: Bool
+
+    init(settings: AppSettings, systemProxyEnabled: Bool) {
+        restoreSystemProxy = settings.restoreSystemProxyOnQuit && systemProxyEnabled
+        restoreSystemDNS = settings.autoSetSystemDNS
+        restoreTun = settings.tunEnabled && settings.restoreTunOnStop
     }
 }

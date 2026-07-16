@@ -71,4 +71,38 @@ final class NetworkSecurityCenterTests: XCTestCase {
         XCTAssertEqual(NetworkSecurityCenter.overallHealth(for: [ok, warning]), .warning)
         XCTAssertEqual(NetworkSecurityCenter.overallHealth(for: [ok, warning, failed]), .failed)
     }
+
+    func testShutdownRecoveryKeepsProxyDNSAndTunIndependent() {
+        let settings = AppSettings(
+            tunEnabled: true,
+            restoreSystemProxyOnQuit: true,
+            restoreTunOnStop: true,
+            autoSetSystemDNS: false
+        )
+
+        let plan = ShutdownRecoveryPlan(settings: settings, systemProxyEnabled: true)
+
+        XCTAssertTrue(plan.restoreSystemProxy)
+        XCTAssertFalse(plan.restoreSystemDNS)
+        XCTAssertTrue(plan.restoreTun)
+    }
+
+    func testSystemProxyMatchRequiresCompleteHTTPAndHTTPSCoverage() {
+        let service = NetworkServiceProxyState(
+            service: "Wi-Fi",
+            web: ProxyEndpointState(enabled: true, server: "127.0.0.1", port: 7890),
+            secureWeb: ProxyEndpointState(enabled: false, server: "127.0.0.1", port: 7890),
+            socks: ProxyEndpointState(enabled: false, server: "", port: 0),
+            bypassDomains: [],
+            dnsServers: []
+        )
+        let report = SystemProxyManager.matchReport(
+            snapshot: SystemProxySnapshot(createdAt: Date(), services: [service]),
+            mixedPort: 7890,
+            socksPort: 0
+        )
+
+        XCTAssertEqual(report.matchedServices, 0)
+        XCTAssertFalse(report.isFullyMatched)
+    }
 }

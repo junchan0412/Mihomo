@@ -66,7 +66,9 @@ final class HelperSystemNetworkTool {
         }
     }
 
-    func restore(snapshotPath: String) throws -> Int {
+    /// Restores only HTTP/HTTPS/SOCKS and bypass settings. DNS has its own
+    /// snapshot and must never be changed by a system-proxy operation.
+    func restoreProxy(snapshotPath: String) throws -> Int {
         guard let snapshot = loadSnapshot(snapshotPath: snapshotPath) else {
             try disableWithoutSnapshot()
             return 0
@@ -82,11 +84,6 @@ final class HelperSystemNetworkTool {
                 try runNetworkSetup(["-setproxybypassdomains", serviceState.service] + serviceState.bypassDomains)
             }
 
-            if serviceState.dnsServers.isEmpty {
-                try runNetworkSetup(["-setdnsservers", serviceState.service, "Empty"])
-            } else {
-                try runNetworkSetup(["-setdnsservers", serviceState.service] + serviceState.dnsServers)
-            }
         }
         try removeSnapshot(snapshotPath: snapshotPath)
         return snapshot.services.count
