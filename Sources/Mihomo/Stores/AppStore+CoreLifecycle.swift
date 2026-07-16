@@ -231,6 +231,8 @@ extension AppStore {
         profileRefreshTask = nil
         pollingTask?.cancel()
         pollingTask = nil
+        systemProxyGuardTask?.cancel()
+        systemProxyGuardTask = nil
         stopControllerEventStreams(status: "轮询")
         _ = try? await helperClient.stopCore(
             restoreDNS: recoveryPlan.restoreSystemDNS,
