@@ -130,6 +130,16 @@ final class RuntimeConfigBuilderTests: XCTestCase {
         XCTAssertTrue(generated.contains("192.168.1.0/24"))
     }
 
+    func testSnifferUsesSafeDefaultDestinationExclusions() throws {
+        let generated = try RuntimeConfigBuilder().build(
+            profileContent: "",
+            settings: AppSettings(snifferEnabled: true, snifferSkipDestinationAddresses: "")
+        )
+
+        XCTAssertTrue(generated.contains("91.105.192.0/23"))
+        XCTAssertTrue(generated.contains("2001:b28:f23f::/48"))
+    }
+
     func testProfileDomainSniffingOverridesAppDefaults() throws {
         let profile = """
         sniffer:

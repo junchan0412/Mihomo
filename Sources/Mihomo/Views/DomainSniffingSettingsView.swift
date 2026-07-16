@@ -8,7 +8,7 @@ struct DomainSniffingSettingsView: View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(
                 title: "域名嗅探",
-                subtitle: "从 HTTP Host、TLS SNI 和 QUIC 握手中识别域名。当前配置中的 sniffer 会先载入本页，本页修改也会同步回当前配置。",
+                subtitle: "从 HTTP Host、TLS SNI 和 QUIC 握手中识别域名；对纯 IP 连接先尝试 DNS 映射，再把域名交给规则系统重新选择路径。当前配置中的 sniffer 会先载入本页，本页修改也会同步回当前配置。",
                 systemImage: "viewfinder"
             ) {
                 SettingsToggleDescriptionRow(

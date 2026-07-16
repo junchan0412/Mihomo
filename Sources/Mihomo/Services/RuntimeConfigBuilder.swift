@@ -100,6 +100,7 @@ struct RuntimeConfigBuilder {
         let forceDomains = lineList(settings.snifferForceDomains)
         let skipDomains = lineList(settings.snifferSkipDomains)
         let skipDestinationAddresses = lineList(settings.snifferSkipDestinationAddresses)
+        let effectiveSkipDestinationAddresses = skipDestinationAddresses.isEmpty ? Self.sparkleCompatibleSnifferSkipDestinationAddresses : skipDestinationAddresses
         let skipSourceAddresses = lineList(settings.snifferSkipSourceAddresses)
         if forceDomains.isEmpty == false {
             map["force-domain"] = forceDomains
@@ -107,14 +108,21 @@ struct RuntimeConfigBuilder {
         if skipDomains.isEmpty == false {
             map["skip-domain"] = skipDomains
         }
-        if skipDestinationAddresses.isEmpty == false {
-            map["skip-dst-address"] = skipDestinationAddresses
+        if effectiveSkipDestinationAddresses.isEmpty == false {
+            map["skip-dst-address"] = effectiveSkipDestinationAddresses
         }
         if skipSourceAddresses.isEmpty == false {
             map["skip-src-address"] = skipSourceAddresses
         }
         return map
     }
+
+    private static let sparkleCompatibleSnifferSkipDestinationAddresses = [
+        "91.105.192.0/23", "91.108.4.0/22", "91.108.8.0/21",
+        "91.108.16.0/21", "91.108.56.0/22", "95.161.64.0/20",
+        "149.154.160.0/20", "185.76.151.0/24", "2001:67c:4e8::/48",
+        "2001:b28:f23c::/47", "2001:b28:f23f::/48", "2a0a:f280:203::/48"
+    ]
 
     private func enforceAppManagedControlChannel(in map: inout YAMLMap, settings: AppSettings) {
         map["external-controller"] = "\(controllerBindHost(settings)):\(settings.controllerPort)"
