@@ -143,9 +143,11 @@ struct NetworkSecurityView: View {
         VStack(alignment: .leading, spacing: 18) {
             SettingsSection(
                 title: "运行时 DNS",
-                subtitle: "当前配置中的 DNS 会先载入本页；应用修改后同步回当前配置，启用的覆写片段仍保持最高优先级。",
+                subtitle: "由 Mihomo 内置 DNS 解析请求。TUN 开启时会自动启用，并通过 dns-hijack 接管 53 端口流量；Fake-IP 将 IP 连接重新关联到域名。",
                 systemImage: "shippingbox"
             ) {
+                SettingsToggleRow("启用 Mihomo DNS", isOn: $draft.dnsEnabled)
+                    .disabled(draft.tunEnabled)
                 SettingsRow("Enhanced Mode") {
                     Picker("Enhanced Mode", selection: $draft.dnsEnhancedMode) {
                         Text("fake-ip").tag("fake-ip")
@@ -163,11 +165,11 @@ struct NetworkSecurityView: View {
             }
 
             SettingsSection(
-                title: "macOS 系统 DNS",
-                subtitle: "开启后修改系统网络服务的 DNS，并创建独立快照用于恢复。",
+                title: "macOS DNS 兼容模式",
+                subtitle: "仅为无法使用 TUN DNS Hijacking 的特殊网络改写系统 DNS。通常无需开启；该操作会创建独立快照用于恢复。",
                 systemImage: "desktopcomputer"
             ) {
-                SettingsToggleRow("核心运行时接管系统 DNS", isOn: $draft.autoSetSystemDNS)
+                SettingsToggleRow("改写 macOS 系统 DNS", isOn: $draft.autoSetSystemDNS)
                 SettingsRow("DNS 服务器") {
                     TextField("1.1.1.1, 8.8.8.8", text: listBinding(\.systemDNSServers))
                 }

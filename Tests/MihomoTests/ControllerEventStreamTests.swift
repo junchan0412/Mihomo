@@ -78,6 +78,13 @@ final class ControllerEventStreamTests: XCTestCase {
         XCTAssertEqual(request.timeoutInterval, NetworkRequestKind.controller.requestTimeout)
     }
 
+    func testConnectionStreamUsesRealtimeHalfSecondInterval() throws {
+        let request = try MihomoControllerEventStream(host: "127.0.0.1", port: 9090)
+            .request(path: "/connections", queryItems: [URLQueryItem(name: "interval", value: "500")])
+
+        XCTAssertEqual(URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems?.first?.value, "500")
+    }
+
     func testInvalidEndpointFailsWithoutCrashing() async {
         let stream = MihomoControllerEventStream(host: "", port: 0).trafficEvents()
 

@@ -23,6 +23,7 @@ struct RuntimeConfigBuilder {
 
         var finalMap = deepMerge(generatedOverlay(settings: settings), configuredMap)
         enforceAppManagedControlChannel(in: &finalMap, settings: settings)
+        enforceNetworkRuntimePlan(in: &finalMap, settings: settings)
 
         let dumped = try Yams.dump(object: finalMap, sortKeys: false)
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -30,6 +31,7 @@ struct RuntimeConfigBuilder {
     }
 
     private func generatedOverlay(settings: AppSettings) -> YAMLMap {
+        let networkPlan = NetworkRuntimePlan(settings: settings)
         var overlay: YAMLMap = [
             "mixed-port": settings.mixedPort,
             "allow-lan": settings.allowLAN,
@@ -46,21 +48,22 @@ struct RuntimeConfigBuilder {
             overlay["secret"] = settings.controllerSecret
         }
 
-        if settings.dnsNameservers.isEmpty == false || settings.dnsFallbacks.isEmpty == false {
-            overlay["dns"] = dnsMap(settings)
+        if networkPlan.dnsEnabled {
+            overlay["dns"] = dnsMap(settings, plan: networkPlan)
+            overlay["profile"] = ["store-selected": true, "store-fake-ip": networkPlan.usesFakeIP]
         }
 
         if settings.snifferEnabled {
             overlay["sniffer"] = snifferMap(settings)
         }
 
-        if settings.tunEnabled {
+        if networkPlan.tunEnabled {
             overlay["tun"] = [
                 "enable": true,
-                "stack": "system",
+                "stack": "mixed",
                 "auto-route": true,
                 "auto-detect-interface": true,
-                "dns-hijack": ["any:53"]
+                "dns-hijack": networkPlan.dnsHijackTargets
             ]
         }
 
@@ -126,6 +129,28 @@ struct RuntimeConfigBuilder {
         }
     }
 
+    private func enforceNetworkRuntimePlan(in map: inout YAMLMap, settings: AppSettings) {
+        let plan = NetworkRuntimePlan(settings: settings)
+        guard plan.tunEnabled else { return }
+
+        var tun = map["tun"] as? YAMLMap ?? [:]
+        tun["enable"] = true
+        if tun["stack"] == nil { tun["stack"] = "mixed" }
+        if tun["auto-route"] == nil { tun["auto-route"] = true }
+        if tun["auto-detect-interface"] == nil { tun["auto-detect-interface"] = true }
+        tun["dns-hijack"] = plan.dnsHijackTargets
+        map["tun"] = tun
+
+        var dns = map["dns"] as? YAMLMap ?? dnsMap(settings, plan: plan)
+        dns["enable"] = true
+        if dns["enhanced-mode"] == nil { dns["enhanced-mode"] = settings.dnsEnhancedMode }
+        map["dns"] = dns
+
+        var profile = map["profile"] as? YAMLMap ?? [:]
+        profile["store-fake-ip"] = plan.usesFakeIP
+        map["profile"] = profile
+    }
+
     private func portList(_ text: String, fallback: [Int]) -> [Any] {
         let values: [Any] = lineList(text).map { value in
             Int(value).map { $0 as Any } ?? value
@@ -133,12 +158,19 @@ struct RuntimeConfigBuilder {
         return values.isEmpty ? fallback.map { $0 as Any } : values
     }
 
-    private func dnsMap(_ settings: AppSettings) -> YAMLMap {
+    private func dnsMap(_ settings: AppSettings, plan: NetworkRuntimePlan) -> YAMLMap {
         var map: YAMLMap = [
             "enable": true,
             "enhanced-mode": settings.dnsEnhancedMode,
-            "nameserver": settings.dnsNameservers.isEmpty ? ["system"] : settings.dnsNameservers
+            "nameserver": settings.dnsNameservers.isEmpty ? ["system"] : settings.dnsNameservers,
+            "default-nameserver": ["tls://223.5.5.5"],
+            "use-hosts": false,
+            "use-system-hosts": false
         ]
+        if plan.usesFakeIP {
+            map["fake-ip-range"] = "198.18.0.1/16"
+            map["fake-ip-filter"] = ["+.lan", "+.local", "time.*.com", "ntp.*.com", "+.push.apple.com"]
+        }
         if settings.dnsFallbacks.isEmpty == false {
             map["fallback"] = settings.dnsFallbacks
         }
@@ -202,5 +234,21 @@ struct RuntimeConfigBuilder {
             return array.map { normalizeYAMLValue($0) }
         }
         return value
+    }
+}
+
+struct NetworkRuntimePlan: Equatable {
+    let tunEnabled: Bool
+    let dnsEnabled: Bool
+    let usesFakeIP: Bool
+    let dnsHijackTargets: [String]
+    let snifferEnabled: Bool
+
+    init(settings: AppSettings) {
+        tunEnabled = settings.tunEnabled
+        dnsEnabled = settings.dnsEnabled || settings.tunEnabled
+        usesFakeIP = dnsEnabled && settings.dnsEnhancedMode == "fake-ip"
+        dnsHijackTargets = tunEnabled && dnsEnabled ? ["any:53"] : []
+        snifferEnabled = settings.snifferEnabled
     }
 }

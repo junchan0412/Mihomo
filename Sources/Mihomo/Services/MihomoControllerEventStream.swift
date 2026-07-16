@@ -44,7 +44,11 @@ struct MihomoControllerEventStream {
     }
 
     func connectionEvents() -> AsyncThrowingStream<ControllerStreamEvent, Error> {
-        eventStream(path: "/connections", transform: Self.parseConnectionEvent)
+        eventStream(
+            path: "/connections",
+            queryItems: [URLQueryItem(name: "interval", value: "500")],
+            transform: Self.parseConnectionEvent
+        )
     }
 
     static func parseTrafficEvent(data: Data) -> ControllerStreamEvent? {

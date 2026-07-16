@@ -14,12 +14,13 @@ final class SettingsMigrationTests: XCTestCase {
         version2.settingsSchemaVersion = 2
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version2))
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 7)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, AppSettings.default.settingsSchemaVersion)
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v3：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v4：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v5：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v6：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v7：") })
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v8：") })
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -29,7 +30,7 @@ final class SettingsMigrationTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
         let reloaded = try decoder.decode(AppSettings.self, from: Data(contentsOf: settingsFile))
 
-        XCTAssertEqual(reloaded.settingsSchemaVersion, 7)
+        XCTAssertEqual(reloaded.settingsSchemaVersion, AppSettings.default.settingsSchemaVersion)
         XCTAssertNil(try SettingsMigrator.migration(for: reloaded))
     }
 
@@ -41,7 +42,7 @@ final class SettingsMigrationTests: XCTestCase {
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version1))
 
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 7)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, AppSettings.default.settingsSchemaVersion)
         XCTAssertFalse(migration.settings.managedCoreEnabled)
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v2：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v3：") })
@@ -49,6 +50,7 @@ final class SettingsMigrationTests: XCTestCase {
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v5：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v6：") })
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v7：") })
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v8：") })
     }
 
     func testV4MigrationMakesControlChannelLocalAndExpandsDomainSniffing() throws {
@@ -62,7 +64,7 @@ final class SettingsMigrationTests: XCTestCase {
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version4))
 
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 7)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, AppSettings.default.settingsSchemaVersion)
         XCTAssertEqual(migration.settings.controllerHost, "127.0.0.1")
         XCTAssertEqual(migration.settings.remoteAPIBindAddress, "0.0.0.0")
         XCTAssertFalse(migration.settings.controllerSecret.isEmpty)
@@ -78,7 +80,7 @@ final class SettingsMigrationTests: XCTestCase {
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version5))
 
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 7)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, AppSettings.default.settingsSchemaVersion)
         XCTAssertTrue(migration.settings.countryMMDBURL.hasSuffix("country.mmdb"))
         XCTAssertTrue(migration.settings.asnMMDBURL.hasSuffix("GeoLite2-ASN.mmdb"))
         XCTAssertTrue(migration.settings.snifferManagedByApp)
@@ -94,9 +96,21 @@ final class SettingsMigrationTests: XCTestCase {
 
         let migration = try XCTUnwrap(SettingsMigrator.migration(for: version6))
 
-        XCTAssertEqual(migration.settings.settingsSchemaVersion, 7)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, AppSettings.default.settingsSchemaVersion)
         XCTAssertEqual(migration.settings.delayTestURL, "https://proxy.example.com/generate_204")
         XCTAssertEqual(migration.settings.directDelayTestURL, AppSettings.default.directDelayTestURL)
         XCTAssertTrue(migration.log.contains { $0.hasPrefix("v7：") })
+    }
+
+    func testV7MigrationSeparatesMihomoDNSFromSystemDNS() throws {
+        var version7 = AppSettings.default
+        version7.settingsSchemaVersion = 7
+        version7.dnsEnabled = false
+
+        let migration = try XCTUnwrap(SettingsMigrator.migration(for: version7))
+
+        XCTAssertTrue(migration.settings.dnsEnabled)
+        XCTAssertEqual(migration.settings.settingsSchemaVersion, AppSettings.default.settingsSchemaVersion)
+        XCTAssertTrue(migration.log.contains { $0.hasPrefix("v8：") })
     }
 }

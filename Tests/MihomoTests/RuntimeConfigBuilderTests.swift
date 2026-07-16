@@ -145,4 +145,41 @@ final class RuntimeConfigBuilderTests: XCTestCase {
         XCTAssertTrue(generated.contains("enable: false"))
         XCTAssertTrue(generated.contains("9443"))
     }
+
+    func testTunBuildsMihomoDNSHijackingAndFakeIPPlan() throws {
+        let settings = AppSettings(tunEnabled: true, dnsEnabled: false, dnsEnhancedMode: "fake-ip")
+
+        let generated = try RuntimeConfigBuilder().build(profileContent: "", settings: settings)
+
+        XCTAssertTrue(generated.contains("stack: mixed"))
+        XCTAssertTrue(generated.contains("dns-hijack:"))
+        XCTAssertTrue(generated.contains("any:53"))
+        XCTAssertTrue(generated.contains("fake-ip-range: 198.18.0.1/16"))
+        XCTAssertTrue(generated.contains("store-fake-ip: true"))
+    }
+
+    func testNetworkRuntimePlanForcesDNSWhenTunIsEnabled() {
+        let plan = NetworkRuntimePlan(settings: AppSettings(tunEnabled: true, dnsEnabled: false))
+
+        XCTAssertTrue(plan.tunEnabled)
+        XCTAssertTrue(plan.dnsEnabled)
+        XCTAssertEqual(plan.dnsHijackTargets, ["any:53"])
+    }
+
+    func testTunOverridesContradictoryProfileDNSDisable() throws {
+        let profile = """
+        tun:
+          enable: true
+        dns:
+          enable: false
+        """
+
+        let generated = try RuntimeConfigBuilder().build(
+            profileContent: profile,
+            settings: AppSettings(tunEnabled: true, dnsEnabled: false)
+        )
+
+        XCTAssertFalse(generated.contains("enable: false"))
+        XCTAssertTrue(generated.contains("dns-hijack:"))
+    }
 }

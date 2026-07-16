@@ -54,6 +54,10 @@ enum SettingsMigrator {
                 migrated.directDelayTestURL = AppSettings.default.directDelayTestURL
                 migrated.settingsSchemaVersion = 7
                 log.append("v7：为 DIRECT 直连测速加入独立测试 URL，并保留原有代理节点测速 URL。")
+            case 7:
+                migrated.dnsEnabled = true
+                migrated.settingsSchemaVersion = 8
+                log.append("v8：将 Mihomo 内置 DNS 与 macOS 系统 DNS 改写拆分；现有配置默认保留内置 DNS。")
             default:
                 throw NSError(
                     domain: "Mihomo.SettingsMigration",

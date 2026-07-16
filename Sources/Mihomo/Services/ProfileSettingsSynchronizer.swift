@@ -19,6 +19,7 @@ struct ProfileSettingsSynchronizer {
         }
 
         if let dns = root["dns"] as? YAMLMap {
+            if let enabled = boolValue(dns["enable"]) { updated.dnsEnabled = enabled }
             if let mode = dns["enhanced-mode"] as? String { updated.dnsEnhancedMode = mode }
             if dns["nameserver"] != nil { updated.dnsNameservers = stringList(dns["nameserver"]) }
             if dns["fallback"] != nil { updated.dnsFallbacks = stringList(dns["fallback"]) }
@@ -76,16 +77,21 @@ struct ProfileSettingsSynchronizer {
             var tun = root["tun"] as? YAMLMap ?? [:]
             tun["enable"] = new.tunEnabled
             if new.tunEnabled {
-                if tun["stack"] == nil { tun["stack"] = "system" }
+                if tun["stack"] == nil { tun["stack"] = "mixed" }
                 if tun["auto-route"] == nil { tun["auto-route"] = true }
                 if tun["auto-detect-interface"] == nil { tun["auto-detect-interface"] = true }
                 if tun["dns-hijack"] == nil { tun["dns-hijack"] = ["any:53"] }
+                var dns = root["dns"] as? YAMLMap ?? [:]
+                dns["enable"] = true
+                if dns["enhanced-mode"] == nil { dns["enhanced-mode"] = "fake-ip" }
+                root["dns"] = dns
             }
             root["tun"] = tun
         }
 
         if old.dns != new.dns {
             var dns = root["dns"] as? YAMLMap ?? [:]
+            if old.dns.enabled != new.dns.enabled { dns["enable"] = new.dns.enabled || new.tunEnabled }
             if old.dns.enhancedMode != new.dns.enhancedMode { dns["enhanced-mode"] = new.dns.enhancedMode }
             if old.dns.nameservers != new.dns.nameservers {
                 dns["nameserver"] = new.dns.nameservers.isEmpty ? ["system"] : new.dns.nameservers
@@ -251,11 +257,13 @@ private struct LinkedSettings: Equatable {
 }
 
 private struct DNSSettings: Equatable {
+    var enabled: Bool
     var enhancedMode: String
     var nameservers: [String]
     var fallbacks: [String]
 
     init(_ settings: AppSettings) {
+        enabled = settings.dnsEnabled
         enhancedMode = settings.dnsEnhancedMode
         nameservers = settings.dnsNameservers
         fallbacks = settings.dnsFallbacks

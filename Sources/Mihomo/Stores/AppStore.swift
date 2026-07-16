@@ -181,7 +181,7 @@ final class AppStore: ObservableObject {
 
     var networkModeAdvisory: String? {
         if settings.tunEnabled && settings.autoSetSystemDNS {
-            return "TUN 与系统 DNS 接管同时开启；TUN 负责透明流量，系统 DNS 负责本机解析，停止核心时会分别恢复。"
+            return "TUN 已通过 Mihomo DNS Hijacking 接管 DNS；同时开启的 macOS DNS 改写通常没有必要，仅建议用于特殊兼容场景。"
         }
         if systemProxyEnabled && settings.autoSetSystemDNS {
             return "系统代理与系统 DNS 接管同时开启；适合需要 DNS 统一出口的场景，退出前会尝试恢复快照。"
@@ -243,6 +243,9 @@ final class AppStore: ObservableObject {
             var normalized = settings
             normalized.managedCoreEnabled = normalized.coreSource == .managed
             normalized.snifferManagedByApp = true
+            if normalized.tunEnabled {
+                normalized.dnsEnabled = true
+            }
             let previous = self.settings
             if previous.notifyProfileRefreshFailures == false,
                normalized.notifyProfileRefreshFailures {

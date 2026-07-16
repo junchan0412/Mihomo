@@ -37,6 +37,7 @@ struct AppSettings: Codable, Hashable {
     var managedCoreDownloadURL: String
     var managedCoreSHA256: String
     var launchDaemonEnabled: Bool
+    var dnsEnabled: Bool
     var autoSetSystemDNS: Bool
     var systemDNSServers: [String]
     var remoteAPIEnabled: Bool
@@ -85,7 +86,7 @@ struct AppSettings: Codable, Hashable {
     static let `default` = AppSettings()
 
     init(
-        settingsSchemaVersion: Int = 7,
+        settingsSchemaVersion: Int = 8,
         mihomoPath: String = "",
         coreSource: CoreSource = .managed,
         activeProfileID: UUID? = nil,
@@ -121,6 +122,7 @@ struct AppSettings: Codable, Hashable {
         managedCoreDownloadURL: String = "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.28/mihomo-darwin-arm64-v1.19.28.gz",
         managedCoreSHA256: String = "40cdae2fab4b18df15f40eaa9dc3af70ab3d8be7f77164ae1e5f1af3a2a4fb44",
         launchDaemonEnabled: Bool = false,
+        dnsEnabled: Bool = true,
         autoSetSystemDNS: Bool = false,
         systemDNSServers: [String] = ["1.1.1.1", "8.8.8.8"],
         remoteAPIEnabled: Bool = false,
@@ -202,6 +204,7 @@ struct AppSettings: Codable, Hashable {
         self.managedCoreDownloadURL = managedCoreDownloadURL
         self.managedCoreSHA256 = managedCoreSHA256
         self.launchDaemonEnabled = launchDaemonEnabled
+        self.dnsEnabled = dnsEnabled
         self.autoSetSystemDNS = autoSetSystemDNS
         self.systemDNSServers = systemDNSServers
         self.remoteAPIEnabled = remoteAPIEnabled
@@ -285,6 +288,7 @@ struct AppSettings: Codable, Hashable {
         case managedCoreDownloadURL
         case managedCoreSHA256
         case launchDaemonEnabled
+        case dnsEnabled
         case autoSetSystemDNS
         case systemDNSServers
         case remoteAPIEnabled
@@ -372,6 +376,7 @@ struct AppSettings: Codable, Hashable {
         managedCoreDownloadURL = try container.decodeIfPresent(String.self, forKey: .managedCoreDownloadURL) ?? fallback.managedCoreDownloadURL
         managedCoreSHA256 = try container.decodeIfPresent(String.self, forKey: .managedCoreSHA256) ?? fallback.managedCoreSHA256
         launchDaemonEnabled = try container.decodeIfPresent(Bool.self, forKey: .launchDaemonEnabled) ?? fallback.launchDaemonEnabled
+        dnsEnabled = try container.decodeIfPresent(Bool.self, forKey: .dnsEnabled) ?? fallback.dnsEnabled
         autoSetSystemDNS = try container.decodeIfPresent(Bool.self, forKey: .autoSetSystemDNS) ?? fallback.autoSetSystemDNS
         systemDNSServers = try container.decodeIfPresent([String].self, forKey: .systemDNSServers) ?? fallback.systemDNSServers
         remoteAPIEnabled = try container.decodeIfPresent(Bool.self, forKey: .remoteAPIEnabled) ?? fallback.remoteAPIEnabled
