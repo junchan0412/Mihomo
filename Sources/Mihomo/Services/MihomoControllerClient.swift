@@ -107,10 +107,14 @@ struct MihomoControllerClient {
             return ConnectionItem(
                 id: row["id"] as? String ?? Self.fallbackConnectionID(metadata: metadata, chains: chains, row: row, index: index),
                 host: (metadata["host"] as? String)
+                    ?? (metadata["sniffHost"] as? String)
                     ?? (metadata["destinationIP"] as? String)
                     ?? (metadata["remoteDestination"] as? String)
                     ?? "-",
-                process: (metadata["process"] as? String) ?? (metadata["processPath"] as? String) ?? "-",
+                process: ((metadata["type"] as? String) == "Inner" ? "mihomo" : nil)
+                    ?? (metadata["process"] as? String)
+                    ?? (metadata["processPath"] as? String)
+                    ?? "-",
                 processPath: metadata["processPath"] as? String ?? "",
                 network: (metadata["network"] as? String) ?? "-",
                 metadataType: (metadata["type"] as? String) ?? "",

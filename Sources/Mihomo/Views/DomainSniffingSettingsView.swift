@@ -13,7 +13,7 @@ struct DomainSniffingSettingsView: View {
             ) {
                 SettingsToggleDescriptionRow(
                     "启用域名嗅探",
-                    description: "建议在 TUN、透明代理或部分应用直接访问 IP 时开启。",
+                    description: "从 HTTP Host、TLS SNI 和 QUIC 元数据补齐域名；对纯 IP 连接先尝试 DNS 映射，再交给规则系统重新选择路径。",
                     isOn: $draft.snifferEnabled
                 )
                 SettingsRow("当前行为") {

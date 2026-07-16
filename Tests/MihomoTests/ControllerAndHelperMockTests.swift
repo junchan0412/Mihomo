@@ -62,6 +62,25 @@ final class ControllerAndHelperMockTests: XCTestCase {
         XCTAssertNotNil(connections.first?.start)
     }
 
+    func testConnectionParsingUsesSniffHostAndNormalizesInnerProcess() throws {
+        let payload: [String: Any] = [
+            "connections": [[
+                "id": "sniffed",
+                "metadata": [
+                    "type": "Inner",
+                    "sniffHost": "cdn.example.com",
+                    "destinationIP": "198.18.0.2",
+                    "network": "tcp"
+                ],
+                "chains": ["DIRECT"]
+            ]]
+        ]
+
+        let item = try XCTUnwrap(MihomoControllerClient.parseConnections(from: payload).0.first)
+        XCTAssertEqual(item.host, "cdn.example.com")
+        XCTAssertEqual(item.process, "mihomo")
+    }
+
     func testConnectionStartParsingSupportsFractionalISOAndEpochValues() throws {
         let connectionsJSON: [String: Any] = [
             "connections": [
