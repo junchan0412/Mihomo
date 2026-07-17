@@ -23,7 +23,7 @@ final class SoftwareUpdateAndSecretTests: XCTestCase {
         ))
     }
 
-    func testUpdateManifestRequiresNumericBuildAndDeveloperIdentity() throws {
+    func testUpdateManifestRequiresNumericBuildAndDeclaredSigningIdentity() throws {
         let manager = SoftwareUpdateManager(expectedBundleIdentifier: "dev.codex.Mihomo")
         let valid = AppUpdateManifest(
             version: "1.13.0",
@@ -33,6 +33,7 @@ final class SoftwareUpdateAndSecretTests: XCTestCase {
             bundleIdentifier: "dev.codex.Mihomo",
             signingIdentifier: "dev.codex.Mihomo",
             helperSigningIdentifier: "dev.codex.Mihomo.Helper",
+            signingMode: "developer-id",
             teamIdentifier: "ABCDE12345",
             signature: .init(algorithm: "Ed25519", publicKey: "key", value: "signature")
         )
@@ -49,6 +50,18 @@ final class SoftwareUpdateAndSecretTests: XCTestCase {
         missingTeam.teamIdentifier = nil
         XCTAssertThrowsError(try manager.validateManifest(missingTeam)) { error in
             XCTAssertTrue(error.localizedDescription.contains("TeamIdentifier"))
+        }
+
+        var adhoc = valid
+        adhoc.signingMode = "adhoc"
+        adhoc.teamIdentifier = nil
+        adhoc.appCDHash = String(repeating: "a", count: 40)
+        adhoc.helperCDHash = String(repeating: "b", count: 40)
+        XCTAssertNoThrow(try manager.validateManifest(adhoc))
+
+        adhoc.helperCDHash = nil
+        XCTAssertThrowsError(try manager.validateManifest(adhoc)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("CDHash"))
         }
     }
 
@@ -182,6 +195,51 @@ final class SoftwareUpdateAndSecretTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: tempRoot.appendingPathComponent("install-update.sh").path))
     }
 
+    func testAdHocUpdatePackageRequiresManifestPinnedAppAndHelperCDHashes() throws {
+        let root = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let source = root.appendingPathComponent("source", isDirectory: true)
+        let app = source.appendingPathComponent("Mihomo.app", isDirectory: true)
+        let contents = app.appendingPathComponent("Contents", isDirectory: true)
+        let main = contents.appendingPathComponent("MacOS/Mihomo")
+        let helper = contents.appendingPathComponent("Library/LaunchServices/MihomoHelper")
+        try FileManager.default.createDirectory(at: main.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: helper.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"), to: main)
+        try FileManager.default.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"), to: helper)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: main.path)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: helper.path)
+        try writeInfoPlist(to: app, bundleIdentifier: "dev.codex.Mihomo", version: "1.8.33")
+
+        XCTAssertEqual(try Shell.run("/usr/bin/codesign", [
+            "--force", "--sign", "-", "--identifier", "dev.codex.Mihomo.Helper", helper.path
+        ]).status, 0)
+        XCTAssertEqual(try Shell.run("/usr/bin/codesign", [
+            "--force", "--deep", "--sign", "-", "--identifier", "dev.codex.Mihomo", app.path
+        ]).status, 0)
+
+        let zipURL = root.appendingPathComponent("Mihomo.zip")
+        try zip(archive: zipURL, paths: ["Mihomo.app"], workDirectory: source)
+        var updateManifest = manifest(sha256: try sha256(of: zipURL))
+        updateManifest.helperSigningIdentifier = "dev.codex.Mihomo.Helper"
+        updateManifest.signingMode = "adhoc"
+        updateManifest.appCDHash = try cdHash(of: app)
+        updateManifest.helperCDHash = try cdHash(of: helper)
+        updateManifest.signature = .init(algorithm: "Ed25519", publicKey: "test", value: "test")
+
+        let validTempRoot = root.appendingPathComponent("valid-update", isDirectory: true)
+        XCTAssertNoThrow(try SoftwareUpdateManager(expectedBundleIdentifier: "dev.codex.Mihomo")
+            .prepareDownloadedUpdatePackage(zipURL: zipURL, manifest: updateManifest, tempRoot: validTempRoot))
+
+        updateManifest.helperCDHash = String(repeating: "f", count: 40)
+        let invalidTempRoot = root.appendingPathComponent("invalid-update", isDirectory: true)
+        XCTAssertThrowsError(try SoftwareUpdateManager(expectedBundleIdentifier: "dev.codex.Mihomo")
+            .prepareDownloadedUpdatePackage(zipURL: zipURL, manifest: updateManifest, tempRoot: invalidTempRoot)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("CDHash"))
+        }
+    }
+
     func testInstallScriptRestoresPreviousAppWhenDittoFails() throws {
         let root = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -241,7 +299,9 @@ final class SoftwareUpdateAndSecretTests: XCTestCase {
         try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
         let plist: [String: Any] = [
             "CFBundleIdentifier": bundleIdentifier,
-            "CFBundleShortVersionString": version
+            "CFBundleShortVersionString": version,
+            "CFBundleExecutable": "Mihomo",
+            "CFBundlePackageType": "APPL"
         ]
         let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
         try data.write(to: contents.appendingPathComponent("Info.plist"))
@@ -255,6 +315,17 @@ final class SoftwareUpdateAndSecretTests: XCTestCase {
     private func sha256(of fileURL: URL) throws -> String {
         let digest = SHA256.hash(data: try Data(contentsOf: fileURL))
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private func cdHash(of url: URL) throws -> String {
+        let result = try Shell.run("/usr/bin/codesign", ["-dv", "--verbose=4", url.path])
+        let output = result.stdout + result.stderr
+        guard let line = output.components(separatedBy: .newlines).first(where: { $0.hasPrefix("CDHash=") }) else {
+            throw NSError(domain: "SoftwareUpdateAndSecretTests", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "CDHash missing for \(url.path)"
+            ])
+        }
+        return String(line.dropFirst("CDHash=".count)).lowercased()
     }
 
     private func temporaryDirectory() -> URL {

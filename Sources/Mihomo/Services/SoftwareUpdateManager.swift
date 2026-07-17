@@ -12,7 +12,10 @@ struct AppUpdateManifest: Codable, Hashable {
     var bundleIdentifier: String?
     var signingIdentifier: String?
     var helperSigningIdentifier: String?
+    var signingMode: String?
     var teamIdentifier: String?
+    var appCDHash: String?
+    var helperCDHash: String?
     var publishedAt: Date?
     var signature: AppUpdateSignature?
 }
@@ -163,13 +166,22 @@ final class SoftwareUpdateManager {
         guard manifest.signature != nil else {
             throw updateError("manifest 缺少 Ed25519 签名。")
         }
-        guard let teamIdentifier = manifest.teamIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines),
-              teamIdentifier.range(of: #"^[A-Z0-9]{10}$"#, options: .regularExpression) != nil else {
-            throw updateError("manifest 缺少 Developer ID TeamIdentifier。")
-        }
         guard let helperIdentifier = manifest.helperSigningIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines),
               helperIdentifier == "dev.codex.Mihomo.Helper" else {
             throw updateError("manifest 的 Helper 签名 identifier 无效。")
+        }
+        switch effectiveSigningMode(manifest) {
+        case "developer-id":
+            guard let teamIdentifier = manifest.teamIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  teamIdentifier.range(of: #"^[A-Z0-9]{10}$"#, options: .regularExpression) != nil else {
+                throw updateError("Developer ID manifest 缺少有效 TeamIdentifier。")
+            }
+        case "adhoc":
+            guard isValidCDHash(manifest.appCDHash), isValidCDHash(manifest.helperCDHash) else {
+                throw updateError("ad-hoc manifest 必须固定主 App 与 Helper 的 CDHash。")
+            }
+        default:
+            throw updateError("manifest 缺少受支持的 signingMode。")
         }
     }
 
@@ -233,12 +245,6 @@ final class SoftwareUpdateManager {
         guard signatureOutput.contains("Identifier=\(signingIdentifier)") else {
             throw updateError("更新包签名 identifier 不匹配，应为 \(signingIdentifier)。")
         }
-        guard let teamIdentifier = manifest.teamIdentifier,
-              signatureOutput.contains("TeamIdentifier=\(teamIdentifier)"),
-              signatureOutput.contains("Authority=Developer ID Application:") else {
-            throw updateError("更新包必须由 Team \(manifest.teamIdentifier ?? "-") 的 Developer ID Application 签名。")
-        }
-
         let helperURL = appURL
             .appendingPathComponent("Contents/Library/LaunchServices", isDirectory: true)
             .appendingPathComponent("MihomoHelper")
@@ -248,11 +254,49 @@ final class SoftwareUpdateManager {
         }
         let helperDetails = try Shell.run("/usr/bin/codesign", ["-dv", "--verbose=4", helperURL.path])
         let helperSignatureOutput = helperDetails.stdout + helperDetails.stderr
-        guard helperSignatureOutput.contains("Identifier=\(manifest.helperSigningIdentifier ?? "dev.codex.Mihomo.Helper")"),
-              helperSignatureOutput.contains("TeamIdentifier=\(teamIdentifier)"),
-              helperSignatureOutput.contains("Authority=Developer ID Application:") else {
-            throw updateError("更新包 Helper 与主 App 的 Developer ID 身份不一致。")
+        guard helperSignatureOutput.contains("Identifier=\(manifest.helperSigningIdentifier ?? "dev.codex.Mihomo.Helper")") else {
+            throw updateError("更新包 Helper 签名 identifier 不匹配。")
         }
+
+        switch effectiveSigningMode(manifest) {
+        case "developer-id":
+            guard let teamIdentifier = manifest.teamIdentifier,
+                  signatureOutput.contains("TeamIdentifier=\(teamIdentifier)"),
+                  signatureOutput.contains("Authority=Developer ID Application:"),
+                  helperSignatureOutput.contains("TeamIdentifier=\(teamIdentifier)"),
+                  helperSignatureOutput.contains("Authority=Developer ID Application:") else {
+                throw updateError("更新包主 App 与 Helper 必须由 Team \(manifest.teamIdentifier ?? "-") 的 Developer ID Application 签名。")
+            }
+        case "adhoc":
+            guard signatureOutput.contains("Signature=adhoc"),
+                  helperSignatureOutput.contains("Signature=adhoc"),
+                  signatureValue("CDHash", in: signatureOutput)?.lowercased() == manifest.appCDHash?.lowercased(),
+                  signatureValue("CDHash", in: helperSignatureOutput)?.lowercased() == manifest.helperCDHash?.lowercased() else {
+                throw updateError("更新包 ad-hoc CDHash 与签名 manifest 不一致。")
+            }
+        default:
+            throw updateError("更新包 signingMode 不受支持。")
+        }
+    }
+
+    private func effectiveSigningMode(_ manifest: AppUpdateManifest) -> String {
+        if let mode = manifest.signingMode?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           mode.isEmpty == false {
+            return mode
+        }
+        return manifest.teamIdentifier == nil ? "" : "developer-id"
+    }
+
+    private func isValidCDHash(_ value: String?) -> Bool {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        return value.range(of: #"^(?:[A-Fa-f0-9]{40}|[A-Fa-f0-9]{64})$"#, options: .regularExpression) != nil
+    }
+
+    private func signatureValue(_ name: String, in output: String) -> String? {
+        let prefix = "\(name)="
+        return output.components(separatedBy: .newlines)
+            .first(where: { $0.hasPrefix(prefix) })
+            .map { String($0.dropFirst(prefix.count)) }
     }
 
     private func validateSHA256(fileURL: URL, expected: String) throws {

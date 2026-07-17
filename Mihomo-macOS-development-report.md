@@ -275,7 +275,7 @@ APP_VERSION=1.11.2 ./script/build_and_run.sh --verify
 ./script/ci_release_gate.sh
 ```
 
-6. 正式发布机执行 `protected_release_checklist.sh --version <version>`，使用 Developer ID、Team ID、notarytool 凭据和 update manifest 私钥完成签名、公证、staple 与 release smoke。
+6. Developer ID 发布机执行 `protected_release_checklist.sh --version <version>`；无开发者账户时必须显式设置 `MIHOMO_ALLOW_UNNOTARIZED_RELEASE=1`，生成标注未签名/未公证且由 manifest 固定 App/Helper CDHash 的 ad-hoc Release。
 7. 检查 zip、versioned manifest、latest manifest 和 provenance。
 8. 提交并 push branch。
 9. 创建新版本 tag，不移动旧 tag。
@@ -284,7 +284,7 @@ APP_VERSION=1.11.2 ./script/build_and_run.sh --verify
 
 ## 11. 当前技术债务
 
-- 当前维护者没有 Apple Developer 账户；正式 notarized 发行暂不可执行。ad-hoc 构建只能作为开发验证，运行特权能力时使用需管理员授权且绑定 App CDHash 的传统 Helper 兼容路径。
+- 当前维护者没有 Apple Developer 账户；发布物采用明确标注的 ad-hoc 模式，用户需自行移除 quarantine。Ed25519 manifest 同时固定 zip SHA-256 与主 App/Helper CDHash；特权能力使用需管理员授权且绑定 App CDHash 的传统 Helper。未来取得 Developer ID 后仍应切换到 notarized 发布路径。
 - AppKit bridge 仍需定期做真实 VoiceOver/keyboard QA。
 - 350 行以上文件应在后续触碰时继续拆分，500 行为强优先级阈值。
 - 网络接管真实异常路径需要持续沉淀 before/after smoke 证据。

@@ -114,7 +114,10 @@ manifest_build="$(json_value '.build // ""')"
 manifest_bundle="$(json_value '.bundleIdentifier')"
 manifest_signing="$(json_value '.signingIdentifier')"
 manifest_helper_signing="$(json_value '.helperSigningIdentifier')"
-manifest_team="$(json_value '.teamIdentifier')"
+manifest_mode="$(json_value '.signingMode')"
+manifest_team="$(json_value '.teamIdentifier // ""')"
+manifest_app_cdhash="$(json_value '.appCDHash // ""')"
+manifest_helper_cdhash="$(json_value '.helperCDHash // ""')"
 manifest_url="$(json_value '.url')"
 manifest_published="$(json_value '.publishedAt')"
 manifest_algorithm="$(json_value '.signature.algorithm')"
@@ -166,7 +169,10 @@ cat >"$OUTPUT_PATH" <<REPORT
 | bundleIdentifier | \`$manifest_bundle\` |
 | signingIdentifier | \`$manifest_signing\` |
 | helperSigningIdentifier | \`$manifest_helper_signing\` |
+| signingMode | \`$manifest_mode\` |
 | teamIdentifier | \`$manifest_team\` |
+| appCDHash | \`$manifest_app_cdhash\` |
+| helperCDHash | \`$manifest_helper_cdhash\` |
 | sha256 matches zip | \`$([[ "$manifest_sha" == "$zip_sha" ]] && printf 'yes' || printf 'no')\` |
 | signature algorithm | \`$manifest_algorithm\` |
 | signature public key | \`$manifest_public_key\` |

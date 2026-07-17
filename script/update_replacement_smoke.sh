@@ -73,6 +73,14 @@ signature_identifier() {
   awk -F= '$1 == "Identifier" { print substr($0, length("Identifier") + 2); exit }' <<<"$details"
 }
 
+signature_value() {
+  local name="$1"
+  local path="$2"
+  local details
+  details="$(/usr/bin/codesign -dv --verbose=4 "$path" 2>&1 || true)"
+  awk -F= -v key="$name" '$1 == key { print tolower(substr($0, length(key) + 2)); exit }' <<<"$details"
+}
+
 verify_signed_item() {
   local title="$1"
   local path="$2"
@@ -85,6 +93,14 @@ verify_signed_item() {
     details="$(/usr/bin/codesign -dv --verbose=4 "$path" 2>&1 || true)"
     grep -q "TeamIdentifier=$EXPECTED_TEAM_ID" <<<"$details" || fail "$title TeamIdentifier mismatch"
     grep -q '^Authority=Developer ID Application:' <<<"$details" || fail "$title Developer ID authority missing"
+  fi
+  if [[ "${manifest_mode:-}" == "adhoc" ]]; then
+    local details
+    details="$(/usr/bin/codesign -dv --verbose=4 "$path" 2>&1 || true)"
+    grep -q '^Signature=adhoc$' <<<"$details" || fail "$title is not ad-hoc signed"
+    if [[ "$title" == "Helper" ]]; then
+      [[ "$(signature_value CDHash "$path")" == "$manifest_helper_cdhash" ]] || fail "Helper CDHash mismatch"
+    fi
   fi
 }
 
@@ -108,6 +124,10 @@ verify_app_identity() {
   if [[ -n "$EXPECTED_TEAM_ID" ]]; then
     grep -q "TeamIdentifier=$EXPECTED_TEAM_ID" <<<"$details" || fail "TeamIdentifier mismatch for $app"
     grep -q '^Authority=Developer ID Application:' <<<"$details" || fail "Developer ID authority missing for $app"
+  fi
+  if [[ "${manifest_mode:-}" == "adhoc" ]]; then
+    grep -q '^Signature=adhoc$' <<<"$details" || fail "App is not ad-hoc signed"
+    [[ "$(signature_value CDHash "$app")" == "$manifest_app_cdhash" ]] || fail "App CDHash mismatch"
   fi
   verify_signed_item "Helper" "$app/Contents/Library/LaunchServices/MihomoHelper" "$EXPECTED_HELPER_ID"
   verify_signed_item "JS worker" "$app/Contents/Resources/MihomoJSWorker" "$EXPECTED_JS_WORKER_ID"
@@ -148,7 +168,10 @@ manifest_sha="$(jq -r '.sha256' "$MANIFEST_PATH")"
 manifest_bundle="$(jq -r '.bundleIdentifier' "$MANIFEST_PATH")"
 manifest_signing="$(jq -r '.signingIdentifier' "$MANIFEST_PATH")"
 manifest_helper_signing="$(jq -r '.helperSigningIdentifier' "$MANIFEST_PATH")"
-manifest_team="$(jq -r '.teamIdentifier' "$MANIFEST_PATH")"
+manifest_mode="$(jq -r '.signingMode // ""' "$MANIFEST_PATH")"
+manifest_team="$(jq -r '.teamIdentifier // ""' "$MANIFEST_PATH")"
+manifest_app_cdhash="$(jq -r '.appCDHash // ""' "$MANIFEST_PATH")"
+manifest_helper_cdhash="$(jq -r '.helperCDHash // ""' "$MANIFEST_PATH")"
 zip_sha="$(/usr/bin/shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
 
 [[ "$manifest_version" == "$VERSION" ]] || fail "manifest version mismatch"
@@ -156,9 +179,19 @@ zip_sha="$(/usr/bin/shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
 [[ "$manifest_bundle" == "$EXPECTED_BUNDLE_ID" ]] || fail "manifest bundle id mismatch"
 [[ "$manifest_signing" == "$EXPECTED_SIGNING_ID" ]] || fail "manifest signing id mismatch"
 [[ "$manifest_helper_signing" == "$EXPECTED_HELPER_ID" ]] || fail "manifest helper signing id mismatch"
-if [[ -n "$EXPECTED_TEAM_ID" ]]; then
-  [[ "$manifest_team" == "$EXPECTED_TEAM_ID" ]] || fail "manifest TeamIdentifier mismatch"
-fi
+case "$manifest_mode" in
+  developer-id)
+    [[ "$manifest_team" =~ ^[A-Z0-9]{10}$ ]] || fail "manifest TeamIdentifier missing"
+    if [[ -n "$EXPECTED_TEAM_ID" ]]; then
+      [[ "$manifest_team" == "$EXPECTED_TEAM_ID" ]] || fail "manifest TeamIdentifier mismatch"
+    fi
+    ;;
+  adhoc)
+    [[ "$manifest_app_cdhash" =~ ^[a-f0-9]{40}$|^[a-f0-9]{64}$ ]] || fail "manifest App CDHash invalid"
+    [[ "$manifest_helper_cdhash" =~ ^[a-f0-9]{40}$|^[a-f0-9]{64}$ ]] || fail "manifest Helper CDHash invalid"
+    ;;
+  *) fail "unsupported manifest signingMode" ;;
+esac
 
 mkdir -p "$(dirname "$current")" "$candidate_root"
 /usr/bin/ditto "$APP_BUNDLE" "$current"
