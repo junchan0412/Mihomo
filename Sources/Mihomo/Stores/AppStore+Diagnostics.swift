@@ -123,10 +123,10 @@ extension AppStore {
             state: FileManager.default.isExecutableFile(atPath: mihomoPath) ? .ok : .failed
         ))
 
-        results.append(contentsOf: helperAuditService.localAuditResults(helperStatus: helperService.statusDescription))
+        results.append(contentsOf: helperAuditService.localAuditResults(helperStatus: helperInstallationDescription))
         do {
             let helper = try await helperClient.version()
-            helperStatus = "\(helper.message)，\(helperService.statusDescription)"
+            helperStatus = "\(helper.message)，\(helperInstallationDescription)"
             results.append(.init(title: "XPC Helper", detail: helperStatus, state: .ok))
             results.append(helperAuditService.runtimeBindingResult(helperVersion: helper))
             let privilege = try await helperClient.verifyPrivileges()
@@ -178,7 +178,7 @@ extension AppStore {
     }
 
     func helperTroubleshootingDetail(_ errorMessage: String) -> String {
-        let status = helperService.statusDescription
+        let status = helperInstallationDescription
         let guidance: String
         if helperService.requiresApproval {
             guidance = "请在系统设置 > 通用 > 登录项与扩展中允许 Mihomo 的后台项目，然后重新运行诊断。"

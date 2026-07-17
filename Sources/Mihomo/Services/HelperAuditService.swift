@@ -22,6 +22,7 @@ struct HelperAuditService {
             daemonPlistResult(),
             appSignatureResult(),
             helperSignatureResult(),
+            legacyHelperResult(),
             serviceStatusResult(helperStatus: helperStatus),
             notarizationResult()
         ]
@@ -89,7 +90,7 @@ struct HelperAuditService {
         let state: DiagnosticState
         if helperStatus.contains("已注册") {
             state = .ok
-        } else if helperStatus.contains("批准") || helperStatus.contains("未注册") {
+        } else if helperStatus.contains("传统 Helper") || helperStatus.contains("批准") || helperStatus.contains("未注册") {
             state = .warning
         } else {
             state = .failed
@@ -97,10 +98,37 @@ struct HelperAuditService {
         return DiagnosticResult(title: "SMAppService 状态", detail: helperStatus, state: state)
     }
 
+    private func legacyHelperResult() -> DiagnosticResult {
+        let helper = URL(fileURLWithPath: "/Library/PrivilegedHelperTools/dev.codex.Mihomo.Helper")
+        let authorization = URL(fileURLWithPath: "/Library/PrivilegedHelperTools/dev.codex.Mihomo.Helper.authorization.plist")
+        let plist = URL(fileURLWithPath: "/Library/LaunchDaemons/dev.codex.Mihomo.Helper.plist")
+        let exists = FileManager.default.isExecutableFile(atPath: helper.path)
+            && FileManager.default.fileExists(atPath: authorization.path)
+            && FileManager.default.fileExists(atPath: plist.path)
+        return DiagnosticResult(
+            title: "传统 Helper 兼容路径",
+            detail: exists
+                ? "已安装。Helper 使用 root 所有的授权文件绑定当前 App 路径与签名 CDHash；App 更新后必须重新授权安装。"
+                : "未安装。Developer ID + notarization 可直接使用 SMAppService；无开发者账户时可通过“修复 Helper”安装兼容路径。",
+            state: exists ? .warning : .ok
+        )
+    }
+
     private func notarizationResult() -> DiagnosticResult {
-        DiagnosticResult(
+        let details = try? Shell.run("/usr/bin/codesign", ["-dv", "--verbose=4", appBundleURL.path])
+        let signatureOutput = [details?.stdout, details?.stderr].compactMap { $0 }.joined(separator: "\n")
+        let hasDeveloperID = signatureOutput.contains("Authority=Developer ID Application:")
+        let gatekeeper = try? Shell.run("/usr/sbin/spctl", ["-a", "-vv", "--type", "execute", appBundleURL.path])
+        if hasDeveloperID && gatekeeper?.status == 0 {
+            return DiagnosticResult(
+                title: "公证 / Gatekeeper",
+                detail: "Developer ID 签名与 Gatekeeper 评估通过，可使用 SMAppService LaunchDaemon。",
+                state: .ok
+            )
+        }
+        return DiagnosticResult(
             title: "公证 / Gatekeeper",
-            detail: "当前采用固定 identifier 的 ad-hoc 签名，未使用 Apple Developer ID 公证。首次下载后需要移除隔离属性；应用内更新会校验 manifest SHA-256、bundle id 和签名 identifier，并在替换后清理隔离属性。",
+            detail: "SMAppService LaunchDaemon 的正式发行需要 Developer ID 与 Apple notarization。无开发者账户的构建只能使用需管理员确认的传统 Helper 兼容路径；应用内正式更新还会校验 manifest、TeamIdentifier、主 App 与 Helper 的 Developer ID 身份。",
             state: .warning
         )
     }

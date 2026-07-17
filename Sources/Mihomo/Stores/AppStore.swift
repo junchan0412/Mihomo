@@ -115,6 +115,7 @@ final class AppStore: ObservableObject {
     let profileAgeService = ProfileAgeService()
     let helperClient = MihomoHelperClient()
     let helperService = HelperServiceManager()
+    let legacyHelperInstaller = LegacyHelperInstaller()
     let helperAuditService = HelperAuditService()
     let softwareUpdateManager = SoftwareUpdateManager()
     let profileQualityAnalyzer = ProfileQualityAnalyzer()
@@ -191,6 +192,14 @@ final class AppStore: ObservableObject {
         return nil
     }
 
+    var helperInstallationDescription: String {
+        legacyHelperInstaller.isInstalled ? "传统 Helper 已安装" : helperService.statusDescription
+    }
+
+    var shouldUseLegacyHelper: Bool {
+        legacyHelperInstaller.bundledSMAppServiceIsSupported() == false
+    }
+
     func bootstrap() async {
         do {
             try AppPaths.ensureBaseDirectories()
@@ -222,7 +231,8 @@ final class AppStore: ObservableObject {
             }
             ageStatus = settings.profileEncryptionEnabled ? "Profile 加密已启用" : "Profile 加密未启用"
             launchDaemonStatus = MihomoHelperConstants.coreLaunchDaemonPlistPath
-            helperStatus = helperService.statusDescription
+            helperStatus = helperInstallationDescription
+            await resumeHelperRegistrationAfterUpdateIfNeeded()
             refreshConfigArtifacts()
             syncLaunchAtLoginSetting(reportSuccess: false)
             appendLog("info", "已加载 \(profiles.count) 个配置")

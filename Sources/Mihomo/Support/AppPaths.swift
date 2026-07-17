@@ -92,6 +92,10 @@ enum AppPaths {
         supportDirectory.appendingPathComponent("tun-recovery-snapshot.json")
     }
 
+    static var pendingHelperReregistrationFile: URL {
+        runtimeDirectory.appendingPathComponent("pending-helper-reregistration.json")
+    }
+
     static var appLogFile: URL {
         logsDirectory.appendingPathComponent("mihomo-app.log")
     }

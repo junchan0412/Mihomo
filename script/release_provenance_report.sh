@@ -113,6 +113,8 @@ manifest_version="$(json_value '.version')"
 manifest_build="$(json_value '.build // ""')"
 manifest_bundle="$(json_value '.bundleIdentifier')"
 manifest_signing="$(json_value '.signingIdentifier')"
+manifest_helper_signing="$(json_value '.helperSigningIdentifier')"
+manifest_team="$(json_value '.teamIdentifier')"
 manifest_url="$(json_value '.url')"
 manifest_published="$(json_value '.publishedAt')"
 manifest_algorithm="$(json_value '.signature.algorithm')"
@@ -163,6 +165,8 @@ cat >"$OUTPUT_PATH" <<REPORT
 | publishedAt | \`$manifest_published\` |
 | bundleIdentifier | \`$manifest_bundle\` |
 | signingIdentifier | \`$manifest_signing\` |
+| helperSigningIdentifier | \`$manifest_helper_signing\` |
+| teamIdentifier | \`$manifest_team\` |
 | sha256 matches zip | \`$([[ "$manifest_sha" == "$zip_sha" ]] && printf 'yes' || printf 'no')\` |
 | signature algorithm | \`$manifest_algorithm\` |
 | signature public key | \`$manifest_public_key\` |

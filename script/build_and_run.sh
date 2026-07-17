@@ -17,7 +17,7 @@ fi
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_APP_VERSION="$(git -C "$ROOT_DIR" describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null | sed 's/^v//' || true)"
 APP_VERSION="${APP_VERSION:-${DEFAULT_APP_VERSION:-0.0.0}}"
-APP_BUILD="${APP_BUILD:-$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%d%H%M%S)}"
+APP_BUILD="${APP_BUILD:-${GITHUB_RUN_NUMBER:-$(git -C "$ROOT_DIR" rev-list --count HEAD 2>/dev/null || printf '1')}}"
 CODESIGN_IDENTITY="${MIHOMO_CODESIGN_IDENTITY:--}"
 CODESIGN_OPTIONS="${MIHOMO_CODESIGN_OPTIONS:-}"
 if [[ "$CODESIGN_IDENTITY" != "-" && -z "$CODESIGN_OPTIONS" ]]; then
@@ -36,6 +36,16 @@ APP_BINARY="$APP_MACOS/$APP_NAME"
 HELPER_BINARY="$APP_LAUNCH_SERVICES/$HELPER_NAME"
 HELPER_PLIST="$APP_LAUNCH_DAEMONS/$HELPER_LABEL.plist"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
+
+if [[ ! "$APP_BUILD" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+  echo "APP_BUILD must contain one to three numeric components (got: $APP_BUILD)" >&2
+  exit 1
+fi
+
+if [[ "${RELEASE_BUILD:-0}" == "1" && "$CODESIGN_IDENTITY" == "-" && "${MIHOMO_ALLOW_ADHOC_RELEASE:-0}" != "1" ]]; then
+  echo "Refusing ad-hoc release build. Set MIHOMO_CODESIGN_IDENTITY to a Developer ID identity." >&2
+  exit 1
+fi
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 pkill -x "$HELPER_NAME" >/dev/null 2>&1 || true

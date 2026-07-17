@@ -154,6 +154,7 @@ cat >>"$OUTPUT_PATH" <<TOOLS
 | --- | --- |
 | MIHOMO_CODESIGN_IDENTITY | $(env_status MIHOMO_CODESIGN_IDENTITY) |
 | MIHOMO_EXPECTED_TEAM_ID | $(env_status MIHOMO_EXPECTED_TEAM_ID) |
+| MIHOMO_NOTARY_PROFILE | $(env_status MIHOMO_NOTARY_PROFILE) |
 | MIHOMO_REQUIRE_DEVELOPER_ID | ${MIHOMO_REQUIRE_DEVELOPER_ID:-missing} |
 | MIHOMO_REQUIRE_NOTARIZATION | ${MIHOMO_REQUIRE_NOTARIZATION:-missing} |
 | MIHOMO_REQUIRE_STAPLED_TICKET | ${MIHOMO_REQUIRE_STAPLED_TICKET:-missing} |
@@ -167,6 +168,7 @@ cat >>"$OUTPUT_PATH" <<'CHECKS'
 
 - [ ] `MIHOMO_CODESIGN_IDENTITY` points to a Developer ID Application certificate in the release keychain.
 - [ ] `MIHOMO_EXPECTED_TEAM_ID` matches the Apple Developer Team ID for the certificate.
+- [ ] `MIHOMO_NOTARY_PROFILE` names a working `notarytool store-credentials` keychain profile.
 - [ ] `MIHOMO_REQUIRE_DEVELOPER_ID=1`, `MIHOMO_REQUIRE_NOTARIZATION=1`, and `MIHOMO_REQUIRE_STAPLED_TICKET=1` are enabled for protected release verification.
 - [ ] The Ed25519 update manifest private key is present only on the protected release machine.
 - [ ] The release zip has been submitted to Apple notarization and accepted.
@@ -183,12 +185,11 @@ if [[ -n "$VERSION" ]]; then
 \`\`\`bash
 export MIHOMO_CODESIGN_IDENTITY="Developer ID Application: ..."
 export MIHOMO_EXPECTED_TEAM_ID="TEAMID1234"
+export MIHOMO_NOTARY_PROFILE="mihomo-notary"
 export MIHOMO_REQUIRE_DEVELOPER_ID=1
 export MIHOMO_REQUIRE_NOTARIZATION=1
 export MIHOMO_REQUIRE_STAPLED_TICKET=1
 ./script/package_release.sh $VERSION
-xcrun notarytool submit dist/releases/Mihomo-$VERSION-macOS-arm64.zip --wait
-xcrun stapler staple dist/Mihomo.app
 ./script/release_smoke_test.sh $VERSION
 ./script/update_replacement_smoke.sh $VERSION
 shasum -a 256 dist/releases/Mihomo-$VERSION-macOS-arm64.zip

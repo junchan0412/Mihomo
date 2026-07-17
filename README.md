@@ -81,7 +81,7 @@ git diff --check
 ./script/build_and_run.sh --verify
 ```
 
-当前测试集包含 128 个 XCTest，覆盖 Activity/日志展示、两色流量语义、Profile↔App 设置同步、覆写 YAML/JavaScript 分析、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量来源、DIRECT/代理测速设置、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、Provider 更新与回滚、网络请求超时、核心实时状态恢复、Helper 路径边界、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
+当前测试集包含 146 个 XCTest，覆盖 Activity/日志展示、两色流量语义、Profile↔App 设置同步、覆写 YAML/JavaScript 分析、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量来源、DIRECT/代理测速设置、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、Provider 更新与回滚、网络请求超时、核心实时状态恢复、Helper 超时、签名部署选择与传统安装路径、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
 
 网络恢复与辅助功能人工检查：
 
@@ -121,30 +121,31 @@ JS 输出
 
 ## Release
 
-本地发布包：
+CI / 本机 ad-hoc 验证包：
 
 ```bash
-export https_proxy=http://127.0.0.1:6152
-export http_proxy=http://127.0.0.1:6152
-export all_proxy=socks5://127.0.0.1:6153
-./script/package_release.sh 1.11.2
-./script/release_smoke_test.sh 1.11.2
+MIHOMO_ALLOW_ADHOC_RELEASE=1 RELEASE_BUILD=1 SKIP_APP_LAUNCH=1 \
+  ./script/build_and_run.sh --verify
 ```
 
-产物位于 `dist/releases/`：
+ad-hoc 构建不能被标记为正式发行：`SMAppService` LaunchDaemon 要求稳定的 Apple Team 签名，正式发行还必须使用 Developer ID 与 Apple notarization。App 会检查主程序与 Helper 的签名身份；没有可用 Apple Team 时，“注册”“修复”和核心启动自愈会直接请求管理员授权，使用 root 所有且绑定当前 App CDHash 的传统 Helper 兼容路径，不再停留在无效的 SMAppService 批准状态。
 
-- `Mihomo-1.11.2-macOS-arm64.zip`
-- `Mihomo-1.11.2-update.json`
+受保护的正式发行先运行：
+
+```bash
+./script/protected_release_checklist.sh --version <version>
+```
+
+正式发布机必须提供 Developer ID identity、Team ID、notarytool 凭据和 Ed25519 update manifest 私钥。产物位于 `dist/releases/`：
+
+- `Mihomo-<version>-macOS-arm64.zip`
+- `Mihomo-<version>-update.json`
 - `mihomo-update.json`
-- `Mihomo-1.11.2-provenance.md`
+- `Mihomo-<version>-provenance.md`
 
 Release 必须上传 zip 和 `mihomo-update.json`，否则应用内更新无法发现或验证新版本。manifest 使用 Ed25519 签名，私钥从 `MIHOMO_UPDATE_PRIVATE_KEY` 或 `~/.mihomo-update-signing/ed25519.private` 读取。
 
-当前发布采用固定 ad-hoc signing identifier，未进行 Apple notarization。首次安装下载版本可能需要：
-
-```bash
-xattr -dr com.apple.quarantine /Applications/Mihomo.app
-```
+应用内正式更新会校验 manifest Ed25519 签名、zip SHA-256、bundle id、主 App 与 Helper 的 Developer ID TeamIdentifier；更新前等待旧 Helper 注销，更新后重新注册或重新绑定传统 Helper。
 
 ## 项目结构
 
@@ -162,9 +163,9 @@ script/                 构建、发布、smoke 与质量门禁
 
 ## 安全边界
 
-- Helper 只接受预期 app bundle/signing identifier，并验证允许访问的路径。
+- Bundle 内 Helper 只接受同一 App Bundle；传统 Helper 使用 root 所有的授权文件校验 App 路径、bundle identifier 和精确签名 CDHash，并继续验证允许访问的路径。
 - 下载的 core、Age 与 Geo 数据在替换前验证 SHA-256；默认 Geo 数据会自动读取上游 `.sha256sum`。
 - Runtime/Provider 路径禁止父目录穿越和 symlink escape。
 - 普通备份默认脱敏；可迁移 Secret 使用单独的口令加密 bundle。
 - 诊断导出会脱敏已知 secret、credential 和 URL query。
-- 软件更新验证 manifest 签名、zip SHA-256、bundle id 和 signing identifier，并在替换失败时恢复旧 App。
+- 软件更新验证 manifest 签名、zip SHA-256、bundle id、Developer ID TeamIdentifier 和 Helper 身份，并在替换失败时恢复旧 App 与 Helper 状态。

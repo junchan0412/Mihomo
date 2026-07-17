@@ -6,7 +6,7 @@ APP_BUNDLE="$ROOT_DIR/dist/Mihomo.app"
 ZIP_PATH="$ROOT_DIR/dist/ci/Mihomo-ci.zip"
 EXPECTED_BUNDLE_ID="dev.codex.Mihomo"
 
-RELEASE_BUILD=1 SKIP_APP_LAUNCH=1 "$ROOT_DIR/script/build_and_run.sh" --verify
+MIHOMO_ALLOW_ADHOC_RELEASE=1 RELEASE_BUILD=1 SKIP_APP_LAUNCH=1 "$ROOT_DIR/script/build_and_run.sh" --verify
 
 for path in \
   "$APP_BUNDLE/Contents/MacOS/Mihomo" \

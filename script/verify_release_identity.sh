@@ -14,6 +14,7 @@ EXPECTED_TEAM_ID="${MIHOMO_EXPECTED_TEAM_ID:-}"
 REQUIRE_DEVELOPER_ID="${MIHOMO_REQUIRE_DEVELOPER_ID:-0}"
 REQUIRE_NOTARIZATION="${MIHOMO_REQUIRE_NOTARIZATION:-0}"
 REQUIRE_STAPLED_TICKET="${MIHOMO_REQUIRE_STAPLED_TICKET:-0}"
+REQUIRE_TEAM_ID="${MIHOMO_REQUIRE_TEAM_ID:-0}"
 
 fail() {
   echo "$1" >&2
@@ -70,6 +71,14 @@ verify_code_item() {
     team="$(signature_value "TeamIdentifier" "$details")"
     [[ "$team" == "$EXPECTED_TEAM_ID" ]] || {
       fail "$title TeamIdentifier mismatch: expected $EXPECTED_TEAM_ID, got ${team:-missing}"
+    }
+  fi
+
+  if [[ "$REQUIRE_TEAM_ID" == "1" ]]; then
+    local team
+    team="$(signature_value "TeamIdentifier" "$details")"
+    [[ -n "$team" && "$team" != "not set" ]] || {
+      fail "$title is ad-hoc signed; a stable TeamIdentifier is required"
     }
   fi
 

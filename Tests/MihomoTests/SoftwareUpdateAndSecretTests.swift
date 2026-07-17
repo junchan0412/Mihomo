@@ -4,7 +4,7 @@ import XCTest
 
 final class SoftwareUpdateAndSecretTests: XCTestCase {
     func testUpdateManagerComparesVersionsAndBuilds() {
-        let manager = SoftwareUpdateManager()
+        let manager = SoftwareUpdateManager(expectedBundleIdentifier: "dev.codex.Mihomo")
 
         XCTAssertTrue(manager.isManifestNewer(
             AppUpdateManifest(version: "1.3.0", build: nil, url: "Mihomo.zip", sha256: String(repeating: "a", count: 64)),
@@ -21,6 +21,35 @@ final class SoftwareUpdateAndSecretTests: XCTestCase {
             currentVersion: "1.2.0",
             currentBuild: "abc123"
         ))
+    }
+
+    func testUpdateManifestRequiresNumericBuildAndDeveloperIdentity() throws {
+        let manager = SoftwareUpdateManager(expectedBundleIdentifier: "dev.codex.Mihomo")
+        let valid = AppUpdateManifest(
+            version: "1.13.0",
+            build: "58",
+            url: "Mihomo.zip",
+            sha256: String(repeating: "a", count: 64),
+            bundleIdentifier: "dev.codex.Mihomo",
+            signingIdentifier: "dev.codex.Mihomo",
+            helperSigningIdentifier: "dev.codex.Mihomo.Helper",
+            teamIdentifier: "ABCDE12345",
+            signature: .init(algorithm: "Ed25519", publicKey: "key", value: "signature")
+        )
+
+        XCTAssertNoThrow(try manager.validateManifest(valid))
+
+        var invalidBuild = valid
+        invalidBuild.build = "f5970ef"
+        XCTAssertThrowsError(try manager.validateManifest(invalidBuild)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("build"))
+        }
+
+        var missingTeam = valid
+        missingTeam.teamIdentifier = nil
+        XCTAssertThrowsError(try manager.validateManifest(missingTeam)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("TeamIdentifier"))
+        }
     }
 
     func testLocalSecretVaultRoundTripsEncryptedPayload() throws {

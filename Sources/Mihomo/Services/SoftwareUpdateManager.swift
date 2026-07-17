@@ -11,6 +11,8 @@ struct AppUpdateManifest: Codable, Hashable {
     var minimumSystemVersion: String?
     var bundleIdentifier: String?
     var signingIdentifier: String?
+    var helperSigningIdentifier: String?
+    var teamIdentifier: String?
     var publishedAt: Date?
     var signature: AppUpdateSignature?
 }
@@ -38,6 +40,12 @@ struct PreparedUpdatePackage {
 final class SoftwareUpdateManager {
     static let githubLatestManifestURL = URL(string: "https://github.com/junchan0412/Mihomo/releases/latest/download/mihomo-update.json")!
     static let githubReleasesPage = URL(string: "https://github.com/junchan0412/Mihomo/releases/latest")!
+
+    private let expectedBundleIdentifier: String
+
+    init(expectedBundleIdentifier: String = Bundle.main.bundleIdentifier ?? "dev.codex.Mihomo") {
+        self.expectedBundleIdentifier = expectedBundleIdentifier
+    }
 
     var currentVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
@@ -71,7 +79,7 @@ final class SoftwareUpdateManager {
         )
     }
 
-    func installUpdate(_ manifest: AppUpdateManifest, manifestURL: URL) async throws -> String {
+    func prepareUpdate(_ manifest: AppUpdateManifest, manifestURL: URL) async throws -> PreparedUpdatePackage {
         let packageURL = try resolvedPackageURL(manifest.url, manifestURL: manifestURL)
         let tempRoot = AppPaths.runtimeDirectory.appendingPathComponent("app-update-\(UUID().uuidString)", isDirectory: true)
         do {
@@ -85,13 +93,24 @@ final class SoftwareUpdateManager {
             }
             try FileManager.default.copyItem(at: downloaded, to: zipURL)
 
-            let prepared = try prepareDownloadedUpdatePackage(zipURL: zipURL, manifest: manifest, tempRoot: tempRoot)
-            try launchInstallScript(script: prepared.installScript, candidate: prepared.candidate, tempRoot: prepared.tempRoot)
+            return try prepareDownloadedUpdatePackage(zipURL: zipURL, manifest: manifest, tempRoot: tempRoot)
         } catch {
             try? FileManager.default.removeItem(at: tempRoot)
             throw error
         }
-        return "更新 \(manifest.version) 已验证，Mihomo 将退出并由安装器替换应用。"
+    }
+
+    func launchPreparedUpdate(_ prepared: PreparedUpdatePackage, version: String) throws -> String {
+        try launchInstallScript(
+            script: prepared.installScript,
+            candidate: prepared.candidate,
+            tempRoot: prepared.tempRoot
+        )
+        return "更新 \(version) 已验证，Mihomo 将退出并由安装器替换应用。"
+    }
+
+    func discardPreparedUpdate(_ prepared: PreparedUpdatePackage) {
+        try? FileManager.default.removeItem(at: prepared.tempRoot)
     }
 
     func prepareDownloadedUpdatePackage(zipURL: URL, manifest: AppUpdateManifest, tempRoot: URL) throws -> PreparedUpdatePackage {
@@ -119,16 +138,23 @@ final class SoftwareUpdateManager {
         return url
     }
 
-    private func validateManifest(_ manifest: AppUpdateManifest) throws {
+    func validateManifest(_ manifest: AppUpdateManifest) throws {
         guard manifest.version.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             throw updateError("manifest 缺少 version。")
         }
         guard manifest.sha256.range(of: #"^[A-Fa-f0-9]{64}$"#, options: .regularExpression) != nil else {
             throw updateError("manifest 的 sha256 必须是 64 位十六进制。")
         }
-        let expectedID = Bundle.main.bundleIdentifier ?? "dev.codex.Mihomo"
-        if let bundleIdentifier = manifest.bundleIdentifier, bundleIdentifier != expectedID {
-            throw updateError("manifest bundle id 不匹配：\(bundleIdentifier)。")
+        let expectedID = expectedBundleIdentifier
+        guard manifest.bundleIdentifier == expectedID else {
+            throw updateError("manifest bundle id 不匹配：\(manifest.bundleIdentifier ?? "缺失")。")
+        }
+        guard manifest.signingIdentifier == expectedID else {
+            throw updateError("manifest signing identifier 不匹配：\(manifest.signingIdentifier ?? "缺失")。")
+        }
+        if let build = manifest.build,
+           build.range(of: #"^[0-9]+(?:\.[0-9]+){0,2}$"#, options: .regularExpression) == nil {
+            throw updateError("manifest build 必须是一至三段数字。")
         }
         if let minimum = manifest.minimumSystemVersion,
            compareVersions(systemVersionString(), minimum) == .orderedAscending {
@@ -136,6 +162,14 @@ final class SoftwareUpdateManager {
         }
         guard manifest.signature != nil else {
             throw updateError("manifest 缺少 Ed25519 签名。")
+        }
+        guard let teamIdentifier = manifest.teamIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines),
+              teamIdentifier.range(of: #"^[A-Z0-9]{10}$"#, options: .regularExpression) != nil else {
+            throw updateError("manifest 缺少 Developer ID TeamIdentifier。")
+        }
+        guard let helperIdentifier = manifest.helperSigningIdentifier?.trimmingCharacters(in: .whitespacesAndNewlines),
+              helperIdentifier == "dev.codex.Mihomo.Helper" else {
+            throw updateError("manifest 的 Helper 签名 identifier 无效。")
         }
     }
 
@@ -175,7 +209,7 @@ final class SoftwareUpdateManager {
     }
 
     private func validateCandidateBundle(_ appURL: URL, manifest: AppUpdateManifest) throws {
-        let expectedID = manifest.bundleIdentifier ?? Bundle.main.bundleIdentifier ?? "dev.codex.Mihomo"
+        let expectedID = manifest.bundleIdentifier ?? expectedBundleIdentifier
         let infoURL = appURL.appendingPathComponent("Contents/Info.plist")
         guard let info = NSDictionary(contentsOf: infoURL) as? [String: Any],
               info["CFBundleIdentifier"] as? String == expectedID else {
@@ -198,6 +232,26 @@ final class SoftwareUpdateManager {
         let signingIdentifier = manifest.signingIdentifier ?? expectedID
         guard signatureOutput.contains("Identifier=\(signingIdentifier)") else {
             throw updateError("更新包签名 identifier 不匹配，应为 \(signingIdentifier)。")
+        }
+        guard let teamIdentifier = manifest.teamIdentifier,
+              signatureOutput.contains("TeamIdentifier=\(teamIdentifier)"),
+              signatureOutput.contains("Authority=Developer ID Application:") else {
+            throw updateError("更新包必须由 Team \(manifest.teamIdentifier ?? "-") 的 Developer ID Application 签名。")
+        }
+
+        let helperURL = appURL
+            .appendingPathComponent("Contents/Library/LaunchServices", isDirectory: true)
+            .appendingPathComponent("MihomoHelper")
+        let helperVerify = try Shell.run("/usr/bin/codesign", ["--verify", "--strict", helperURL.path])
+        guard helperVerify.status == 0 else {
+            throw updateError("更新包 Helper 签名验证失败：\(helperVerify.stderr.isEmpty ? helperVerify.stdout : helperVerify.stderr)")
+        }
+        let helperDetails = try Shell.run("/usr/bin/codesign", ["-dv", "--verbose=4", helperURL.path])
+        let helperSignatureOutput = helperDetails.stdout + helperDetails.stderr
+        guard helperSignatureOutput.contains("Identifier=\(manifest.helperSigningIdentifier ?? "dev.codex.Mihomo.Helper")"),
+              helperSignatureOutput.contains("TeamIdentifier=\(teamIdentifier)"),
+              helperSignatureOutput.contains("Authority=Developer ID Application:") else {
+            throw updateError("更新包 Helper 与主 App 的 Developer ID 身份不一致。")
         }
     }
 

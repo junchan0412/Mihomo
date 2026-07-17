@@ -273,7 +273,7 @@ extension AppStore {
     private func ensureHelperReadyForCoreStart() async throws {
         do {
             let result = try await helperClient.version()
-            helperStatus = "\(result.message)，\(helperService.statusDescription)"
+            helperStatus = "\(result.message)，\(helperInstallationDescription)"
             return
         } catch {
             helperStatus = "Helper 通信失败，正在重建注册：\(error.localizedDescription)"
@@ -281,6 +281,13 @@ extension AppStore {
         }
 
         do {
+            if shouldUseLegacyHelper {
+                try await installLegacyHelperReplacingSMAppService()
+                let result = try await helperClient.version()
+                helperStatus = "\(result.message)，传统 Helper 已安装"
+                appendLog("info", "Helper 已恢复通信：\(helperStatus)")
+                return
+            }
             do {
                 try helperService.unregister()
                 appendLog("info", "启动前已移除旧 Helper 注册")
@@ -289,18 +296,29 @@ extension AppStore {
             }
             try? await Task.sleep(nanoseconds: 350_000_000)
             try helperService.register()
-            helperStatus = helperService.statusDescription
+            helperStatus = helperInstallationDescription
             if helperService.requiresApproval {
                 helperService.openLoginItemsSettings()
                 throw helperStartupError("Helper 已重新注册，但仍需要在系统设置 > 通用 > 登录项与扩展中允许 Mihomo。")
             }
             try? await Task.sleep(nanoseconds: 900_000_000)
             let result = try await helperClient.version()
-            helperStatus = "\(result.message)，\(helperService.statusDescription)"
+            helperStatus = "\(result.message)，\(helperInstallationDescription)"
             appendLog("info", "Helper 已恢复通信：\(helperStatus)")
         } catch {
-            helperService.openLoginItemsSettings()
-            throw helperStartupError("Helper 无法通信，已尝试重建注册：\(error.localizedDescription)")
+            if helperService.requiresApproval {
+                helperService.openLoginItemsSettings()
+                throw helperStartupError("Helper 等待系统批准。请在系统设置 > 通用 > 登录项与扩展中允许 Mihomo。")
+            }
+            do {
+                try await installLegacyHelperReplacingSMAppService()
+                let result = try await helperClient.version()
+                helperStatus = "\(result.message)，传统 Helper 已安装"
+                appendLog("warning", "SMAppService 无法启动，已切换传统 Helper：\(helperStatus)")
+            } catch {
+                helperService.openLoginItemsSettings()
+                throw helperStartupError("Helper 无法通信；SMAppService 与传统 Helper 均失败：\(error.localizedDescription)")
+            }
         }
     }
 

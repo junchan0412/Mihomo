@@ -8,6 +8,12 @@ private struct AuthorizedClient {
     var userHomeDirectory: URL
 }
 
+private struct LegacyAuthorization {
+    var appPath: String
+    var bundleIdentifier: String
+    var cdHash: String
+}
+
 private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
         guard let client = authorizedClient(connection: connection) else {
@@ -26,16 +32,55 @@ private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
         guard let executablePath = processPath(pid: connection.processIdentifier),
               executablePath.hasSuffix("/Contents/MacOS/Mihomo"),
               let appURL = appBundleURL(forExecutablePath: executablePath),
-              let helperAppURL = helperContainingAppBundleURL(),
-              appURLsMatch(appURL, helperAppURL),
               bundleIdentifier(appURL: appURL) == MihomoHelperConstants.appBundleIdentifier,
               codeSignatureIdentifier(appURL: appURL) == MihomoHelperConstants.appBundleIdentifier,
               appSatisfiesCodeRequirement(appURL: appURL),
+              helperAuthorizes(appURL: appURL),
               let homeDirectory = userHomeDirectory(pid: connection.processIdentifier)
         else {
             return nil
         }
         return AuthorizedClient(appURL: appURL.standardizedFileURL, userHomeDirectory: homeDirectory)
+    }
+
+    private func helperAuthorizes(appURL: URL) -> Bool {
+        if let helperAppURL = helperContainingAppBundleURL() {
+            return appURLsMatch(appURL, helperAppURL)
+        }
+        guard standaloneHelperIsRootOwned(),
+              let authorization = legacyAuthorization(),
+              authorization.bundleIdentifier == MihomoHelperConstants.appBundleIdentifier,
+              appURL.standardizedFileURL.resolvingSymlinksInPath().path == URL(fileURLWithPath: authorization.appPath)
+                .standardizedFileURL
+                .resolvingSymlinksInPath()
+                .path,
+              let cdHash = codeSignatureValue(named: "CDHash", appURL: appURL)
+        else { return false }
+        return cdHash.lowercased() == authorization.cdHash.lowercased()
+    }
+
+    private func standaloneHelperIsRootOwned() -> Bool {
+        guard let path = Bundle.main.executableURL?.path else { return false }
+        var info = stat()
+        return lstat(path, &info) == 0
+            && (info.st_mode & S_IFMT) == S_IFREG
+            && info.st_uid == 0
+            && (info.st_mode & 0o022) == 0
+    }
+
+    private func legacyAuthorization() -> LegacyAuthorization? {
+        let url = URL(fileURLWithPath: "/Library/PrivilegedHelperTools/dev.codex.Mihomo.Helper.authorization.plist")
+        var info = stat()
+        guard lstat(url.path, &info) == 0,
+              (info.st_mode & S_IFMT) == S_IFREG,
+              info.st_uid == 0,
+              (info.st_mode & 0o022) == 0,
+              let values = NSDictionary(contentsOf: url) as? [String: Any],
+              let appPath = values["AuthorizedAppPath"] as? String,
+              let bundleIdentifier = values["AuthorizedAppBundleIdentifier"] as? String,
+              let cdHash = values["AuthorizedAppCDHash"] as? String
+        else { return nil }
+        return LegacyAuthorization(appPath: appPath, bundleIdentifier: bundleIdentifier, cdHash: cdHash)
     }
 
     private func processPath(pid: pid_t) -> String? {
@@ -71,6 +116,10 @@ private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
     }
 
     private func codeSignatureIdentifier(appURL: URL) -> String? {
+        codeSignatureValue(named: "Identifier", appURL: appURL)
+    }
+
+    private func codeSignatureValue(named name: String, appURL: URL) -> String? {
         let process = Process()
         let output = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
@@ -85,8 +134,9 @@ private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
         process.waitUntilExit()
         let data = output.fileHandleForReading.readDataToEndOfFile()
         let text = String(data: data, encoding: .utf8) ?? ""
-        for line in text.components(separatedBy: .newlines) where line.hasPrefix("Identifier=") {
-            return String(line.dropFirst("Identifier=".count))
+        let prefix = "\(name)="
+        for line in text.components(separatedBy: .newlines) where line.hasPrefix(prefix) {
+            return String(line.dropFirst(prefix.count))
         }
         return nil
     }

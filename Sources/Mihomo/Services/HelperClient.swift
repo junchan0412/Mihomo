@@ -45,12 +45,29 @@ final class HelperServiceManager {
         service.status == .requiresApproval
     }
 
+    var isRegistered: Bool {
+        service.status == .enabled || service.status == .requiresApproval
+    }
+
     func register() throws {
         try service.register()
     }
 
     func unregister() throws {
         try service.unregister()
+    }
+
+    func unregisterAndWait() async throws {
+        guard isRegistered else { return }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            service.unregister { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
     }
 
     func openLoginItemsSettings() {

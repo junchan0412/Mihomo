@@ -234,4 +234,87 @@ final class ControllerAndHelperMockTests: XCTestCase {
         XCTAssertTrue(result.detail.contains("Mihomo-Old.app"))
         XCTAssertTrue(result.detail.contains("old999"))
     }
+
+    func testLegacyHelperPlistsBindStandaloneHelperToExactAppCDHash() {
+        let daemon = LegacyHelperInstaller.legacyPlist(
+            helperPath: "/Library/PrivilegedHelperTools/dev.codex.Mihomo.Helper"
+        )
+        let authorization = LegacyHelperInstaller.authorizationPlist(
+            appPath: "/Applications/Mihomo.app",
+            cdHash: "ABCDEF1234"
+        )
+
+        XCTAssertTrue(daemon.contains("/Library/PrivilegedHelperTools/dev.codex.Mihomo.Helper"))
+        XCTAssertFalse(daemon.contains("BundleProgram"))
+        XCTAssertTrue(authorization.contains("/Applications/Mihomo.app"))
+        XCTAssertTrue(authorization.contains("abcdef1234"))
+        XCTAssertTrue(authorization.contains("AuthorizedAppCDHash"))
+    }
+
+    func testLegacyHelperInstallCommandUsesRootOwnedFixedPaths() {
+        let command = LegacyHelperInstaller.installationCommand(
+            sourcePath: "/Applications/Mihomo.app/Contents/Library/LaunchServices/MihomoHelper",
+            sourceSHA256: String(repeating: "a", count: 64),
+            helperPath: "/Library/PrivilegedHelperTools/dev.codex.Mihomo.Helper",
+            stagingPlistPath: "/tmp/helper.plist",
+            stagingPlistSHA256: String(repeating: "b", count: 64),
+            plistPath: "/Library/LaunchDaemons/dev.codex.Mihomo.Helper.plist",
+            stagingAuthorizationPath: "/tmp/authorization.plist",
+            stagingAuthorizationSHA256: String(repeating: "c", count: 64),
+            authorizationPath: "/Library/PrivilegedHelperTools/dev.codex.Mihomo.Helper.authorization.plist"
+        )
+
+        XCTAssertTrue(command.contains("chown root:wheel"))
+        XCTAssertTrue(command.contains("chmod 600"))
+        XCTAssertTrue(command.contains("launchctl bootstrap system"))
+        XCTAssertTrue(command.contains("shasum -a 256"))
+        XCTAssertTrue(command.contains(".installing"))
+        XCTAssertTrue(command.contains("/Library/PrivilegedHelperTools/dev.codex.Mihomo.Helper"))
+        XCTAssertTrue(command.contains("/Library/LaunchDaemons/dev.codex.Mihomo.Helper.plist"))
+
+        let flattened = LegacyHelperInstaller.flattenedShellCommand(command)
+        XCTAssertFalse(flattened.contains("\n"))
+        XCTAssertEqual(try? Shell.run("/bin/sh", ["-n", "-c", flattened]).status, 0)
+    }
+
+    func testAdHocSignaturesUseLegacyHelperInsteadOfWaitingForSMAppServiceApproval() {
+        let app = """
+        Identifier=dev.codex.Mihomo
+        Signature=adhoc
+        TeamIdentifier=not set
+        """
+        let helper = """
+        Identifier=dev.codex.Mihomo.Helper
+        Signature=adhoc
+        TeamIdentifier=not set
+        """
+
+        XCTAssertFalse(LegacyHelperInstaller.signaturesSupportBundledSMAppService(
+            appOutput: app,
+            helperOutput: helper
+        ))
+    }
+
+    func testMatchingAppleTeamSignaturesCanUseBundledSMAppService() {
+        let app = """
+        Identifier=dev.codex.Mihomo
+        Authority=Developer ID Application: Example (ABCDE12345)
+        TeamIdentifier=ABCDE12345
+        """
+        let helper = """
+        Identifier=dev.codex.Mihomo.Helper
+        Authority=Developer ID Application: Example (ABCDE12345)
+        TeamIdentifier=ABCDE12345
+        """
+
+        XCTAssertTrue(LegacyHelperInstaller.signaturesSupportBundledSMAppService(
+            appOutput: app,
+            helperOutput: helper
+        ))
+
+        XCTAssertFalse(LegacyHelperInstaller.signaturesSupportBundledSMAppService(
+            appOutput: app,
+            helperOutput: helper.replacingOccurrences(of: "ABCDE12345", with: "ZYXWV98765")
+        ))
+    }
 }

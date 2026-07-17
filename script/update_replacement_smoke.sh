@@ -31,6 +31,7 @@ EXPECTED_BUNDLE_ID="dev.codex.Mihomo"
 EXPECTED_SIGNING_ID="dev.codex.Mihomo"
 EXPECTED_HELPER_ID="dev.codex.Mihomo.Helper"
 EXPECTED_JS_WORKER_ID="dev.codex.Mihomo.js-worker"
+EXPECTED_TEAM_ID="${MIHOMO_EXPECTED_TEAM_ID:-}"
 
 for path in "$APP_BUNDLE" "$ZIP_PATH" "$MANIFEST_PATH"; do
   [[ -e "$path" ]] || { echo "missing artifact: $path" >&2; exit 1; }
@@ -79,6 +80,12 @@ verify_signed_item() {
   [[ -e "$path" ]] || fail "missing $title: $path"
   /usr/bin/codesign --verify --strict "$path" >/dev/null 2>&1 || fail "$title codesign verify failed"
   [[ "$(signature_identifier "$path")" == "$expected_identifier" ]] || fail "$title signing identifier mismatch"
+  if [[ -n "$EXPECTED_TEAM_ID" ]]; then
+    local details
+    details="$(/usr/bin/codesign -dv --verbose=4 "$path" 2>&1 || true)"
+    grep -q "TeamIdentifier=$EXPECTED_TEAM_ID" <<<"$details" || fail "$title TeamIdentifier mismatch"
+    grep -q '^Authority=Developer ID Application:' <<<"$details" || fail "$title Developer ID authority missing"
+  fi
 }
 
 verify_app_identity() {
@@ -98,6 +105,10 @@ verify_app_identity() {
   /usr/bin/codesign --verify --deep --strict "$app" >/dev/null 2>&1 || fail "codesign verify failed for $app"
   details="$(/usr/bin/codesign -dv --verbose=4 "$app" 2>&1 || true)"
   grep -q "Identifier=$EXPECTED_SIGNING_ID" <<<"$details" || fail "signing identifier mismatch for $app"
+  if [[ -n "$EXPECTED_TEAM_ID" ]]; then
+    grep -q "TeamIdentifier=$EXPECTED_TEAM_ID" <<<"$details" || fail "TeamIdentifier mismatch for $app"
+    grep -q '^Authority=Developer ID Application:' <<<"$details" || fail "Developer ID authority missing for $app"
+  fi
   verify_signed_item "Helper" "$app/Contents/Library/LaunchServices/MihomoHelper" "$EXPECTED_HELPER_ID"
   verify_signed_item "JS worker" "$app/Contents/Resources/MihomoJSWorker" "$EXPECTED_JS_WORKER_ID"
 }
@@ -136,12 +147,18 @@ manifest_build="$(jq -r '.build // ""' "$MANIFEST_PATH")"
 manifest_sha="$(jq -r '.sha256' "$MANIFEST_PATH")"
 manifest_bundle="$(jq -r '.bundleIdentifier' "$MANIFEST_PATH")"
 manifest_signing="$(jq -r '.signingIdentifier' "$MANIFEST_PATH")"
+manifest_helper_signing="$(jq -r '.helperSigningIdentifier' "$MANIFEST_PATH")"
+manifest_team="$(jq -r '.teamIdentifier' "$MANIFEST_PATH")"
 zip_sha="$(/usr/bin/shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
 
 [[ "$manifest_version" == "$VERSION" ]] || fail "manifest version mismatch"
 [[ "$manifest_sha" == "$zip_sha" ]] || fail "manifest sha256 mismatch"
 [[ "$manifest_bundle" == "$EXPECTED_BUNDLE_ID" ]] || fail "manifest bundle id mismatch"
 [[ "$manifest_signing" == "$EXPECTED_SIGNING_ID" ]] || fail "manifest signing id mismatch"
+[[ "$manifest_helper_signing" == "$EXPECTED_HELPER_ID" ]] || fail "manifest helper signing id mismatch"
+if [[ -n "$EXPECTED_TEAM_ID" ]]; then
+  [[ "$manifest_team" == "$EXPECTED_TEAM_ID" ]] || fail "manifest TeamIdentifier mismatch"
+fi
 
 mkdir -p "$(dirname "$current")" "$candidate_root"
 /usr/bin/ditto "$APP_BUNDLE" "$current"
