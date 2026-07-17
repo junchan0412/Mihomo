@@ -95,7 +95,7 @@ struct HelperAuditService {
         } else {
             state = .failed
         }
-        return DiagnosticResult(title: "SMAppService 状态", detail: helperStatus, state: state)
+        return DiagnosticResult(title: "Helper 部署状态", detail: helperStatus, state: state)
     }
 
     private func legacyHelperResult() -> DiagnosticResult {
