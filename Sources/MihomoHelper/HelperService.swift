@@ -4,17 +4,19 @@ import MihomoShared
 final class HelperService: NSObject, MihomoHelperXPCProtocol {
     private let networkTool = HelperSystemNetworkTool()
     private lazy var tunTool = HelperTunRecoveryTool(networkTool: networkTool)
-    private let coreRuntime = HelperCoreRuntime()
+    private let coreRuntime: HelperCoreRuntime
     private let coreLaunchDaemonTool = HelperCoreLaunchDaemonTool()
     private let appBundleURL: URL?
     private let userHomeDirectory: URL
 
     init(
         appBundleURL: URL? = nil,
-        userHomeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
+        userHomeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+        coreRuntime: HelperCoreRuntime = HelperCoreRuntime()
     ) {
         self.appBundleURL = appBundleURL
         self.userHomeDirectory = userHomeDirectory
+        self.coreRuntime = coreRuntime
     }
 
     func helperVersion(withReply reply: @escaping (NSDictionary) -> Void) {
@@ -110,7 +112,12 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
                 mihomoPath: paths.mihomoPath,
                 configPath: paths.configPath,
                 workDirectory: paths.workDirectory,
-                logPath: try requiredLogPath(paths)
+                logPath: try requiredLogPath(paths),
+                allowedExecutablePaths: HelperCorePathScope.allowedExecutablePaths(
+                    userHomeDirectory: userHomeDirectory,
+                    appBundleURL: appBundleURL,
+                    additionalPath: paths.mihomoPath
+                )
             )
             reply(HelperReply.transactionOK("核心已由 Helper 启动", steps: steps, rollbackSuggestion: "若启动后网络异常，请在诊断页依次执行恢复 DNS、恢复 TUN 路由或停止核心。", payload: [
                 "validation": validation,
@@ -136,8 +143,13 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
             let tunSnapshot = try validatedTunSnapshotPath(tunSnapshotPath as String)
 
             steps.append("停止 mihomo core 进程")
-            coreRuntime.stop()
-            var details: [String] = []
+            let stopDetail = try coreRuntime.stop(
+                allowedExecutablePaths: HelperCorePathScope.allowedExecutablePaths(
+                    userHomeDirectory: userHomeDirectory,
+                    appBundleURL: appBundleURL
+                )
+            )
+            var details: [String] = [stopDetail]
             if restoreTun {
                 steps.append("恢复 TUN DNS/路由快照")
                 details.append(try tunTool.restore(

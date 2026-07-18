@@ -15,6 +15,8 @@ private struct LegacyAuthorization {
 }
 
 private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
+    private let coreRuntime = HelperCoreRuntime()
+
     func listener(_ listener: NSXPCListener, shouldAcceptNewConnection connection: NSXPCConnection) -> Bool {
         guard let client = authorizedClient(connection: connection) else {
             return false
@@ -22,7 +24,8 @@ private final class HelperDelegate: NSObject, NSXPCListenerDelegate {
         connection.exportedInterface = NSXPCInterface(with: MihomoHelperXPCProtocol.self)
         connection.exportedObject = HelperService(
             appBundleURL: client.appURL,
-            userHomeDirectory: client.userHomeDirectory
+            userHomeDirectory: client.userHomeDirectory,
+            coreRuntime: coreRuntime
         )
         connection.resume()
         return true

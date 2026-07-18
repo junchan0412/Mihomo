@@ -2,6 +2,25 @@ import XCTest
 @testable import MihomoShared
 
 final class HelperPathPolicyTests: XCTestCase {
+    func testCorePathScopeLimitsOrphanDiscoveryToManagedAndAuthorizedBundlePaths() {
+        let home = URL(fileURLWithPath: "/Users/example")
+        let app = URL(fileURLWithPath: "/Applications/Mihomo.app")
+        let additional = "/Users/example/Library/Application Support/Mihomo/Core/custom/mihomo"
+
+        let paths = HelperCorePathScope.allowedExecutablePaths(
+            userHomeDirectory: home,
+            appBundleURL: app,
+            additionalPath: additional
+        )
+
+        XCTAssertEqual(paths, [
+            "/Users/example/Library/Application Support/Mihomo/Core/mihomo",
+            "/Applications/Mihomo.app/Contents/Resources/Core/mihomo",
+            additional
+        ])
+        XCTAssertFalse(paths.contains("/tmp/mihomo"))
+    }
+
     func testValidateCorePathsAcceptsManagedCoreAndRuntimeConfig() throws {
         let layout = try makeLayout()
 
