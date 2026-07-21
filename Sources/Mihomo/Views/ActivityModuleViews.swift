@@ -83,28 +83,33 @@ struct ActivityDNSView: View {
 
     private var rows: [ActivityDNSRow] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return Dictionary(grouping: connections.filter { !$0.host.isEmpty }, by: \.host)
-            .map { host, values in
-                ActivityDNSRow(
-                    kind: .dynamic,
-                    host: host,
-                    addresses: Array(Set(values.flatMap {
-                        [$0.destinationIP, $0.remoteDestination].filter { !$0.isEmpty }
-                    })).sorted(),
-                    server: values.first?.sourceIP ?? "-"
-                )
+        let hostedConnections = connections.filter { !$0.host.isEmpty }
+        let groupedConnections = Dictionary(grouping: hostedConnections, by: \.host)
+        let dnsRows: [ActivityDNSRow] = groupedConnections.map { host, values in
+            let destinations = values.flatMap { connection in
+                [connection.destinationIP, connection.remoteDestination].filter { !$0.isEmpty }
             }
-            .filter { filter == .all || $0.kind == filter }
-            .filter { row in
-                guard !query.isEmpty else { return true }
-                let hostMatches = row.host.localizedCaseInsensitiveContains(query)
-                let addressMatches = row.addresses.contains { address in
-                    address.localizedCaseInsensitiveContains(query)
-                }
-                let serverMatches = row.server.localizedCaseInsensitiveContains(query)
-                return hostMatches || addressMatches || serverMatches
-            }
-            .sorted { $0.host.localizedStandardCompare($1.host) == .orderedAscending }
+            return ActivityDNSRow(
+                kind: .dynamic,
+                host: host,
+                addresses: Array(Set(destinations)).sorted(),
+                server: values.first?.sourceIP ?? "-"
+            )
+        }
+        let matchingKind = dnsRows.filter { filter == .all || $0.kind == filter }
+        let matchingSearch = matchingKind.filter { matchesSearch($0, query: query) }
+        return matchingSearch.sorted {
+            $0.host.localizedStandardCompare($1.host) == .orderedAscending
+        }
+    }
+
+    private func matchesSearch(_ row: ActivityDNSRow, query: String) -> Bool {
+        guard !query.isEmpty else { return true }
+        if row.host.localizedCaseInsensitiveContains(query) { return true }
+        if row.server.localizedCaseInsensitiveContains(query) { return true }
+        return row.addresses.contains { address in
+            address.localizedCaseInsensitiveContains(query)
+        }
     }
 
     var body: some View {
