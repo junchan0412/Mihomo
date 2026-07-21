@@ -3,6 +3,7 @@ import SwiftUI
 
 enum AppWindowIdentifier {
     static let main = NSUserInterfaceItemIdentifier("dev.codex.Mihomo.main-window")
+    static let connections = NSUserInterfaceItemIdentifier("dev.codex.Mihomo.connections-window")
 }
 
 struct WindowIdentifierView: NSViewRepresentable {

@@ -1,10 +1,12 @@
 import SwiftUI
 
 struct MihomoSidebarView: View {
+    @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var activityStore: RuntimeActivityStore
     @Binding var selection: AppSection
 
-    private let mainSections: [AppSection] = [.overview, .activity, .policies, .rules, .profiles, .overrides, .resources, .logs]
+    private let mainSections: [AppSection] = [.overview, .policies, .rules, .profiles, .overrides, .resources, .logs]
     private let engineSections: [AppSection] = [.networkSecurity, .advanced, .diagnostics]
 
     var body: some View {
@@ -26,7 +28,7 @@ struct MihomoSidebarView: View {
             brandHeader
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            statusFooter
+            sidebarFooter
         }
     }
 
@@ -59,14 +61,48 @@ struct MihomoSidebarView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var statusFooter: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            sidebarStatus("系统代理", isOn: store.systemProxyEnabled, activeColor: .green)
-            sidebarStatus("TUN", isOn: store.settings.tunEnabled, activeColor: .purple)
-            sidebarStatus("核心", isOn: store.isCoreRunning, activeColor: .red)
+    private var sidebarFooter: some View {
+        VStack(spacing: 9) {
+            Button {
+                openWindow(id: "connections")
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "waveform.path.ecg")
+                        .foregroundStyle(Color.accentColor)
+                    Text("连接")
+                        .font(MihomoUI.Fonts.bodyMedium)
+                    Spacer()
+                    Text("\(activityStore.connections.count)")
+                        .font(.caption.weight(.semibold))
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: Capsule())
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 36)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .background(MihomoUI.mutedFill, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(MihomoUI.cardStroke, lineWidth: 1)
+            }
+            .help("在独立窗口中显示连接")
+            .accessibilityIdentifier("sidebar.connections")
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 5) {
+                sidebarStatus("系统代理", isOn: store.systemProxyEnabled, activeColor: .green)
+                sidebarStatus("TUN", isOn: store.settings.tunEnabled, activeColor: .purple)
+                sidebarStatus("核心", isOn: store.isCoreRunning, activeColor: .red)
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

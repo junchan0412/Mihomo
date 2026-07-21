@@ -5,6 +5,7 @@ struct AppKitTableColumn<Row> {
     let title: String
     let width: CGFloat
     let value: (Row) -> String
+    let image: ((Row) -> NSImage?)?
     let textColor: ((Row) -> NSColor?)?
     let checked: ((Row) -> Bool)?
     let toggle: ((Row) -> Void)?
@@ -19,6 +20,23 @@ struct AppKitTableColumn<Row> {
         self.width = width
         self.textColor = textColor
         self.value = value
+        image = nil
+        checked = nil
+        toggle = nil
+    }
+
+    init(
+        title: String,
+        width: CGFloat,
+        image: @escaping (Row) -> NSImage?,
+        textColor: ((Row) -> NSColor?)? = nil,
+        value: @escaping (Row) -> String
+    ) {
+        self.title = title
+        self.width = width
+        self.image = image
+        self.textColor = textColor
+        self.value = value
         checked = nil
         toggle = nil
     }
@@ -27,6 +45,7 @@ struct AppKitTableColumn<Row> {
         self.title = title
         self.width = width
         value = { checked($0) ? "已启用" : "已禁用" }
+        image = nil
         textColor = nil
         self.checked = checked
         self.toggle = toggle
@@ -219,11 +238,13 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
                   columnIndex < parent.columns.count
             else { return nil }
 
-            let identifier = NSUserInterfaceItemIdentifier("MihomoTableCell")
-            let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView
-                ?? makeCell(identifier: identifier)
             let currentRow = parent.rows[row]
             let column = parent.columns[columnIndex]
+            let identifier = NSUserInterfaceItemIdentifier(
+                "MihomoTableCell-\(columnIndex)-\(column.image == nil ? "text" : "image")"
+            )
+            let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView
+                ?? makeCell(identifier: identifier, includesImage: column.image != nil)
             let value = column.value(currentRow)
             if let checked = column.checked {
                 let identifier = NSUserInterfaceItemIdentifier("MihomoCheckboxCell-\(columnIndex)")
@@ -237,6 +258,8 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             }
             cell.textField?.stringValue = value
             cell.textField?.textColor = column.textColor?(currentRow) ?? .labelColor
+            cell.imageView?.image = column.image?(currentRow)
+            cell.imageView?.isHidden = cell.imageView?.image == nil
             cell.setAccessibilityLabel("\(column.title)：\(value)")
             return cell
         }
@@ -403,7 +426,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             }
         }
 
-        private func makeCell(identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {
+        private func makeCell(identifier: NSUserInterfaceItemIdentifier, includesImage: Bool) -> NSTableCellView {
             let cell = NSTableCellView()
             cell.identifier = identifier
 
@@ -417,11 +440,30 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             cell.textField = textField
             cell.addSubview(textField)
 
-            NSLayoutConstraint.activate([
-                textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
-                textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
-                textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-            ])
+            if includesImage {
+                let imageView = NSImageView()
+                imageView.imageScaling = .scaleProportionallyUpOrDown
+                imageView.translatesAutoresizingMaskIntoConstraints = false
+                imageView.setAccessibilityElement(false)
+                cell.imageView = imageView
+                cell.addSubview(imageView)
+
+                NSLayoutConstraint.activate([
+                    imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 7),
+                    imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+                    imageView.widthAnchor.constraint(equalToConstant: 18),
+                    imageView.heightAnchor.constraint(equalToConstant: 18),
+                    textField.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 6),
+                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
+                    textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+                ])
+            } else {
+                NSLayoutConstraint.activate([
+                    textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
+                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
+                    textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+                ])
+            }
 
             return cell
         }

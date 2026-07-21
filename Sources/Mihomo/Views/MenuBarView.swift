@@ -96,7 +96,9 @@ struct MenuBarView: View {
 
             Menu("面板") {
                 sectionButton("概览", .overview)
-                sectionButton("活动", .activity)
+                Button("连接") {
+                    openWindow(id: "connections")
+                }
                 sectionButton("策略", .policies)
                 sectionButton("配置", .profiles)
                 sectionButton("规则", .rules)

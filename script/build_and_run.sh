@@ -152,7 +152,6 @@ PLIST
 cp "$ROOT_DIR/Assets/Generated/Mihomo.icns" "$APP_BUNDLE/Contents/Resources/Mihomo.icns"
 cp "$ROOT_DIR/Assets/Generated/AppIcon-Light.png" "$APP_BUNDLE/Contents/Resources/AppIcon-Light.png"
 cp "$ROOT_DIR/Assets/Generated/AppIcon-Dark.png" "$APP_BUNDLE/Contents/Resources/AppIcon-Dark.png"
-cp "$ROOT_DIR/Assets/Generated/MenuBarIconTemplate.png" "$APP_BUNDLE/Contents/Resources/MenuBarIconTemplate.png"
 
 if command -v codesign >/dev/null 2>&1; then
   sign_item() {

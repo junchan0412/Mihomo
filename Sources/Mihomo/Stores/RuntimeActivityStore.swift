@@ -100,6 +100,8 @@ final class RuntimeActivityStore: ObservableObject {
                 date: now,
                 policy: policyName(for: item),
                 process: item.processName,
+                network: item.network.isEmpty ? "未知网络" : item.network.uppercased(),
+                source: item.sourceIP.isEmpty ? "本机" : item.sourceIP,
                 host: item.host.isEmpty ? item.remoteEndpoint : item.host,
                 uploadBytes: uploadDelta,
                 downloadBytes: downloadDelta

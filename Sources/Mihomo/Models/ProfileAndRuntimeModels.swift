@@ -359,6 +359,8 @@ struct PolicyTrafficSample: Identifiable, Hashable {
     var date = Date()
     var policy: String
     var process: String = "未知进程"
+    var network: String = "未知网络"
+    var source: String = "未知设备"
     var host: String = "未知主机"
     var uploadBytes: Int64
     var downloadBytes: Int64

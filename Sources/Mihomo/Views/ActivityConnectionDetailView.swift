@@ -38,6 +38,11 @@ struct ConnectionTableRow: Identifiable, Hashable {
         connection.processName
     }
 
+    var clientIcon: NSImage? {
+        connection.processIcon
+            ?? NSImage(systemSymbolName: "app.dashed", accessibilityDescription: connection.processName)
+    }
+
     var ruleText: String {
         let type = connection.ruleType.isEmpty ? connection.rule : connection.ruleType
         let payload = connection.rulePayload

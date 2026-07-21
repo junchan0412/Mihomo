@@ -227,7 +227,7 @@ struct DetailSwitchView: View {
         case .networkSecurity:
             NetworkSecurityView()
         case .activity:
-            ActivityView()
+            DetachedActivityRedirectView()
         case .policies:
             PoliciesView()
         case .profiles:
@@ -247,5 +247,18 @@ struct DetailSwitchView: View {
         case .settings:
             SettingsRootView()
         }
+    }
+}
+
+private struct DetachedActivityRedirectView: View {
+    @Environment(\.openWindow) private var openWindow
+    @EnvironmentObject private var store: AppStore
+
+    var body: some View {
+        Color.clear
+            .onAppear {
+                openWindow(id: "connections")
+                store.selectedSection = .overview
+            }
     }
 }

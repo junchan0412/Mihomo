@@ -12,6 +12,8 @@ final class SettingsPresentationTests: XCTestCase {
 
     func testActivityModulesKeepDNSAndTrafficInsideConnectionWorkspace() {
         XCTAssertEqual(ActivityModuleTab.allCases.map(\.title), ["最近的请求", "活动连接", "DNS", "流量统计"])
+        XCTAssertEqual(ActivityDNSFilter.allCases.map(\.title), ["全部", "本地", "系统", "动态"])
+        XCTAssertEqual(ActivityTrafficGrouping.allCases.map(\.title), ["策略", "进程", "网络适配器", "设备", "主机名"])
     }
 
     func testLogCategoriesOmitUnsupportedScriptType() {

@@ -136,6 +136,17 @@ struct MihomoApp: App {
         }
         .defaultSize(width: 920, height: 720)
 
+        Window("连接", id: "connections") {
+            ActivityView()
+                .environmentObject(store)
+                .environmentObject(store.activityStore)
+                .frame(minWidth: 1080, minHeight: 660)
+                .background(WindowIdentifierView(identifier: AppWindowIdentifier.connections))
+        }
+        .defaultSize(width: 1420, height: 820)
+        .windowResizability(.contentMinSize)
+        .windowStyle(.hiddenTitleBar)
+
         Window("连接详情", id: "connection-detail") {
             ConnectionDetailPanelView()
                 .environmentObject(store)
@@ -167,18 +178,22 @@ private struct MenuBarStatusLabel: View {
     @ObservedObject var activityStore: RuntimeActivityStore
 
     var body: some View {
-        HStack(spacing: 4) {
-            MenuBarBrandMark(mode: store.currentMode)
-                .frame(width: 24, height: 18)
+        HStack(spacing: 3) {
+            MenuBarTrafficMark(mode: store.currentMode)
+                .frame(width: 20, height: 18)
 
             if store.settings.showMenuBarTrafficRates {
                 VStack(alignment: .trailing, spacing: -2) {
-                    Text("↓ \(Formatters.rate(activityStore.downloadRate))")
-                    Text("↑ \(Formatters.rate(activityStore.uploadRate))")
+                    Text(Formatters.rate(activityStore.uploadRate))
+                    Text(Formatters.rate(activityStore.downloadRate))
                 }
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .font(.system(size: 8, weight: .medium, design: .monospaced))
                 .lineLimit(1)
                 .fixedSize()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(
+                    "上传 \(Formatters.rate(activityStore.uploadRate))，下载 \(Formatters.rate(activityStore.downloadRate))"
+                )
             }
         }
         .accessibilityLabel("Mihomo · \(modeAccessibilityTitle) · \(store.menuBarTitle)")
@@ -193,40 +208,28 @@ private struct MenuBarStatusLabel: View {
     }
 }
 
-private struct MenuBarBrandMark: View {
-    var mode: String
+private struct MenuBarTrafficMark: View {
+    let mode: String
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            Group {
-                if let image = Self.templateImage {
-                    Image(nsImage: image).resizable().scaledToFit()
-                } else {
-                    MihomoMarkShape().stroke(.primary, style: StrokeStyle(lineWidth: 3.2, lineCap: .round, lineJoin: .round))
+            HStack(alignment: .center, spacing: 1) {
+                ForEach(Array(Self.barHeights.enumerated()), id: \.offset) { _, height in
+                    Capsule(style: .continuous)
+                        .frame(width: 1.8, height: height)
                 }
             }
-                .padding(.trailing, 5)
-                .padding(.vertical, 2)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
 
-            Text(modeLetter)
-                .font(.system(size: 7, weight: .bold, design: .rounded))
-                .foregroundStyle(Color(nsColor: .windowBackgroundColor))
-                .frame(width: 10, height: 10)
-                .background(.primary, in: RoundedRectangle(cornerRadius: 2.5, style: .continuous))
+            Text(MenuBarPresentation.modeLetter(for: mode))
+                .font(.system(size: 5.5, weight: .bold, design: .rounded))
+                .frame(width: 6, height: 6)
         }
+        .foregroundStyle(.primary)
         .accessibilityHidden(true)
     }
 
-    private static let templateImage: NSImage? = {
-        guard let url = Bundle.main.url(forResource: "MenuBarIconTemplate", withExtension: "png"),
-              let image = NSImage(contentsOf: url) else { return nil }
-        image.isTemplate = true
-        return image
-    }()
-
-    private var modeLetter: String {
-        MenuBarPresentation.modeLetter(for: mode)
-    }
+    private static let barHeights: [CGFloat] = [5, 9, 14, 8, 12, 6]
 }
 
 enum MenuBarPresentation {

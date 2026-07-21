@@ -110,7 +110,10 @@ struct MihomoCommands: Commands {
 
         CommandMenu("导航") {
             navigationButton(.overview, key: "1")
-            navigationButton(.activity, key: "2")
+            Button("连接") {
+                openWindow(id: "connections")
+            }
+            .keyboardShortcut("2", modifiers: .command)
             navigationButton(.policies, key: "3")
             navigationButton(.rules, key: "4")
             navigationButton(.profiles, key: "5")

@@ -12,6 +12,7 @@ struct ActivityView: View {
     @State private var selectedFilterID = ActivityConnectionFilter.allID
     @State private var moduleTab: ActivityModuleTab = .recent
     @State private var detailTab: ActivityConnectionDetailTab = .general
+    @State private var showsConnectionDetail = true
     @State private var dnsFilter: ActivityDNSFilter = .all
     @State private var trafficGrouping: ActivityTrafficGrouping = .policy
     @State private var confirmsClearingRecent = false
@@ -135,9 +136,7 @@ struct ActivityView: View {
         }
         .background(MihomoUI.pageBackground)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .navigationTitle("活动")
-        .searchable(text: $filterText, placement: .toolbar, prompt: "搜索连接、客户端、规则或地址")
-        .compatibleSearchFocused($searchIsFocused)
+        .navigationTitle("连接")
         .focusedSceneValue(\.workspaceCommands, commandContext)
         .confirmationDialog("清空最近请求？", isPresented: $confirmsClearingRecent, titleVisibility: .visible) {
             Button("清空记录", role: .destructive) {
@@ -167,6 +166,9 @@ struct ActivityView: View {
         }
         .onChange(of: selectedRowIDs) {
             store.connectionDetailConnectionID = selectedConnection?.id
+            if selectedConnection != nil {
+                showsConnectionDetail = true
+            }
         }
         .onChange(of: grouping) {
             selectedFilterID = ActivityConnectionFilter.allID
@@ -204,7 +206,9 @@ struct ActivityView: View {
                 moduleTabs
                     .frame(minWidth: 480, maxWidth: 720, alignment: .leading)
 
+                Spacer(minLength: 10)
                 connectionCount(rowCount)
+                connectionSearchField
             }
 
             VStack(spacing: 8) {
@@ -214,6 +218,7 @@ struct ActivityView: View {
                 HStack(spacing: 10) {
                     Spacer(minLength: 8)
                     connectionCount(rowCount)
+                    connectionSearchField
                 }
             }
         }
@@ -235,6 +240,36 @@ struct ActivityView: View {
         }
     }
 
+    private var connectionSearchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("搜索", text: $filterText)
+                .textFieldStyle(.plain)
+                .focused($searchIsFocused)
+                .accessibilityLabel("搜索连接、客户端、规则或地址")
+
+            if filterText.isEmpty == false {
+                Button {
+                    filterText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+                .help("清除搜索")
+            }
+        }
+        .padding(.horizontal, 9)
+        .frame(width: 230, height: 28)
+        .background(MihomoUI.mutedFill, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .stroke(MihomoUI.cardStroke, lineWidth: 1)
+        }
+    }
+
     @ViewBuilder
     private func moduleContent(rows: [ConnectionTableRow]) -> some View {
         switch moduleTab {
@@ -242,7 +277,7 @@ struct ActivityView: View {
             connectionTable(rows: rows)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             activityActionBar
-            if let selectedConnection {
+            if let selectedConnection, showsConnectionDetail {
                 ConnectionInlineDetailView(
                     connection: selectedConnection,
                     isActive: selectedConnectionIsActive,
@@ -251,8 +286,8 @@ struct ActivityView: View {
                         selectedRowIDs.removeAll()
                         Task { await store.closeConnection(connection.id) }
                     },
-                    focusRule: { store.focusRule(for: $0) },
-                    focusResources: { store.selectedSection = .resources }
+                    focusRule: focusRuleInMain,
+                    focusResources: focusResourcesInMain
                 )
                 .frame(height: 292)
             }
@@ -302,20 +337,25 @@ struct ActivityView: View {
 
             Button("查看规则") {
                 guard let selectedConnection else { return }
-                store.focusRule(for: selectedConnection)
+                focusRuleInMain(selectedConnection)
             }
             .disabled(selectedConnection == nil)
 
             Button("Provider") {
-                store.selectedSection = .resources
+                focusResourcesInMain()
             }
             .disabled(selectedConnection == nil)
 
             Spacer()
 
-            Image(systemName: selectedConnection == nil ? "chevron.down" : "chevron.up")
-                .foregroundStyle(.secondary)
-                .padding(.trailing, 2)
+            Button {
+                showsConnectionDetail.toggle()
+            } label: {
+                Image(systemName: showsConnectionDetail ? "chevron.down" : "chevron.up")
+            }
+            .buttonStyle(.borderless)
+            .help(showsConnectionDetail ? "收起连接详情" : "展开连接详情")
+            .disabled(selectedConnection == nil)
         }
         .font(MihomoUI.Fonts.bodyMedium)
         .buttonStyle(.bordered)
@@ -337,7 +377,7 @@ struct ActivityView: View {
             columns: [
                 .init(title: "ID", width: 74, textColor: { $0.statusColor }) { $0.idText },
                 .init(title: "时间", width: 86) { $0.timeText },
-                .init(title: "客户端", width: 150) { $0.clientText },
+                .init(title: "客户端", width: 150, image: { $0.clientIcon }) { $0.clientText },
                 .init(title: "规则", width: 220) { $0.ruleText },
                 .init(title: "策略", width: 150) { $0.policyText },
                 .init(title: "上传", width: 78) { $0.uploadText },
@@ -395,10 +435,10 @@ struct ActivityView: View {
             },
             .init("查看规则", isEnabled: { $0.count == 1 }) { rows in
                 guard let connection = rows.first?.connection else { return }
-                store.focusRule(for: connection)
+                focusRuleInMain(connection)
             },
             .init("定位 Provider", isEnabled: { $0.count == 1 }) { _ in
-                store.selectedSection = .resources
+                focusResourcesInMain()
             }
         ]
     }
@@ -407,7 +447,6 @@ struct ActivityView: View {
         WorkspaceCommandContext(
             search: {
                 searchIsFocused = true
-                MihomoSearchFocus.request()
             },
             refresh: { Task { await store.refreshController() } },
             activateSelection: searchIsFocused || selectedConnection == nil ? nil : openSelectedConnectionDetail,
@@ -420,6 +459,16 @@ struct ActivityView: View {
         guard let selectedConnection else { return }
         store.connectionDetailConnectionID = selectedConnection.id
         openWindow(id: "connection-detail")
+    }
+
+    private func focusRuleInMain(_ connection: ConnectionItem) {
+        store.focusRule(for: connection)
+        MainWindowPresenter.present(openWindow: openWindow)
+    }
+
+    private func focusResourcesInMain() {
+        store.selectedSection = .resources
+        MainWindowPresenter.present(openWindow: openWindow)
     }
 
     private func requestCloseSelectedConnections() {

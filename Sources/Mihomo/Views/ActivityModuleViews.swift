@@ -3,6 +3,8 @@ import SwiftUI
 
 enum ActivityDNSFilter: String, CaseIterable, Identifiable {
     case all
+    case local
+    case system
     case dynamic
 
     var id: String { rawValue }
@@ -10,6 +12,8 @@ enum ActivityDNSFilter: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .all: return "全部"
+        case .local: return "本地"
+        case .system: return "系统"
         case .dynamic: return "动态"
         }
     }
@@ -18,6 +22,8 @@ enum ActivityDNSFilter: String, CaseIterable, Identifiable {
 enum ActivityTrafficGrouping: String, CaseIterable, Identifiable {
     case policy
     case process
+    case networkAdapter
+    case device
     case host
 
     var id: String { rawValue }
@@ -26,6 +32,8 @@ enum ActivityTrafficGrouping: String, CaseIterable, Identifiable {
         switch self {
         case .policy: return "策略"
         case .process: return "进程"
+        case .networkAdapter: return "网络适配器"
+        case .device: return "设备"
         case .host: return "主机名"
         }
     }
@@ -34,6 +42,8 @@ enum ActivityTrafficGrouping: String, CaseIterable, Identifiable {
         switch self {
         case .policy: return \.policy
         case .process: return \.process
+        case .networkAdapter: return \.network
+        case .device: return \.source
         case .host: return \.host
         }
     }
@@ -76,6 +86,7 @@ struct ActivityDNSView: View {
         return Dictionary(grouping: connections.filter { !$0.host.isEmpty }, by: \.host)
             .map { host, values in
                 ActivityDNSRow(
+                    kind: .dynamic,
                     host: host,
                     addresses: Array(Set(values.flatMap {
                         [$0.destinationIP, $0.remoteDestination].filter { !$0.isEmpty }
@@ -83,6 +94,7 @@ struct ActivityDNSView: View {
                     server: values.first?.sourceIP ?? "-"
                 )
             }
+            .filter { filter == .all || $0.kind == filter }
             .filter { row in
                 guard !query.isEmpty else { return true }
                 return row.host.localizedCaseInsensitiveContains(query)
@@ -98,7 +110,7 @@ struct ActivityDNSView: View {
                 rows: rows,
                 selection: .constant(nil),
                 columns: [
-                    .init(title: "类型", width: 82) { _ in "动态" },
+                    .init(title: "类型", width: 82) { $0.kind.title },
                     .init(title: "域名", width: 300) { $0.host },
                     .init(title: "值", width: 460) { $0.addresses.isEmpty ? "-" : $0.addresses.joined(separator: ", ") },
                     .init(title: "DNS 服务器", width: 180) { $0.server },
@@ -112,7 +124,7 @@ struct ActivityDNSView: View {
                     ContentUnavailableView(
                         "暂无 DNS 记录",
                         systemImage: "network",
-                        description: Text("核心返回连接后，这里会显示已观测到的域名与地址。")
+                        description: Text(dnsEmptyDescription)
                     )
                 }
             }
@@ -122,7 +134,7 @@ struct ActivityDNSView: View {
                     Task { await store.refreshController() }
                 }
                 Spacer()
-                Text("显示 \(rows.count) 条动态 DNS 观测")
+                Text("显示 \(rows.count) 条\(filter.title) DNS 记录")
                     .foregroundStyle(.secondary)
             }
             .font(MihomoUI.Fonts.bodyMedium)
@@ -134,6 +146,17 @@ struct ActivityDNSView: View {
             .overlay(alignment: .top) {
                 Rectangle().fill(MihomoUI.cardStroke).frame(height: 1)
             }
+        }
+    }
+
+    private var dnsEmptyDescription: String {
+        switch filter {
+        case .all, .dynamic:
+            return "核心返回连接后，这里会显示已观测到的域名与地址。"
+        case .local:
+            return "当前连接快照中没有本地 DNS 记录。"
+        case .system:
+            return "当前连接快照中没有系统 DNS 记录。"
         }
     }
 }
@@ -263,6 +286,7 @@ private struct ActivityTypeSidebar<Item: Identifiable & Hashable>: View {
 }
 
 private struct ActivityDNSRow: Identifiable, Hashable {
+    var kind: ActivityDNSFilter
     var host: String
     var addresses: [String]
     var server: String
