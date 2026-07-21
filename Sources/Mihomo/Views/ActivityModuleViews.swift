@@ -97,9 +97,12 @@ struct ActivityDNSView: View {
             .filter { filter == .all || $0.kind == filter }
             .filter { row in
                 guard !query.isEmpty else { return true }
-                return row.host.localizedCaseInsensitiveContains(query)
-                    || row.addresses.contains { $0.localizedCaseInsensitiveContains(query) }
-                    || row.server.localizedCaseInsensitiveContains(query)
+                let hostMatches = row.host.localizedCaseInsensitiveContains(query)
+                let addressMatches = row.addresses.contains { address in
+                    address.localizedCaseInsensitiveContains(query)
+                }
+                let serverMatches = row.server.localizedCaseInsensitiveContains(query)
+                return hostMatches || addressMatches || serverMatches
             }
             .sorted { $0.host.localizedStandardCompare($1.host) == .orderedAscending }
     }
