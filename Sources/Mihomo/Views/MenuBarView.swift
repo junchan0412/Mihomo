@@ -4,7 +4,6 @@ import SwiftUI
 struct MenuBarView: View {
     @Environment(\.openWindow) private var openWindow
     @EnvironmentObject private var store: AppStore
-    @AppStorage("menuBar.showTrafficRates") private var showsTrafficRates = true
 
     var body: some View {
         VStack {
@@ -21,7 +20,7 @@ struct MenuBarView: View {
                 modeButton("直连", mode: "direct")
             }
 
-            Toggle("显示上传下载速率", isOn: $showsTrafficRates)
+            Toggle("显示上传下载速率", isOn: $store.settings.showMenuBarTrafficRates)
 
             Button {
                 Task { await store.toggleCore() }

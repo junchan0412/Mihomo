@@ -55,6 +55,7 @@ struct DiagnosticsView: View {
             }
         }
         .navigationTitle("诊断")
+        .background(MihomoUI.pageBackground)
         .focusedSceneValue(
             \.workspaceCommands,
             WorkspaceCommandContext(

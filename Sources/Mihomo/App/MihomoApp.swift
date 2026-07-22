@@ -178,9 +178,8 @@ private struct MenuBarStatusLabel: View {
     @ObservedObject var activityStore: RuntimeActivityStore
 
     var body: some View {
-        HStack(spacing: 3) {
+       HStack(spacing: 3) {
             MenuBarTrafficMark(mode: store.currentMode)
-                .frame(width: 20, height: 18)
 
             if store.settings.showMenuBarTrafficRates {
                 VStack(alignment: .trailing, spacing: -2) {
@@ -213,23 +212,41 @@ private struct MenuBarTrafficMark: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            HStack(alignment: .center, spacing: 1) {
-                ForEach(Array(Self.barHeights.enumerated()), id: \.offset) { _, height in
-                    Capsule(style: .continuous)
-                        .frame(width: 1.8, height: height)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            MihomoMarkShape()
+                .stroke(
+                    LinearGradient(
+                        colors: [.cyan, .blue, .purple],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    style: StrokeStyle(
+                        lineWidth: 2,
+                        lineCap: .round,
+                        lineJoin: .round
+                    )
+                )
+                .frame(width: 14, height: 14)
+                .padding(1)
 
             Text(MenuBarPresentation.modeLetter(for: mode))
                 .font(.system(size: 5.5, weight: .bold, design: .rounded))
+                .foregroundStyle(modeColor)
                 .frame(width: 6, height: 6)
+                .background(
+                    Circle().fill(Color(nsColor: .controlBackgroundColor))
+                )
         }
-        .foregroundStyle(.primary)
+        .frame(width: 20, height: 18)
         .accessibilityHidden(true)
     }
 
-    private static let barHeights: [CGFloat] = [5, 9, 14, 8, 12, 6]
+    private var modeColor: Color {
+        switch mode.lowercased() {
+        case "global": return .blue
+        case "direct": return .green
+        default: return .orange
+        }
+    }
 }
 
 enum MenuBarPresentation {

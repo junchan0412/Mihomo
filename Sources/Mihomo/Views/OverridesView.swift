@@ -30,6 +30,7 @@ struct OverridesView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("覆写")
+        .background(MihomoUI.pageBackground)
         .searchable(text: $searchText, placement: .toolbar, prompt: "搜索覆写名称、来源或内容")
         .compatibleSearchFocused($searchIsFocused)
         .focusedSceneValue(\.workspaceCommands, commandContext)

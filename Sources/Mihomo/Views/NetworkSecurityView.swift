@@ -36,6 +36,7 @@ struct NetworkSecurityView: View {
             }
         }
         .navigationTitle("网络")
+        .background(MihomoUI.pageBackground)
         .focusedSceneValue(
             \.workspaceCommands,
             WorkspaceCommandContext(refresh: { store.refreshNetworkTakeoverStates(force: true) })

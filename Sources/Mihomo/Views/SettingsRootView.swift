@@ -29,6 +29,7 @@ struct SettingsRootView: View {
         .safeAreaInset(edge: .bottom) { footer }
         .frame(minWidth: 760, minHeight: 600)
         .navigationTitle("设置")
+        .background(MihomoUI.pageBackground)
         .onAppear { synchronizeDraft(with: store.settings, force: true) }
         .onReceive(store.$settings) { synchronizeDraft(with: $0, force: false) }
     }

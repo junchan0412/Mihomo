@@ -59,6 +59,7 @@ struct RulesView: View {
             .padding(16)
         }
         .navigationTitle("规则")
+        .background(MihomoUI.pageBackground)
         .searchable(text: $searchText, placement: .toolbar, prompt: "搜索规则类型、值或策略")
         .compatibleSearchFocused($searchIsFocused)
         .focusedSceneValue(\.workspaceCommands, commandContext)

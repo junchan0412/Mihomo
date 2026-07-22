@@ -61,6 +61,7 @@ struct ResourcesView: View {
         .padding(.vertical, MihomoUI.pageVerticalPadding)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle("资源")
+        .background(MihomoUI.pageBackground)
         .searchable(text: $searchText, placement: .toolbar, prompt: "搜索 Provider 或路径")
         .compatibleSearchFocused($searchIsFocused)
         .focusedSceneValue(\.workspaceCommands, commandContext)

@@ -60,6 +60,7 @@ struct AdvancedView: View {
         }
         .safeAreaInset(edge: .bottom) { footer }
         .navigationTitle("高级工具")
+        .background(MihomoUI.pageBackground)
         .onAppear {
             synchronizeDraft(with: store.settings, force: true)
             store.refreshConfigArtifacts()
