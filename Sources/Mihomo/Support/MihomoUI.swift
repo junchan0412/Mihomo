@@ -12,6 +12,7 @@ enum MihomoUI {
     enum Motion {
         static let quick: Animation = .easeOut(duration: 0.14)
         static let snappy: Animation = .snappy(duration: 0.22)
+        static let soft: Animation = .easeInOut(duration: 0.18)
     }
 
     enum Fonts {
@@ -64,5 +65,17 @@ extension View {
                 RoundedRectangle(cornerRadius: MihomoUI.cornerRadius, style: .continuous)
                     .stroke(MihomoUI.cardStroke, lineWidth: 1)
             }
+    }
+
+    @ViewBuilder
+    func mihomoInteractiveMotion(
+        reduceMotion: Bool,
+        animation: Animation = MihomoUI.Motion.soft
+    ) -> some View {
+        if reduceMotion {
+            self.transaction { $0.animation = nil }
+        } else {
+            self.animation(animation, value: reduceMotion == false)
+        }
     }
 }

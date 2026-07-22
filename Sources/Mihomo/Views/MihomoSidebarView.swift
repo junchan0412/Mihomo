@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MihomoSidebarView: View {
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var activityStore: RuntimeActivityStore
     @Binding var selection: AppSection
@@ -24,6 +25,7 @@ struct MihomoSidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .animation(reduceMotion ? nil : MihomoUI.Motion.soft, value: selection)
         .safeAreaInset(edge: .top, spacing: 0) {
             brandHeader
         }
@@ -75,6 +77,7 @@ struct MihomoSidebarView: View {
                     Text("\(activityStore.connections.count)")
                         .font(.caption.weight(.semibold))
                         .monospacedDigit()
+                        .contentTransition(.numericText())
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 2)

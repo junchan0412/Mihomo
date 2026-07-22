@@ -14,6 +14,8 @@ final class RuntimeActivityStore: ObservableObject {
     private var previousConnectionTraffic: [String: (upload: Int64, download: Int64)] = [:]
     private var lastTrafficSampleAppendAt = Date.distantPast
     private var lastConnectionsPublishAt = Date.distantPast
+    private var activeConnectionIDs: Set<String> = []
+    private var recentConnectionsByID: [String: ConnectionItem] = [:]
 
     private(set) var totalUploadBytes: Int64 = 0
     private(set) var totalDownloadBytes: Int64 = 0
@@ -52,6 +54,7 @@ final class RuntimeActivityStore: ObservableObject {
             lastConnectionsPublishAt = now
             connections = items
         }
+        activeConnectionIDs = Set(items.map(\.id))
     }
 
     func connectionStructureChanged(from oldItems: [ConnectionItem], to newItems: [ConnectionItem]) -> Bool {
@@ -74,6 +77,10 @@ final class RuntimeActivityStore: ObservableObject {
             }
         }
         return false
+    }
+
+    func isActiveConnectionID(_ id: String) -> Bool {
+        activeConnectionIDs.contains(id)
     }
 
     func updateTraffic(
@@ -137,6 +144,7 @@ final class RuntimeActivityStore: ObservableObject {
 
     func clearRecentConnections() {
         recentConnections.removeAll()
+        recentConnectionsByID.removeAll()
     }
 
     func policyTrafficTotals(since date: Date) -> [PolicyTrafficTotals] {
@@ -161,10 +169,11 @@ final class RuntimeActivityStore: ObservableObject {
     }
 
     private func mergeRecentConnections(_ items: [ConnectionItem]) {
-        var merged = Dictionary(uniqueKeysWithValues: recentConnections.map { ($0.id, $0) })
+        var merged = recentConnectionsByID
         for item in items {
             merged[item.id] = item
         }
+        recentConnectionsByID = merged
         recentConnections = merged.values
             .sorted { lhs, rhs in
                 switch (lhs.start, rhs.start) {
@@ -176,6 +185,9 @@ final class RuntimeActivityStore: ObservableObject {
             }
             .prefix(500)
             .map { $0 }
+        if recentConnections.count < merged.count {
+            recentConnectionsByID = Dictionary(uniqueKeysWithValues: recentConnections.map { ($0.id, $0) })
+        }
     }
 
     private func recordPolicyTraffic(_ items: [ConnectionItem], now: Date = Date()) {

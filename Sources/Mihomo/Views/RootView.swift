@@ -15,8 +15,8 @@ struct RootView: View {
             DetailSwitchView(section: store.selectedSection)
                 .id(store.selectedSection)
                 .navigationTitle("")
-                .transition(.opacity)
-                .animation(reduceMotion ? nil : MihomoUI.Motion.quick, value: store.selectedSection)
+                .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .trailing)), removal: .opacity))
+                .animation(reduceMotion ? nil : MihomoUI.Motion.soft, value: store.selectedSection)
         }
         .toolbar(id: "main") {
             ToolbarItem(id: "core-control", placement: .primaryAction) {

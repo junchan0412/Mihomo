@@ -93,3 +93,25 @@ final class RuntimeActivityStoreTests: XCTestCase {
         ]))
     }
 }
+
+@MainActor
+final class RuntimeActivityStoreActiveSetTests: XCTestCase {
+    func testActiveConnectionLookupIsO1SetBased() {
+        let store = RuntimeActivityStore()
+        let item = ConnectionItem(
+            id: "abc",
+            host: "example.com",
+            process: "Safari",
+            network: "tcp",
+            rule: "MATCH",
+            chain: "DIRECT",
+            upload: 1,
+            download: 2
+        )
+        store.replaceConnections([item])
+        XCTAssertTrue(store.isActiveConnectionID("abc"))
+        XCTAssertFalse(store.isActiveConnectionID("missing"))
+        store.replaceConnections([])
+        XCTAssertFalse(store.isActiveConnectionID("abc"))
+    }
+}

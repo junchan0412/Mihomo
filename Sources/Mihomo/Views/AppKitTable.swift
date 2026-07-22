@@ -388,8 +388,33 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
                 lastRows = parent.rows
                 return
             }
+
+            let previousSignature = rowSignature
+            let previousRows = lastRows
             lastRows = parent.rows
             rowSignature = nextSignature
+
+            // Prefer in-place row reloads when the set of IDs is stable.
+            // This keeps scroll position and selection visually smooth under high-frequency traffic updates.
+            if previousSignature.isEmpty == false,
+               previousRows.count == parent.rows.count,
+               zip(previousRows, parent.rows).allSatisfy({ $0.id == $1.id }) {
+                var changed = IndexSet()
+                for index in previousSignature.indices where previousSignature[index] != nextSignature[index] {
+                    changed.insert(index)
+                }
+                if changed.isEmpty {
+                    return
+                }
+                let columns = IndexSet(integersIn: 0..<max(tableView.numberOfColumns, 0))
+                if columns.isEmpty {
+                    tableView.reloadData()
+                } else {
+                    tableView.reloadData(forRowIndexes: changed, columnIndexes: columns)
+                }
+                return
+            }
+
             tableView.reloadData()
         }
 

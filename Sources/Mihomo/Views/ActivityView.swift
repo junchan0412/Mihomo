@@ -18,6 +18,8 @@ struct ActivityView: View {
     @State private var confirmsClearingRecent = false
     @State private var confirmsClosingAll = false
     @State private var confirmsClosingSelection = false
+    @State private var cachedTableRows: [ConnectionTableRow] = []
+    @State private var tableRowsFingerprint = ""
 
     private var connectionSource: [ConnectionItem] {
         switch moduleTab {
@@ -61,7 +63,18 @@ struct ActivityView: View {
     }
 
     private var tableRows: [ConnectionTableRow] {
-        filteredConnections
+        cachedTableRows
+    }
+
+    private func rebuildTableRowsIfNeeded() {
+        let source = filteredConnections
+        let fingerprint = source.map { item in
+            "\(item.id)|\(item.upload)|\(item.download)|\(item.rule)|\(item.chain)|\(item.host)|\(item.process)|\(activityStore.isActiveConnectionID(item.id) ? 1 : 0)"
+        }.joined(separator: "\n") + "|\(filterText)|\(selectedFilterID)|\(moduleTab.rawValue)|\(grouping.rawValue)"
+        guard fingerprint != tableRowsFingerprint else { return }
+
+        tableRowsFingerprint = fingerprint
+        cachedTableRows = source
             .sorted { lhs, rhs in
                 switch (lhs.start, rhs.start) {
                 case let (lhs?, rhs?):
@@ -77,7 +90,7 @@ struct ActivityView: View {
             .enumerated().map { offset, connection in
                 ConnectionTableRow(
                     connection: connection,
-                    isActive: activityStore.connections.contains { $0.id == connection.id },
+                    isActive: activityStore.isActiveConnectionID(connection.id),
                     sequence: offset + 1
                 )
             }
@@ -96,14 +109,12 @@ struct ActivityView: View {
     }
 
     private var selectedActiveConnections: [ConnectionItem] {
-        selectedRows.map(\.connection).filter { connection in
-            activityStore.connections.contains { $0.id == connection.id }
-        }
+        selectedRows.map(\.connection).filter { activityStore.isActiveConnectionID($0.id) }
     }
 
     private var selectedConnectionIsActive: Bool {
         guard let selectedConnection else { return false }
-        return activityStore.connections.contains { $0.id == selectedConnection.id }
+        return activityStore.isActiveConnectionID(selectedConnection.id)
     }
 
     private var moduleItemCount: Int {
@@ -137,6 +148,13 @@ struct ActivityView: View {
         .background(MihomoUI.pageBackground)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("连接")
+        .onAppear { rebuildTableRowsIfNeeded() }
+        .onChange(of: activityStore.connections) { rebuildTableRowsIfNeeded() }
+        .onChange(of: activityStore.recentConnections) { rebuildTableRowsIfNeeded() }
+        .onChange(of: filterText) { rebuildTableRowsIfNeeded() }
+        .onChange(of: selectedFilterID) { rebuildTableRowsIfNeeded() }
+        .onChange(of: moduleTab) { rebuildTableRowsIfNeeded() }
+        .onChange(of: grouping) { rebuildTableRowsIfNeeded() }
         .focusedSceneValue(\.workspaceCommands, commandContext)
         .confirmationDialog("清空最近请求？", isPresented: $confirmsClearingRecent, titleVisibility: .visible) {
             Button("清空记录", role: .destructive) {
@@ -424,7 +442,7 @@ struct ActivityView: View {
             .init(
                 "关闭所选连接",
                 isDestructive: true,
-                isEnabled: { rows in rows.contains(where: { row in activityStore.connections.contains { $0.id == row.id } }) }
+                isEnabled: { rows in rows.contains(where: { activityStore.isActiveConnectionID($0.id) }) }
             ) { _ in
                 requestCloseSelectedConnections()
             },

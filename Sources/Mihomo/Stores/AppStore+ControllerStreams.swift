@@ -7,7 +7,21 @@ extension AppStore {
         else {
             return 1_000_000_000
         }
-        return 3_000_000_000
+        return 5_000_000_000
+    }
+
+    var controllerMetadataRefreshIntervalNanoseconds: UInt64 {
+        guard let controllerEventStreamLastEventAt,
+              Date().timeIntervalSince(controllerEventStreamLastEventAt) < 8
+        else {
+            return 2_000_000_000
+        }
+        return 12_000_000_000
+    }
+
+    var isControllerStreamHealthy: Bool {
+        guard let controllerEventStreamLastEventAt else { return false }
+        return Date().timeIntervalSince(controllerEventStreamLastEventAt) < 8
     }
 
     func updateTrafficRates(uploadTotal: Int64, downloadTotal: Int64) {
