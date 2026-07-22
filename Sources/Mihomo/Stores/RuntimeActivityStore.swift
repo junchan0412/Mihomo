@@ -48,7 +48,7 @@ final class RuntimeActivityStore: ObservableObject {
         // Keep totals fresh, but throttle full table publishes to cut AppKit/SwiftUI thrash.
         let structureChanged = connectionStructureChanged(from: connections, to: items)
         let now = Date()
-        if structureChanged || now.timeIntervalSince(lastConnectionsPublishAt) >= 0.75 || connections.isEmpty {
+        if structureChanged || now.timeIntervalSince(lastConnectionsPublishAt) >= 0.4 || connections.isEmpty {
             lastConnectionsPublishAt = now
             connections = items
         }
