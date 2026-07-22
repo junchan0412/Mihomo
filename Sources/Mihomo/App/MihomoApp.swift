@@ -178,7 +178,7 @@ private struct MenuBarStatusLabel: View {
     @ObservedObject var activityStore: RuntimeActivityStore
 
     var body: some View {
-       HStack(spacing: 3) {
+        HStack(spacing: 4) {
             MenuBarTrafficMark(mode: store.currentMode)
 
             if store.settings.showMenuBarTrafficRates {
@@ -188,7 +188,11 @@ private struct MenuBarStatusLabel: View {
                 }
                 .font(.system(size: 8, weight: .medium, design: .monospaced))
                 .lineLimit(1)
-                .fixedSize()
+                .monospacedDigit()
+                .frame(minWidth: 42, alignment: .trailing)
+                .contentTransition(.numericText())
+                .animation(MihomoUI.Motion.quick, value: activityStore.uploadRate)
+                .animation(MihomoUI.Motion.quick, value: activityStore.downloadRate)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(
                     "上传 \(Formatters.rate(activityStore.uploadRate))，下载 \(Formatters.rate(activityStore.downloadRate))"

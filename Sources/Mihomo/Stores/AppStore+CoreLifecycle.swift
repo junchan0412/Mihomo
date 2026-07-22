@@ -135,9 +135,9 @@ extension AppStore {
             await preloadPolicyGroupIcons(for: loadedGroups)
             publishIfChanged(\.proxyGroups, loadedGroups)
             let (items, up, down) = try await connectionResult
-            let connectionsChanged = connections != items
-            publishIfChanged(\.connections, items)
-            if connectionsChanged {
+            let structureChanged = activityStore.connectionStructureChanged(from: connections, to: items)
+            activityStore.replaceConnections(items)
+            if structureChanged {
                 updateRuleProviderHitStatistics()
             }
             updateTrafficRates(uploadTotal: up, downloadTotal: down)

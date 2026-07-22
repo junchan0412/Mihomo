@@ -104,23 +104,23 @@ struct OverviewView: View {
         OverviewPanel(title: "流量时间轴", systemImage: "chart.bar", tint: .indigo) {
             VStack(spacing: 8) {
                 HStack(alignment: .bottom, spacing: 4) {
-                    ForEach(Array(timelineSamples.enumerated()), id: \.element.id) { index, sample in
-                        let mix = timelineRoutingMix(at: index)
+                    ForEach(timelineBars) { bar in
                         VStack(spacing: 0) {
                             Rectangle()
                                 .fill(proxyRoutingColor)
-                                .frame(height: timelineHeight(for: sample) * mix.proxyRatio)
+                                .frame(height: bar.height * bar.mix.proxyRatio)
                             Rectangle()
                                 .fill(directRoutingColor)
-                                .frame(height: timelineHeight(for: sample) * mix.directRatio)
+                                .frame(height: bar.height * bar.mix.directRatio)
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 2))
                         .frame(maxWidth: .infinity)
-                        .frame(height: timelineHeight(for: sample), alignment: .bottom)
-                        .help("\(timelineTimeFormatter.string(from: sample.date)) · 直连 \(Formatters.bytes(mix.directBytes)) · 代理 \(Formatters.bytes(mix.proxyBytes)) · ↓ \(Formatters.rate(sample.downloadRate)) · ↑ \(Formatters.rate(sample.uploadRate))")
+                        .frame(height: bar.height, alignment: .bottom)
+                        .help(bar.helpText)
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: 82, maxHeight: 82, alignment: .bottomLeading)
+                .drawingGroup(opaque: false)
 
                 HStack {
                     ForEach(timelineAxisLabels, id: \.date) { label in
@@ -198,33 +198,63 @@ struct OverviewView: View {
     private var timelineAxisLabels: [(date: Date, text: String)] {
         guard timelineSamples.isEmpty == false else { return [] }
         let indices = Set([0, timelineSamples.count / 2, timelineSamples.count - 1]).sorted()
-        return indices.map { (timelineSamples[$0].date, timelineTimeFormatter.string(from: timelineSamples[$0].date)) }
+        return indices.map { (timelineSamples[$0].date, Self.timelineTimeFormatter.string(from: timelineSamples[$0].date)) }
     }
 
-    private var timelineTimeFormatter: DateFormatter {
+    private var timelineBars: [TimelineBarItem] {
+        let samples = timelineSamples
+        guard samples.isEmpty == false else { return [] }
+
+        let maxValue = max(samples.map { max($0.downloadRate, $0.uploadRate) }.max() ?? 1, 1)
+        let policySamples = activityStore.policyTrafficSamples
+        let fallbackMix = TimelineRoutingMix(directBytes: directTrafficBytes, proxyBytes: proxyTrafficBytes)
+
+        return samples.enumerated().map { index, sample in
+            let mix = timelineRoutingMix(
+                samples: samples,
+                policySamples: policySamples,
+                index: index,
+                fallback: fallbackMix
+            )
+            let height = max(8, CGFloat(max(sample.downloadRate, sample.uploadRate)) / CGFloat(maxValue) * 104)
+            return TimelineBarItem(
+                id: sample.id,
+                height: height,
+                mix: mix,
+                helpText: "\(Self.timelineTimeFormatter.string(from: sample.date)) · 直连 \(Formatters.bytes(mix.directBytes)) · 代理 \(Formatters.bytes(mix.proxyBytes)) · ↓ \(Formatters.rate(sample.downloadRate)) · ↑ \(Formatters.rate(sample.uploadRate))"
+            )
+        }
+    }
+
+    private static let timelineTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
         formatter.dateFormat = "HH:mm:ss"
         return formatter
-    }
+    }()
 
-    private func timelineRoutingMix(at index: Int) -> TimelineRoutingMix {
-        let sample = timelineSamples[index]
+    private func timelineRoutingMix(
+        samples: [TrafficSample],
+        policySamples: [PolicyTrafficSample],
+        index: Int,
+        fallback: TimelineRoutingMix
+    ) -> TimelineRoutingMix {
+        let sample = samples[index]
         let lowerBound: Date
         let upperBound: Date
 
         if index > 0 {
-            lowerBound = Date(timeIntervalSince1970: (timelineSamples[index - 1].date.timeIntervalSince1970 + sample.date.timeIntervalSince1970) / 2)
+            lowerBound = Date(timeIntervalSince1970: (samples[index - 1].date.timeIntervalSince1970 + sample.date.timeIntervalSince1970) / 2)
         } else {
             lowerBound = sample.date.addingTimeInterval(-1)
         }
-        if index + 1 < timelineSamples.count {
-            upperBound = Date(timeIntervalSince1970: (sample.date.timeIntervalSince1970 + timelineSamples[index + 1].date.timeIntervalSince1970) / 2)
+        if index + 1 < samples.count {
+            upperBound = Date(timeIntervalSince1970: (sample.date.timeIntervalSince1970 + samples[index + 1].date.timeIntervalSince1970) / 2)
         } else {
             upperBound = sample.date.addingTimeInterval(1)
         }
 
-        let bucket = activityStore.policyTrafficSamples.filter { $0.date >= lowerBound && $0.date < upperBound }
+        let bucket = policySamples.filter { $0.date >= lowerBound && $0.date < upperBound }
         let direct = bucket.filter { TimelineRoutingMix.isDirect(policy: $0.policy) }
             .reduce(Int64(0)) { $0 + $1.uploadBytes + $1.downloadBytes }
         let proxy = bucket.filter { TimelineRoutingMix.isDirect(policy: $0.policy) == false }
@@ -233,13 +263,7 @@ struct OverviewView: View {
         if direct + proxy > 0 {
             return TimelineRoutingMix(directBytes: direct, proxyBytes: proxy)
         }
-        return TimelineRoutingMix(directBytes: directTrafficBytes, proxyBytes: proxyTrafficBytes)
-    }
-
-    private func timelineHeight(for sample: TrafficSample) -> CGFloat {
-        let maxValue = max(timelineSamples.map { max($0.downloadRate, $0.uploadRate) }.max() ?? 1, 1)
-        let value = max(sample.downloadRate, sample.uploadRate)
-        return max(8, CGFloat(value) / CGFloat(maxValue) * 104)
+        return fallback
     }
 }
 
@@ -337,4 +361,11 @@ struct TimelineRoutingMix: Equatable {
         let normalized = policy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return normalized == "direct" || normalized == "直连"
     }
+}
+
+private struct TimelineBarItem: Identifiable {
+    var id: String
+    var height: CGFloat
+    var mix: TimelineRoutingMix
+    var helpText: String
 }

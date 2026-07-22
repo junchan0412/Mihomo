@@ -5,7 +5,6 @@ struct TrafficGraphView: View {
 
     var body: some View {
         let maxValue = max(samples.map { max($0.uploadRate, $0.downloadRate) }.max() ?? 1, 1)
-
         Canvas { context, size in
             let topInset: CGFloat = 30
             let bottomInset: CGFloat = 12
@@ -23,17 +22,18 @@ struct TrafficGraphView: View {
                 context: context,
                 graphRect: graphRect,
                 maxValue: maxValue,
-                values: samples.map(\.downloadRate),
+                values: downloadValues,
                 color: .blue
             )
             drawLine(
                 context: context,
                 graphRect: graphRect,
                 maxValue: maxValue,
-                values: samples.map(\.uploadRate),
+                values: uploadValues,
                 color: .green
             )
         }
+        .drawingGroup(opaque: false)
         .overlay(alignment: .topLeading) {
             HStack(spacing: 14) {
                 MetricLegend(title: "下载", value: Formatters.rate(currentDownload), systemImage: "arrow.down", color: .blue)
@@ -46,6 +46,7 @@ struct TrafficGraphView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
         }
+        .animation(nil, value: samples.count)
     }
 
     private var currentDownload: Int64 {
@@ -54,6 +55,14 @@ struct TrafficGraphView: View {
 
     private var currentUpload: Int64 {
         samples.last?.uploadRate ?? 0
+    }
+
+    private var downloadValues: [Int64] {
+        samples.map(\.downloadRate)
+    }
+
+    private var uploadValues: [Int64] {
+        samples.map(\.uploadRate)
     }
 
     private func drawGrid(context: GraphicsContext, graphRect: CGRect, maxValue: Int64) {

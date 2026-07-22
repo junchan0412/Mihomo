@@ -348,10 +348,13 @@ struct ConnectionItem: Identifiable, Hashable {
 }
 
 struct TrafficSample: Identifiable, Hashable {
-    var id = UUID()
-    var date = Date()
+    var date: Date = Date()
     var uploadRate: Int64
     var downloadRate: Int64
+
+    var id: String {
+        "\(date.timeIntervalSince1970)-\(uploadRate)-\(downloadRate)"
+    }
 }
 
 struct PolicyTrafficSample: Identifiable, Hashable {

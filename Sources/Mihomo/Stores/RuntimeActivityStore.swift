@@ -12,6 +12,8 @@ final class RuntimeActivityStore: ObservableObject {
     @Published var eventStreamStatus = "轮询"
 
     private var previousConnectionTraffic: [String: (upload: Int64, download: Int64)] = [:]
+    private var lastTrafficSampleAppendAt = Date.distantPast
+    private var lastConnectionsPublishAt = Date.distantPast
 
     private(set) var totalUploadBytes: Int64 = 0
     private(set) var totalDownloadBytes: Int64 = 0
@@ -27,7 +29,10 @@ final class RuntimeActivityStore: ObservableObject {
     }
 
     func replaceConnections(_ items: [ConnectionItem]) {
-        guard connections != items else { return }
+        if connections == items {
+            return
+        }
+
         recordPolicyTraffic(items)
         mergeRecentConnections(items)
         totalUploadBytes = items.reduce(Int64(0)) { $0 + $1.upload }
@@ -38,7 +43,96 @@ final class RuntimeActivityStore: ObservableObject {
             let isDirect = routing.contains("direct") || routing.contains("直连")
             return isDirect ? total + connection.download + connection.upload : total
         }
-        connections = items
+
+        // High-frequency stream frames often only change byte counters.
+        // Keep totals fresh, but throttle full table publishes to cut AppKit/SwiftUI thrash.
+        let structureChanged = connectionStructureChanged(from: connections, to: items)
+        let now = Date()
+        if structureChanged || now.timeIntervalSince(lastConnectionsPublishAt) >= 0.75 || connections.isEmpty {
+            lastConnectionsPublishAt = now
+            connections = items
+        }
+    }
+
+    func connectionStructureChanged(from oldItems: [ConnectionItem], to newItems: [ConnectionItem]) -> Bool {
+        if oldItems.count != newItems.count {
+            return true
+        }
+        for index in oldItems.indices {
+            let oldItem = oldItems[index]
+            let newItem = newItems[index]
+            if oldItem.id != newItem.id
+                || oldItem.host != newItem.host
+                || oldItem.process != newItem.process
+                || oldItem.network != newItem.network
+                || oldItem.rule != newItem.rule
+                || oldItem.chain != newItem.chain
+                || oldItem.sourceIP != newItem.sourceIP
+                || oldItem.destinationIP != newItem.destinationIP
+                || oldItem.destinationPort != newItem.destinationPort {
+                return true
+            }
+        }
+        return false
+    }
+
+    func updateTraffic(
+        uploadRate nextUploadRate: Int64,
+        downloadRate nextDownloadRate: Int64,
+        sampleInterval: TimeInterval = 1.0,
+        maxSamples: Int = 90
+    ) {
+        let rateChanged = uploadRate != nextUploadRate || downloadRate != nextDownloadRate
+        if rateChanged {
+            uploadRate = nextUploadRate
+            downloadRate = nextDownloadRate
+        }
+
+        appendTrafficSampleIfNeeded(
+            uploadRate: nextUploadRate,
+            downloadRate: nextDownloadRate,
+            sampleInterval: sampleInterval,
+            maxSamples: maxSamples
+        )
+    }
+
+    private func appendTrafficSampleIfNeeded(
+        uploadRate nextUploadRate: Int64,
+        downloadRate nextDownloadRate: Int64,
+        sampleInterval: TimeInterval,
+        maxSamples: Int
+    ) {
+        let now = Date()
+        let idleQuiet =
+            nextUploadRate == 0
+            && nextDownloadRate == 0
+            && connections.isEmpty
+            && trafficSamples.last?.uploadRate == 0
+            && trafficSamples.last?.downloadRate == 0
+        if idleQuiet {
+            return
+        }
+
+        if let last = trafficSamples.last,
+           last.uploadRate == nextUploadRate,
+           last.downloadRate == nextDownloadRate,
+           now.timeIntervalSince(lastTrafficSampleAppendAt) < sampleInterval {
+            return
+        }
+
+        lastTrafficSampleAppendAt = now
+        var updatedSamples = trafficSamples
+        updatedSamples.append(
+            TrafficSample(
+                date: now,
+                uploadRate: nextUploadRate,
+                downloadRate: nextDownloadRate
+            )
+        )
+        if updatedSamples.count > maxSamples {
+            updatedSamples.removeFirst(updatedSamples.count - maxSamples)
+        }
+        trafficSamples = updatedSamples
     }
 
     func clearRecentConnections() {

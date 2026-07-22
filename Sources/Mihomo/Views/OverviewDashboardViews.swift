@@ -20,6 +20,7 @@ struct OverviewSummaryMetric: View {
                     .font(MihomoUI.Fonts.metric)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
+                    .contentTransition(.numericText())
             }
             Spacer(minLength: 0)
         }
@@ -82,10 +83,12 @@ struct TrafficRateLabel: View {
                     .foregroundStyle(tint)
                 Text(value)
                     .font(MihomoUI.Fonts.metric)
+                    .contentTransition(.numericText())
             }
             Text(total)
                 .font(MihomoUI.Fonts.bodyMedium)
                 .foregroundStyle(.secondary)
+                .contentTransition(.numericText())
         }
     }
 }
@@ -107,6 +110,7 @@ struct OverviewSideStat: View {
                 .font(MihomoUI.Fonts.metricLarge)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .contentTransition(.numericText())
             Text(detail)
                 .font(MihomoUI.Fonts.bodyMedium)
                 .foregroundStyle(.secondary)

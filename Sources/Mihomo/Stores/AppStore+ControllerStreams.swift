@@ -19,23 +19,17 @@ extension AppStore {
             lastTrafficSampleAt = now
             lastUploadTotal = uploadTotal
             lastDownloadTotal = downloadTotal
-            publishIfChanged(\.uploadRate, 0)
-            publishIfChanged(\.downloadRate, 0)
-            if connections.isEmpty == false {
-                appendTrafficSampleIfNeeded(uploadRate: 0, downloadRate: 0)
-            }
+            activityStore.updateTraffic(uploadRate: 0, downloadRate: 0)
             return
         }
 
         let interval = max(now.timeIntervalSince(lastAt), 0.1)
         let nextUploadRate = max(0, Int64(Double(uploadTotal - lastUpload) / interval))
         let nextDownloadRate = max(0, Int64(Double(downloadTotal - lastDownload) / interval))
-        publishIfChanged(\.uploadRate, nextUploadRate)
-        publishIfChanged(\.downloadRate, nextDownloadRate)
+        activityStore.updateTraffic(uploadRate: nextUploadRate, downloadRate: nextDownloadRate)
         lastTrafficSampleAt = now
         lastUploadTotal = uploadTotal
         lastDownloadTotal = downloadTotal
-        appendTrafficSampleIfNeeded(uploadRate: nextUploadRate, downloadRate: nextDownloadRate)
     }
 
     func startControllerEventStreams() {
@@ -95,23 +89,6 @@ extension AppStore {
         )
     }
 
-    private func appendTrafficSampleIfNeeded(uploadRate: Int64, downloadRate: Int64) {
-        if uploadRate == 0,
-           downloadRate == 0,
-           connections.isEmpty,
-           trafficSamples.last?.uploadRate == 0,
-           trafficSamples.last?.downloadRate == 0 {
-            return
-        }
-
-        var updatedSamples = trafficSamples
-        updatedSamples.append(TrafficSample(uploadRate: uploadRate, downloadRate: downloadRate))
-        if updatedSamples.count > 120 {
-            updatedSamples.removeFirst(updatedSamples.count - 120)
-        }
-        publishIfChanged(\.trafficSamples, updatedSamples)
-    }
-
     private func runControllerEventStream(
         label: String,
         makeStream: @escaping () -> AsyncThrowingStream<ControllerStreamEvent, Error>,
@@ -148,16 +125,14 @@ extension AppStore {
 
         switch event {
         case .traffic(let uploadRate, let downloadRate):
-            publishIfChanged(\.uploadRate, uploadRate)
-            publishIfChanged(\.downloadRate, downloadRate)
-            appendTrafficSampleIfNeeded(uploadRate: uploadRate, downloadRate: downloadRate)
+            activityStore.updateTraffic(uploadRate: uploadRate, downloadRate: downloadRate)
         case .log(let level, let message):
             appendLog(level, message)
         case .connections(let items, let uploadTotal, let downloadTotal):
             controllerConnectionStreamLastEventAt = Date()
-            let connectionsChanged = connections != items
-            publishIfChanged(\.connections, items)
-            if connectionsChanged {
+            let structureChanged = activityStore.connectionStructureChanged(from: connections, to: items)
+            activityStore.replaceConnections(items)
+            if structureChanged {
                 updateRuleProviderHitStatistics()
             }
             updateTrafficRates(uploadTotal: uploadTotal, downloadTotal: downloadTotal)

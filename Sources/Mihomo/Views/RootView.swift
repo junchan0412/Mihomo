@@ -16,7 +16,7 @@ struct RootView: View {
                 .id(store.selectedSection)
                 .navigationTitle("")
                 .transition(.opacity)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: store.selectedSection)
+                .animation(reduceMotion ? nil : MihomoUI.Motion.quick, value: store.selectedSection)
         }
         .toolbar(id: "main") {
             ToolbarItem(id: "core-control", placement: .primaryAction) {

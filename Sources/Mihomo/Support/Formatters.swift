@@ -14,16 +14,20 @@ enum Formatters {
         return formatter
     }()
 
-    static func bytes(_ value: Int64) -> String {
-        if abs(value) < 1024 {
-            return "\(value) B"
-        }
+    private static let byteCount: ByteCountFormatter = {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .binary
         formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
         formatter.includesActualByteCount = false
         formatter.zeroPadsFractionDigits = false
-        return formatter.string(fromByteCount: value)
+        return formatter
+    }()
+
+    static func bytes(_ value: Int64) -> String {
+        if abs(value) < 1024 {
+            return "\(value) B"
+        }
+        return byteCount.string(fromByteCount: value)
     }
 
     static func rate(_ value: Int64) -> String {

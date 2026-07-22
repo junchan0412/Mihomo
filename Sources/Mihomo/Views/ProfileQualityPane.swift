@@ -43,7 +43,7 @@ struct ProfileQualityPane: View {
                 .transition(.opacity)
             }
             .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: section)
+            .animation(reduceMotion ? nil : MihomoUI.Motion.quick, value: section)
         }
         .padding(16)
         .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))

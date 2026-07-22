@@ -9,6 +9,11 @@ enum MihomoUI {
     static let cardSpacing: CGFloat = 14
     static let cardPadding: CGFloat = 18
 
+    enum Motion {
+        static let quick: Animation = .easeOut(duration: 0.14)
+        static let snappy: Animation = .snappy(duration: 0.22)
+    }
+
     enum Fonts {
         static let pageTitle: Font = .title2.weight(.semibold)
         static let pageSubtitle: Font = .callout

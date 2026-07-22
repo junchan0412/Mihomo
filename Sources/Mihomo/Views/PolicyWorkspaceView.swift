@@ -116,7 +116,7 @@ struct PolicyWorkspaceView: View {
     }
 
     private func toggleProvider(_ provider: ProviderItem) {
-        withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) {
+        withAnimation(reduceMotion ? nil : MihomoUI.Motion.snappy) {
             if expandedProviderIDs.contains(provider.id) { expandedProviderIDs.remove(provider.id) }
             else { expandedProviderIDs.insert(provider.id) }
         }
@@ -190,7 +190,7 @@ struct PolicyWorkspaceView: View {
     }
 
     private func toggleGroupAnimated(_ group: ProxyGroup) {
-        withAnimation(reduceMotion ? nil : .snappy(duration: 0.22)) {
+        withAnimation(reduceMotion ? nil : MihomoUI.Motion.snappy) {
             toggleGroup(group)
         }
     }
