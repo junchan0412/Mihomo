@@ -40,6 +40,7 @@ struct ProfileQualityPane: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
+                .frame(minHeight: 250, alignment: .topLeading)
                 .transition(.opacity)
             }
             .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -120,6 +121,7 @@ struct ProfileQualityPane: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var sourceContent: some View {
@@ -146,6 +148,7 @@ struct ProfileQualityPane: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var layerContent: some View {
@@ -164,6 +167,7 @@ struct ProfileQualityPane: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var scoreColor: Color {
@@ -297,11 +301,20 @@ private struct RuntimeSourceRow: View {
     var item: RuntimeConfigSourceItem
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            fullWidthRow
+            compactRow
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var fullWidthRow: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(item.path)
                 .font(.system(.body, design: .monospaced).weight(.medium))
-                .frame(width: 150, alignment: .leading)
+                .frame(minWidth: 130, idealWidth: 150, maxWidth: 190, alignment: .leading)
                 .lineLimit(1)
+                .layoutPriority(1)
 
             Text(item.source)
                 .font(MihomoUI.Fonts.caption)
@@ -315,13 +328,15 @@ private struct RuntimeSourceRow: View {
                 .font(.system(.callout, design: .monospaced))
                 .lineLimit(1)
                 .truncationMode(.middle)
+                .frame(minWidth: 160, alignment: .leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .layoutPriority(1)
 
             Text(shortDetail)
                 .font(MihomoUI.Fonts.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
-                .frame(maxWidth: 360, alignment: .leading)
+                .frame(minWidth: 140, idealWidth: 220, maxWidth: 360, alignment: .leading)
                 .help(item.detail)
 
             Image(systemName: "info.circle")
@@ -330,7 +345,43 @@ private struct RuntimeSourceRow: View {
                 .accessibilityLabel("字段说明")
                 .accessibilityValue(item.detail)
         }
-        .padding(.vertical, 8)
+    }
+
+    private var compactRow: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 10) {
+                Text(item.path)
+                    .font(.system(.body, design: .monospaced).weight(.medium))
+                    .lineLimit(1)
+
+                Text(item.source)
+                    .font(MihomoUI.Fonts.caption)
+                    .foregroundStyle(sourceColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(sourceColor.opacity(0.12), in: Capsule())
+
+                Spacer(minLength: 0)
+
+                Image(systemName: "info.circle")
+                    .foregroundStyle(.secondary)
+                    .help(item.detail)
+                    .accessibilityLabel("字段说明")
+                    .accessibilityValue(item.detail)
+            }
+
+            Text(item.value)
+                .font(.system(.callout, design: .monospaced))
+                .lineLimit(2)
+                .truncationMode(.middle)
+
+            Text(shortDetail)
+                .font(MihomoUI.Fonts.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .help(item.detail)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var shortDetail: String {

@@ -213,14 +213,18 @@ struct ConfigFragmentOverviewPane: View {
 
             if let fragment {
                 let report = analyzer.analyze(fragment)
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], alignment: .leading, spacing: 10) {
-                    OverviewMetric(title: "语法状态", value: report.statusTitle, color: statusColor(report))
-                    OverviewMetric(title: "行数", value: "\(report.lineCount)")
-                    OverviewMetric(title: "大小", value: Formatters.bytes(Int64(report.byteCount)))
+                Grid(horizontalSpacing: 12, verticalSpacing: 10) {
+                    GridRow {
+                        OverviewMetric(title: "语法状态", value: report.statusTitle, color: statusColor(report))
+                        OverviewMetric(title: "行数", value: "\(report.lineCount)")
+                        OverviewMetric(title: "大小", value: Formatters.bytes(Int64(report.byteCount)))
+                    }
                     OverviewMetric(
                         title: fragment.kind == .yaml ? "顶层键" : "入口函数",
-                        value: fragment.kind == .yaml ? topLevelKeySummary(report) : "transform(config)"
+                        value: fragment.kind == .yaml ? topLevelKeySummary(report) : "transform(config)",
+                        lineLimit: 3
                     )
+                    .gridCellColumns(3)
                 }
 
                 Divider()
@@ -266,8 +270,8 @@ struct ConfigFragmentOverviewPane: View {
 
     private func topLevelKeySummary(_ report: ConfigFragmentOverviewReport) -> String {
         guard report.topLevelKeys.isEmpty == false else { return "无" }
-        let visible = report.topLevelKeys.prefix(4).joined(separator: "、")
-        return report.topLevelKeys.count > 4 ? "\(visible) 等 \(report.topLevelKeys.count) 项" : visible
+        let visible = report.topLevelKeys.prefix(12).joined(separator: "、")
+        return report.topLevelKeys.count > 12 ? "\(visible) 等 \(report.topLevelKeys.count) 项" : visible
     }
 }
 
@@ -275,6 +279,7 @@ private struct OverviewMetric: View {
     var title: String
     var value: String
     var color: Color = .primary
+    var lineLimit: Int = 2
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -284,7 +289,7 @@ private struct OverviewMetric: View {
             Text(value)
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(color)
-                .lineLimit(2)
+                .lineLimit(lineLimit)
                 .help(value)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
