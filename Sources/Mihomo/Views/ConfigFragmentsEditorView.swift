@@ -143,19 +143,21 @@ struct ConfigFragmentEditorWindowView: View {
                 Text(fragmentKind == .yaml ? "YAML 顶层映射" : "JavaScript transform(config)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Text(lineCountLabel(fragmentContent))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
             }
-            TextEditor(text: $fragmentContent)
-                .font(.system(.body, design: .monospaced))
-                .scrollContentBackground(.hidden)
-                .padding(8)
-                .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(MihomoUI.cardStroke, lineWidth: 1)
-                }
+            YAMLHighlightTextEditor(text: $fragmentContent, showsLineNumbers: true)
+                .frame(minHeight: 280)
                 .accessibilityLabel("覆写内容")
         }
         .frame(maxHeight: .infinity)
+    }
+
+    private func lineCountLabel(_ content: String) -> String {
+        let lines = max(content.components(separatedBy: .newlines).count, content.isEmpty ? 0 : 1)
+        let chars = content.count
+        return "\(lines) 行 · \(chars) 字符"
     }
 
     @ViewBuilder

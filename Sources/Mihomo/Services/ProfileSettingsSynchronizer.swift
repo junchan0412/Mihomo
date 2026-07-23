@@ -112,7 +112,7 @@ struct ProfileSettingsSynchronizer {
             )
         }
 
-        return try Yams.dump(object: root, sortKeys: false)
+        return try YAMLText.dump(root)
     }
 
     private func synchronizedSniffer(

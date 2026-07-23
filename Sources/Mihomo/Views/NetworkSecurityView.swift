@@ -53,7 +53,7 @@ struct NetworkSecurityView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("网络").font(MihomoUI.Fonts.pageTitle)
-                    Text("管理网络接管、DNS、域名嗅探与异常恢复。")
+                    Text("管理系统代理 / TUN 接管、DNS、域名嗅探与异常恢复。")
                         .font(MihomoUI.Fonts.pageSubtitle)
                         .foregroundStyle(.secondary)
                 }

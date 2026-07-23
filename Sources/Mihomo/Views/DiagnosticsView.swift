@@ -10,7 +10,7 @@ struct DiagnosticsView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("诊断").font(MihomoUI.Fonts.pageTitle)
-                        Text("先定位问题，再执行对应修复；导出内容会自动脱敏。")
+                        Text("先定位问题，再执行对应修复；诊断包自动脱敏，可快速分享给支持方。")
                             .font(MihomoUI.Fonts.pageSubtitle).foregroundStyle(.secondary)
                     }
                     Spacer()

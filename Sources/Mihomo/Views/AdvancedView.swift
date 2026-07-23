@@ -85,7 +85,7 @@ struct AdvancedView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("高级工具").font(MihomoUI.Fonts.pageTitle)
-                    Text("管理系统级组件、数据工件、加密与备份；诊断和网络恢复使用各自专页。")
+                    Text("管理系统级组件、Geo 数据、加密备份与配置预览；诊断和网络恢复使用各自专页。")
                         .font(MihomoUI.Fonts.pageSubtitle)
                         .foregroundStyle(.secondary)
                 }

@@ -14,6 +14,7 @@ struct RulesView: View {
     @State private var editorValue = ""
     @State private var editorPolicy = "DIRECT"
     @State private var editorNote = ""
+    @State private var selectedCategory: RuleTypeCategory?
 
     private let ruleTypes = [
         "DOMAIN-SUFFIX",
@@ -33,9 +34,25 @@ struct RulesView: View {
     }
 
     private var filteredEntries: [RuleTableEntry] {
+        var result = entries
+        if let selectedCategory {
+            result = result.filter { $0.typeCategory == selectedCategory }
+        }
         let text = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard text.isEmpty == false else { return entries }
-        return entries.filter { $0.searchText.localizedCaseInsensitiveContains(text) }
+        guard text.isEmpty == false else { return result }
+        return result.filter { $0.searchText.localizedCaseInsensitiveContains(text) }
+    }
+
+    private var hitTotal: Int {
+        store.rules.reduce(0) { $0 + $1.hitCount }
+    }
+
+    private var categoryCounts: [(RuleTypeCategory, Int)] {
+        let grouped = Dictionary(grouping: entries, by: \.typeCategory)
+        return RuleTypeCategory.allCases.compactMap { category in
+            guard let count = grouped[category]?.count, count > 0 else { return nil }
+            return (category, count)
+        }
     }
 
     private var selectedEntry: RuleTableEntry? {
@@ -102,7 +119,7 @@ struct RulesView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("规则")
                     .font(MihomoUI.Fonts.pageTitle)
-                Text("\(store.rules.count) 条规则，\(store.disabledRules.count) 条已禁用。")
+                Text("\(store.rules.count) 条规则 · \(store.disabledRules.count) 条已禁用 · 命中 \(hitTotal)")
                     .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
@@ -146,12 +163,13 @@ struct RulesView: View {
                         selectedRuleIDs = [entry.id]
                         store.toggleRuleDisabled(entry.rule, undoManager: undoManager)
                     },
-                    .init(title: "ID", width: 52, textColor: ruleTextColor) { "\($0.rule.index)" },
-                    .init(title: "类型", width: 124, textColor: ruleTextColor) { $0.type },
-                    .init(title: "值", width: 280, textColor: ruleTextColor) { $0.displayValue.isEmpty ? "-" : $0.displayValue },
-                    .init(title: "策略", width: 130, textColor: ruleTextColor) { $0.policy },
-                    .init(title: "计数", width: 68, textColor: ruleTextColor) { "\($0.rule.hitCount)" },
-                    .init(title: "注释", width: 140, textColor: ruleTextColor) { $0.note.isEmpty ? "-" : $0.note }
+                    .init(title: "ID", width: 48, textColor: ruleTextColor) { "\($0.rule.index)" },
+                    .init(title: "类型", width: 140, textColor: ruleTypeColor) { $0.type },
+                    .init(title: "分类", width: 72, textColor: ruleTypeColor) { $0.typeCategory.title },
+                    .init(title: "值", width: 260, textColor: ruleTextColor) { $0.displayValue.isEmpty ? "-" : $0.displayValue },
+                    .init(title: "策略", width: 120, textColor: ruleTextColor) { $0.policy },
+                    .init(title: "命中", width: 64, textColor: ruleHitColor) { $0.hitDisplay },
+                    .init(title: "选项", width: 120, textColor: ruleTextColor) { $0.optionsText.isEmpty ? "-" : $0.optionsText },
                 ],
                 allowsMultipleSelection: true,
                 onDoubleClick: beginEdit,
@@ -179,10 +197,60 @@ struct RulesView: View {
     }
 
     private var ruleWorkspace: some View {
-        ruleTable
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay { RoundedRectangle(cornerRadius: 10).stroke(MihomoUI.cardStroke, lineWidth: 1) }
+        VStack(spacing: 10) {
+            categoryStrip
+            ruleTable
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay { RoundedRectangle(cornerRadius: 10).stroke(MihomoUI.cardStroke, lineWidth: 1) }
+        }
+    }
+
+    private var categoryStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                categoryChip(title: "全部", count: entries.count, selected: selectedCategory == nil, color: .accentColor) {
+                    selectedCategory = nil
+                }
+                ForEach(categoryCounts, id: \.0) { item in
+                    categoryChip(title: item.0.title, count: item.1, selected: selectedCategory == item.0, color: item.0.color) {
+                        selectedCategory = item.0
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func categoryChip(title: String, count: Int, selected: Bool, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(title)
+                Text("\(count)")
+                    .font(.caption.monospacedDigit())
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background((selected ? Color.white.opacity(0.2) : color.opacity(0.12)), in: Capsule())
+            }
+            .font(.callout.weight(.medium))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(selected ? color.opacity(0.18) : MihomoUI.cardFill, in: Capsule())
+            .overlay {
+                Capsule().stroke(selected ? color.opacity(0.8) : MihomoUI.cardStroke, lineWidth: 1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func ruleTypeColor(_ entry: RuleTableEntry) -> NSColor? {
+        if entry.rule.disabled { return .secondaryLabelColor }
+        return NSColor(entry.typeBadgeColor)
+    }
+
+    private func ruleHitColor(_ entry: RuleTableEntry) -> NSColor? {
+        if entry.rule.disabled { return .secondaryLabelColor }
+        return entry.rule.hitCount > 0 ? .systemGreen : .secondaryLabelColor
     }
 
     private var bottomBar: some View {

@@ -39,7 +39,7 @@ struct SettingsRootView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("设置").font(MihomoUI.Fonts.pageTitle)
-                    Text("常用选项保持清晰可见，维护与排障操作集中在高级工具。")
+                    Text("日常偏好与启动行为；系统接管、备份和深度排障请使用网络 / 高级工具 / 诊断。")
                         .font(MihomoUI.Fonts.pageSubtitle)
                         .foregroundStyle(.secondary)
                 }

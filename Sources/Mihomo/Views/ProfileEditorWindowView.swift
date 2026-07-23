@@ -27,15 +27,21 @@ struct ProfileEditorWindowView: View {
                         .textFieldStyle(.roundedBorder)
 
                     if editorMode == "yaml" {
-                        YAMLHighlightTextEditor(text: $editorContent)
+                        YAMLHighlightTextEditor(text: $editorContent, showsLineNumbers: true)
                     } else {
                         ProfileStructureEditorView(content: $editorContent)
                     }
 
-                    Text(status)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
+                    HStack {
+                        Text(status)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                        Spacer()
+                        Text(lineCountLabel(editorContent))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(16)
             }
@@ -96,6 +102,11 @@ struct ProfileEditorWindowView: View {
         editorName = profile.name
         editorContent = store.profileContent(for: profile)
         status = "已载入：\(Formatters.shortDate.string(from: Date()))"
+    }
+
+    private func lineCountLabel(_ content: String) -> String {
+        let lines = max(content.components(separatedBy: .newlines).count, content.isEmpty ? 0 : 1)
+        return "\(lines) 行 · \(content.count) 字符"
     }
 
     private func saveEditor() {

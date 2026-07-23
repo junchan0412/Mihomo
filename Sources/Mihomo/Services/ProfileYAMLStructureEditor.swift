@@ -149,7 +149,7 @@ struct ProfileYAMLStructureEditor {
     }
 
     private func dump(_ root: YAMLMap) throws -> String {
-        try Yams.dump(object: root, sortKeys: false)
+        try YAMLText.dump(root)
     }
 
     private func normalizeYAMLValue(_ value: Any) -> Any {

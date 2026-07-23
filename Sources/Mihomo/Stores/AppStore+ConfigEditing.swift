@@ -38,7 +38,7 @@ extension AppStore {
     }
 
     func focusRule(for connection: ConnectionItem) {
-        let query = ruleHitKey(type: connection.ruleType, payload: connection.rulePayload)
+        let query = RuleMatchKey.make(from: connection)
         ruleFocusQuery = query.isEmpty ? connection.rule : query
         selectedSection = .rules
         appendLog("info", "从连接跳转到规则：\(ruleFocusQuery)")
@@ -394,15 +394,15 @@ extension AppStore {
             let identity = connectionHitIdentity(connection)
             guard observedConnectionHitIDs.insert(identity).inserted else { continue }
 
-            let key = ruleHitKey(type: connection.ruleType, payload: connection.rulePayload)
+            let key = RuleMatchKey.make(from: connection)
             if key.isEmpty == false {
                 ruleHitTotals[key, default: 0] += 1
             }
 
             for provider in providers {
                 if provider.kind == "Rule" {
-                    if connection.ruleType.caseInsensitiveCompare("RULE-SET") == .orderedSame,
-                       connection.rulePayload == provider.name {
+                    let type = RuleMatchKey.normalizeType(connection.ruleType)
+                    if type == "RULE-SET", connection.rulePayload == provider.name {
                         providerHitTotals[provider.id, default: 0] += 1
                     }
                 } else if let members = providerMembers[provider.id], members.isEmpty == false {
@@ -427,23 +427,11 @@ extension AppStore {
     }
 
     private func ruleHitKey(content: String) -> String {
-        let parts = content.split(separator: ",", omittingEmptySubsequences: false)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-        guard parts.isEmpty == false else { return "" }
-        if parts[0].uppercased() == "MATCH" {
-            return "MATCH"
-        }
-        if parts.count >= 2 {
-            return ruleHitKey(type: parts[0], payload: parts[1])
-        }
-        return parts[0].uppercased()
+        RuleMatchKey.make(content: content)
     }
 
     private func ruleHitKey(type: String, payload: String) -> String {
-        let normalizedType = type.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let normalizedPayload = payload.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard normalizedType.isEmpty == false else { return "" }
-        return normalizedPayload.isEmpty ? normalizedType : "\(normalizedType),\(normalizedPayload)"
+        RuleMatchKey.make(type: type, payload: payload)
     }
 }
 

@@ -174,13 +174,14 @@ struct PoliciesView: View {
 
     private var header: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text("策略")
                     .font(MihomoUI.Fonts.pageTitle)
-                Text("管理 Proxy Provider、策略组与当前节点")
+                Text(isOfflinePolicyMode ? "离线预览策略组结构；启动核心后可切换节点与测速。" : "管理 Proxy Provider、策略组与当前节点。")
                     .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                policySummaryStrip
             }
 
             Spacer()
@@ -217,6 +218,35 @@ struct PoliciesView: View {
             .fixedSize()
             .help("筛选策略和节点")
         }
+    }
+
+    private var policySummaryStrip: some View {
+        HStack(spacing: 8) {
+            summaryChip(title: "策略组", value: "\(visibleGroups.count)", tint: .blue)
+            summaryChip(title: "节点", value: "\(visibleGroups.reduce(0) { $0 + $1.all.count })", tint: .purple)
+            summaryChip(title: "Provider", value: "\(store.providers.filter { $0.kind.caseInsensitiveCompare("Proxy") == .orderedSame }.count)", tint: .cyan)
+            if isOfflinePolicyMode {
+                summaryChip(title: "模式", value: "离线", tint: .orange)
+            } else if store.isCoreRunning {
+                summaryChip(title: "核心", value: "运行中", tint: .green)
+            } else {
+                summaryChip(title: "核心", value: "未运行", tint: .secondary)
+            }
+        }
+    }
+
+    private func summaryChip(title: String, value: String, tint: Color) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(tint)
+        }
+        .font(.caption)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(tint.opacity(0.10), in: Capsule())
     }
 
     private var headerSubtitle: String {

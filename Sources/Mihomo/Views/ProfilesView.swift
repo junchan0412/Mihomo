@@ -70,7 +70,7 @@ struct ProfilesView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("配置")
                     .font(MihomoUI.Fonts.pageTitle)
-                Text("管理本地配置、远程订阅与运行时覆写。")
+                Text("管理本地配置、远程订阅与运行时覆写。当前 \(store.profiles.count) 个配置，活跃 \(store.activeProfile?.name ?? "无")。")
                     .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
