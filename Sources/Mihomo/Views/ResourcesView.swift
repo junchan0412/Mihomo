@@ -361,18 +361,10 @@ struct ResourcesView: View {
     }
 
     private func mergeImportedNodeProviders(_ imported: [NodeProvider]) {
-        var updated = store.nodeProviders
-        for provider in imported {
-            if let index = updated.firstIndex(where: { $0.sourceIdentity == provider.sourceIdentity }) {
-                var merged = provider
-                merged.id = updated[index].id
-                merged.profileIDs = Array(Set(updated[index].profileIDs + provider.profileIDs))
-                updated[index] = merged
-            } else {
-                updated.append(provider)
-            }
-        }
-        presentNodeProviderPreview(updated, title: "批量导入节点提供商")
+        presentNodeProviderPreview(
+            NodeProvider.canonicalized(store.nodeProviders + imported),
+            title: "批量导入节点提供商"
+        )
     }
 
     private var rollbackConfirmationTitle: String {

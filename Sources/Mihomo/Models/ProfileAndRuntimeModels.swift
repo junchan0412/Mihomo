@@ -163,7 +163,7 @@ struct NodeProvider: Identifiable, Codable, Hashable {
     var interval: Int = 86_400
     var enabled = true
     var profileIDs: [UUID] = []
-    // Imported definitions retain their profile origin so same-named providers stay distinct.
+    // Imported definitions retain their origin so they win when merging a same-named local record.
     var sourceProfileID: UUID?
     var group = "未分组"
     var tags: [String] = []
@@ -214,6 +214,28 @@ struct NodeProvider: Identifiable, Codable, Hashable {
 
     var definition: NodeProviderDefinition {
         NodeProviderDefinition(providerType: providerType, url: url, path: path, interval: interval)
+    }
+
+    static func canonicalized(_ providers: [NodeProvider]) -> [NodeProvider] {
+        providers.reduce(into: []) { result, candidate in
+            guard let index = result.firstIndex(where: { $0.normalizedName == candidate.normalizedName }) else {
+                result.append(candidate)
+                return
+            }
+
+            let existing = result[index]
+            // A Profile declaration is the canonical definition for a same-named local record.
+            var merged = existing.sourceProfileID == nil && candidate.sourceProfileID != nil ? candidate : existing
+            merged.id = existing.id
+            merged.profileIDs = Array(Set(existing.profileIDs + candidate.profileIDs)).sorted { $0.uuidString < $1.uuidString }
+            merged.tags = Array(Set(existing.tags + candidate.tags)).sorted()
+            merged.enabled = existing.enabled || candidate.enabled
+            merged.updatedAt = max(existing.updatedAt, candidate.updatedAt)
+            if existing.group != "未分组", existing.group != "从配置导入" {
+                merged.group = existing.group
+            }
+            result[index] = merged
+        }
     }
 
     var providerItem: ProviderItem {
@@ -336,6 +358,7 @@ struct NodeProviderChangePreview: Identifiable {
     var conflicts: [NodeProviderConflict]
     var providerDelta: Int
     var providersChanged: Bool
+    var deduplicatedProviderCount: Int
 
     var hasChanges: Bool {
         providersChanged || profilePatches.isEmpty == false || changes.isEmpty == false

@@ -19,6 +19,8 @@ struct NodeProviderChangePreviewSheet: View {
                 conflictPane
             }
 
+            deduplicationNotice
+
             if preview.changes.isEmpty == false {
                 changePane
             }
@@ -44,7 +46,15 @@ struct NodeProviderChangePreviewSheet: View {
 
     private var summary: String {
         let profileCount = Set(preview.profilePatches.map(\.profileID)).count
-        return "将更新 \(profileCount) 个 Profile、\(preview.changes.count) 个 Provider 定义。应用后可在资源页单步撤销。"
+        let providerSummary: String
+        if preview.providerDelta < 0 {
+            providerSummary = "移除 \(-preview.providerDelta) 条 Provider 记录"
+        } else if preview.providerDelta > 0 {
+            providerSummary = "新增 \(preview.providerDelta) 条 Provider 记录"
+        } else {
+            providerSummary = "更新 \(preview.changes.count) 个 Provider 定义"
+        }
+        return "将更新 \(profileCount) 个 Profile、\(providerSummary)。应用后可在资源页单步撤销。"
     }
 
     private var confirmTitle: String {
@@ -73,6 +83,21 @@ struct NodeProviderChangePreviewSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             }
+        }
+    }
+
+    @ViewBuilder
+    private var deduplicationNotice: some View {
+        if preview.deduplicatedProviderCount > 0 {
+            Label(
+                "将自动合并 \(preview.deduplicatedProviderCount) 条同名重复记录，并以 Profile 中的定义为准。",
+                systemImage: "arrow.triangle.merge"
+            )
+            .font(.callout)
+            .foregroundStyle(.secondary)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(MihomoUI.mutedFill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
     }
 

@@ -25,12 +25,12 @@ struct NodeProviderStore {
     }
 
     func validate(_ providers: [NodeProvider]) throws {
-        var identities = Set<String>()
+        var names = Set<String>()
         for provider in providers {
             let name = provider.name.trimmingCharacters(in: .whitespacesAndNewlines)
             guard name.isEmpty == false else { throw error("节点提供商名称不能为空。") }
-            guard identities.insert(provider.sourceIdentity).inserted else {
-                throw error("同一来源内的节点提供商名称重复：\(name)。")
+            guard names.insert(provider.normalizedName).inserted else {
+                throw error("节点提供商名称重复：\(name)。同名条目会自动合并，请使用不同名称。")
             }
 
             let type = provider.providerType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

@@ -3,51 +3,33 @@ import Foundation
 extension AppStore {
     func importNodeProviders(from importedProfiles: [ProfileItem]) throws {
         guard importedProfiles.isEmpty == false else { return }
-        var updatedProviders = nodeProviders
-        var changed = false
+        var updatedProviders = NodeProvider.canonicalized(nodeProviders)
 
         for profile in importedProfiles {
             let content = try profileStore.loadProfileContent(profile, settings: settings)
             for imported in try nodeProviderSynchronizer.nodeProviders(from: content, profileID: profile.id) {
-                let sourceIdentity = imported.sourceIdentity
-                if let index = updatedProviders.firstIndex(where: {
-                    $0.sourceIdentity == sourceIdentity
-                }) {
-                    let profilesChanged = updatedProviders[index].profileIDs.contains(profile.id) == false
-                    let definitionChanged = updatedProviders[index].definition != imported.definition
-                    if profilesChanged {
-                        updatedProviders[index].profileIDs.append(profile.id)
-                    }
-                    if definitionChanged {
-                        updatedProviders[index].url = imported.url
-                        updatedProviders[index].path = imported.path
-                        updatedProviders[index].providerType = imported.providerType
-                        updatedProviders[index].interval = imported.interval
-                    }
-                    changed = changed || profilesChanged || definitionChanged
-                } else {
-                    var provider = imported
-                    provider.group = "从配置导入"
-                    provider.tags = ["配置导入"]
-                    updatedProviders.append(provider)
-                    changed = true
-                }
+                var provider = imported
+                provider.group = "从配置导入"
+                provider.tags = ["配置导入"]
+                updatedProviders.append(provider)
+                updatedProviders = NodeProvider.canonicalized(updatedProviders)
             }
         }
 
-        if changed {
+        if updatedProviders != nodeProviders {
             try persistNodeProviders(updatedProviders)
         }
     }
 
     func previewNodeProviderChange(_ updatedProviders: [NodeProvider], title: String) throws -> NodeProviderChangePreview {
-        try nodeProviderStore.validate(updatedProviders)
+        let proposedProviders = NodeProvider.canonicalized(updatedProviders)
+        try nodeProviderStore.validate(proposedProviders)
         var patches: [NodeProviderProfilePatch] = []
         var changes: [NodeProviderProfileChange] = []
         var conflicts: [NodeProviderConflict] = []
 
         for profile in profiles {
-            let selected = updatedProviders.filter { $0.applies(to: profile.id) }
+            let selected = proposedProviders.filter { $0.applies(to: profile.id) }
             guard selected.isEmpty == false else { continue }
             let original = try profileStore.loadProfileContent(profile, settings: settings)
             let groups = Dictionary(grouping: selected, by: \.normalizedName)
@@ -103,12 +85,13 @@ extension AppStore {
 
         return NodeProviderChangePreview(
             title: title,
-            proposedProviders: sortedNodeProviders(updatedProviders),
+            proposedProviders: sortedNodeProviders(proposedProviders),
             profilePatches: patches,
             changes: changes,
             conflicts: conflicts,
-            providerDelta: updatedProviders.count - nodeProviders.count,
-            providersChanged: updatedProviders != nodeProviders
+            providerDelta: proposedProviders.count - nodeProviders.count,
+            providersChanged: proposedProviders != nodeProviders,
+            deduplicatedProviderCount: max(0, updatedProviders.count - proposedProviders.count)
         )
     }
 
