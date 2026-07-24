@@ -79,7 +79,7 @@ struct ProviderResourceManager {
 
     func targetURL(for provider: ProviderItem) throws -> URL {
         let rawPath = provider.path?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallbackDirectory = provider.kind == "Proxy" ? "proxy_providers" : "rule_providers"
+        let fallbackDirectory = ["Proxy", "Node"].contains(provider.kind) ? "proxy_providers" : "rule_providers"
         let fallbackName = Self.safeResourceFileName(provider.name, pathExtension: "yaml")
         let value = rawPath?.isEmpty == false ? rawPath! : "\(fallbackDirectory)/\(fallbackName)"
         if value.hasPrefix("/") {

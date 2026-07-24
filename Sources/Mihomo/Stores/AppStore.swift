@@ -36,6 +36,7 @@ final class AppStore: ObservableObject {
     @Published var disabledRules: Set<String> = []
     @Published var rules: [RuleItem] = []
     @Published var providers: [ProviderItem] = []
+    @Published var nodeProviders: [NodeProvider] = []
     @Published var configPreview = ""
     @Published var configDiff = ""
     @Published var providerUpdateHistory: [ProviderUpdateRecord] = []
@@ -108,6 +109,7 @@ final class AppStore: ObservableObject {
     let loginItem = LoginItemManager()
     let notificationManager = NotificationManager()
     let configFragmentStore = ConfigFragmentStore()
+    let nodeProviderStore = NodeProviderStore()
     let managedCoreManager = ManagedCoreManager()
     let geoUpdateManager = GeoUpdateManager()
     let profileSettingsSynchronizer = ProfileSettingsSynchronizer()
@@ -207,6 +209,7 @@ final class AppStore: ObservableObject {
             try migrateSettingsIfNeeded()
             profiles = try profileStore.loadProfiles(settings: settings)
             configFragments = try configFragmentStore.loadFragments()
+            nodeProviders = try nodeProviderStore.load()
             disabledRules = try configFragmentStore.loadDisabledRules()
             providerUpdateHistory = loadProviderUpdateHistory()
             if settings.activeProfileID == nil {

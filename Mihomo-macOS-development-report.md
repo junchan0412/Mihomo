@@ -41,7 +41,7 @@ View 负责布局、绑定和短生命周期交互状态，不直接实现下载
 | Rules | 规则浏览、命中、GUI 编辑 | YAML 文件 IO |
 | Profiles | Profile、覆写、质量与来源 | 网络接管 |
 | Network | 系统代理/TUN/DNS 模式、运行时 DNS、域名嗅探与恢复 | Artifact 安装 |
-| Resources | Provider、本地规则集、Geo 更新与回滚 | Web Controller |
+| Resources | 独立节点提供商、配置 Provider、本地规则集、Geo 更新与回滚 | Web Controller |
 | Advanced | Helper、LaunchDaemon、Artifact、备份、安全、诊断 | 常用设置重复项 |
 | Settings | 通用、远程管理、局域网代理和高级默认值 | 内部控制通道、备份与维护动作 |
 
@@ -80,6 +80,7 @@ Service 应尽量可独立测试，并返回结构化结果：
 - `ProfileYAMLStructureEditor`：策略组/规则的结构化增删改。
 - `ProfileQualityAnalyzer`：字段来源、差异层级和 schema 风险。
 - `ConfigFragmentAnalyzer`：覆写 YAML/JavaScript 语法、顶层结构、入口函数与 Sniffer 规则定位。
+- `NodeProviderStore`：独立节点订阅及其 Profile 接入关系的持久化与校验。
 - `ProviderResourceManager`：远程更新、本地校验、备份与回滚。
 - `NetworkSecurityCenter`：接管与快照展示模型。
 - `SoftwareUpdateManager`：版本发现、下载校验和替换脚本。

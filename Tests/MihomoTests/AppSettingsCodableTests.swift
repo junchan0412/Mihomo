@@ -3,6 +3,21 @@ import XCTest
 @testable import Mihomo
 
 final class AppSettingsCodableTests: XCTestCase {
+    func testNodeProviderRoundTripPreservesProfileAssignments() throws {
+        let profileID = UUID(uuidString: "1F8973DC-A8F3-4C7D-8AA2-CE5F526CBD5A")!
+        let provider = NodeProvider(
+            name: "订阅 A",
+            url: "https://example.com/sub",
+            interval: 3_600,
+            profileIDs: [profileID]
+        )
+
+        let decoded = try JSONDecoder().decode(NodeProvider.self, from: JSONEncoder().encode(provider))
+
+        XCTAssertEqual(decoded, provider)
+        XCTAssertTrue(decoded.applies(to: profileID))
+    }
+
     func testRoundTripPreservesNonDefaultSettings() throws {
         let profileID = UUID(uuidString: "8C08A1E5-8DF4-48BE-9E15-5503C3176AE6")!
         let settings = AppSettings(

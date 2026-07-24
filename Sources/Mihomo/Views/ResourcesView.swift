@@ -3,11 +3,13 @@ import SwiftUI
 
 struct ResourcesView: View {
     @EnvironmentObject private var store: AppStore
+    @State private var workspace: ResourceWorkspace = .nodeProviders
     @State private var selectedResourceIDs: Set<String> = []
     @State private var searchText = ""
     @FocusState private var searchIsFocused: Bool
     @State private var showsOnlyUnready = false
     @State private var confirmsRollback = false
+    @State private var nodeProviderEditor: NodeProviderEditorRoute?
 
     private var latestRecords: [String: ProviderUpdateRecord] {
         var records: [String: ProviderUpdateRecord] = [:]
@@ -54,8 +56,21 @@ struct ResourcesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            resourceTablePane
-            selectedResourcePane
+            Picker("资源工作区", selection: $workspace) {
+                ForEach(ResourceWorkspace.allCases) { workspace in
+                    Label(workspace.title, systemImage: workspace.systemImage).tag(workspace)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 360)
+
+            if workspace == .nodeProviders {
+                nodeProviderPane
+            } else {
+                resourceTablePane
+                selectedResourcePane
+            }
         }
         .padding(.horizontal, MihomoUI.pageHorizontalPadding)
         .padding(.vertical, MihomoUI.pageVerticalPadding)
@@ -72,6 +87,10 @@ struct ResourcesView: View {
         .onChange(of: store.providers) {
             ensureSelection()
         }
+        .onChange(of: workspace) {
+            searchText = ""
+            ensureSelection()
+        }
         .onChange(of: showsOnlyUnready) {
             ensureSelection()
         }
@@ -83,6 +102,22 @@ struct ResourcesView: View {
         } message: {
             Text("当前资源文件会被备份版本替换；Mihomo 会保留被替换版本供后续再次回滚。")
         }
+        .sheet(item: $nodeProviderEditor) { route in
+            NodeProviderEditorSheet(
+                provider: route.provider,
+                save: { provider in
+                    var updated = store.nodeProviders
+                    if let index = updated.firstIndex(where: { $0.id == provider.id }) {
+                        updated[index] = provider
+                    } else {
+                        updated.append(provider)
+                    }
+                    store.saveNodeProviders(updated)
+                    nodeProviderEditor = nil
+                },
+                cancel: { nodeProviderEditor = nil }
+            )
+        }
     }
 
     private var header: some View {
@@ -90,7 +125,7 @@ struct ResourcesView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("外部资源")
                     .font(MihomoUI.Fonts.pageTitle)
-                Text("统一管理配置引用的 Proxy Provider、Rule Provider、本地规则集与 Geo 数据。")
+                Text(workspace.subtitle)
                     .font(MihomoUI.Fonts.pageSubtitle)
                     .foregroundStyle(.secondary)
             }
@@ -98,9 +133,14 @@ struct ResourcesView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                ResourceCountBadge(title: "Proxy", value: allRows.filter { $0.provider.kind == "Proxy" }.count)
-                ResourceCountBadge(title: "Rule", value: allRows.filter { $0.provider.kind == "Rule" }.count)
-                ResourceCountBadge(title: "未就绪", value: allRows.filter { $0.isReady == false }.count)
+                if workspace == .nodeProviders {
+                    ResourceCountBadge(title: "节点提供商", value: store.nodeProviders.count)
+                    ResourceCountBadge(title: "当前配置", value: selectedNodeProviders.count)
+                } else {
+                    ResourceCountBadge(title: "Proxy", value: allRows.filter { $0.provider.kind == "Proxy" }.count)
+                    ResourceCountBadge(title: "Rule", value: allRows.filter { $0.provider.kind == "Rule" }.count)
+                    ResourceCountBadge(title: "未就绪", value: allRows.filter { $0.isReady == false }.count)
+                }
                 Divider().frame(height: 22)
                 Text("并发").foregroundStyle(.secondary)
                 Stepper(value: resourceConcurrency, in: 1...12) {
@@ -161,6 +201,83 @@ struct ResourcesView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(MihomoUI.cardStroke, lineWidth: 1)
         }
+    }
+
+    private var nodeProviderPane: some View {
+        VStack(spacing: 0) {
+            if let activeProfile = store.activeProfile {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("独立节点提供商")
+                            .font(.headline)
+                        Text("勾选后会在启动与预览时注入 \(activeProfile.name) 的 proxy-providers，不会修改 Profile 文件。")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                    Button {
+                        nodeProviderEditor = .creating
+                    } label: {
+                        Label("添加", systemImage: "plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(14)
+
+                Divider()
+
+                if filteredNodeProviders.isEmpty {
+                    ContentUnavailableView(
+                        searchText.isEmpty ? "还没有节点提供商" : "没有匹配的节点提供商",
+                        systemImage: "point.3.connected.trianglepath.dotted",
+                        description: Text(searchText.isEmpty ? "添加订阅后，可为当前配置复选多个节点来源。" : "调整搜索条件后再试。")
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 260)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(filteredNodeProviders) { provider in
+                                NodeProviderRow(
+                                    provider: provider,
+                                    isSelected: provider.applies(to: activeProfile.id),
+                                    toggleSelection: { selected in
+                                        store.setNodeProvider(provider, enabledFor: activeProfile, isSelected: selected)
+                                    },
+                                    refresh: { Task { await store.refreshNodeProvider(provider) } },
+                                    edit: { nodeProviderEditor = .editing(provider) },
+                                    delete: {
+                                        store.saveNodeProviders(store.nodeProviders.filter { $0.id != provider.id })
+                                    }
+                                )
+                                if provider.id != filteredNodeProviders.last?.id { Divider().padding(.leading, 48) }
+                            }
+                        }
+                    }
+                    .frame(minHeight: 290, maxHeight: .infinity)
+                }
+            } else {
+                ContentUnavailableView("先选择配置", systemImage: "doc.badge.plus", description: Text("节点提供商可以独立保存，接入时需要指定一个 Profile。"))
+                    .frame(maxWidth: .infinity, minHeight: 320)
+            }
+        }
+        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
+        .overlay { RoundedRectangle(cornerRadius: 8).stroke(MihomoUI.cardStroke, lineWidth: 1) }
+    }
+
+    private var filteredNodeProviders: [NodeProvider] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else { return store.nodeProviders }
+        return store.nodeProviders.filter {
+            $0.name.localizedCaseInsensitiveContains(query)
+                || $0.url.localizedCaseInsensitiveContains(query)
+                || $0.path.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var selectedNodeProviders: [NodeProvider] {
+        guard let activeProfile = store.activeProfile else { return [] }
+        return store.nodeProviders.filter { $0.applies(to: activeProfile.id) }
     }
 
     private var bottomBar: some View {
@@ -354,4 +471,26 @@ struct ResourcesView: View {
             return .secondaryLabelColor
         }
     }
+}
+
+private enum ResourceWorkspace: String, CaseIterable, Identifiable {
+    case nodeProviders
+    case configResources
+
+    var id: String { rawValue }
+    var title: String { self == .nodeProviders ? "节点提供商" : "配置资源" }
+    var systemImage: String { self == .nodeProviders ? "point.3.connected.trianglepath.dotted" : "shippingbox" }
+    var subtitle: String {
+        self == .nodeProviders
+            ? "独立保存节点订阅，并按 Profile 复选注入运行时配置。"
+            : "查看当前配置声明的 Proxy Provider、Rule Provider、本地规则集与 Geo 数据。"
+    }
+}
+
+private struct NodeProviderEditorRoute: Identifiable {
+    var id: UUID
+    var provider: NodeProvider?
+
+    static var creating: Self { Self(id: UUID(), provider: nil) }
+    static func editing(_ provider: NodeProvider) -> Self { Self(id: provider.id, provider: provider) }
 }

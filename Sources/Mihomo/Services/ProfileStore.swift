@@ -220,7 +220,8 @@ final class ProfileStore {
         profile: ProfileItem,
         settings: AppSettings,
         fragments: [ConfigFragment],
-        disabledRules: Set<String>
+        disabledRules: Set<String>,
+        nodeProviders: [NodeProvider] = []
     ) throws -> URL {
         try AppPaths.ensureBaseDirectories()
         let applicableFragments = fragments.filter { $0.applies(to: profile.id) }
@@ -232,7 +233,8 @@ final class ProfileStore {
             profileContent: profileContent,
             settings: settings,
             fragments: applicableFragments,
-            disabledRules: disabledRules
+            disabledRules: disabledRules,
+            nodeProviders: nodeProviders.filter { $0.applies(to: profile.id) }
         )
         try content.write(to: AppPaths.runtimeCandidateConfigFile, atomically: true, encoding: .utf8)
         return AppPaths.runtimeCandidateConfigFile

@@ -154,6 +154,55 @@ struct ProviderItem: Identifiable, Hashable {
     var memberNames: [String] = []
 }
 
+struct NodeProvider: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var name: String
+    var url: String
+    var path: String
+    var interval: Int = 86_400
+    var enabled = true
+    var profileIDs: [UUID] = []
+    var updatedAt = Date()
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        url: String,
+        path: String? = nil,
+        interval: Int = 86_400,
+        enabled: Bool = true,
+        profileIDs: [UUID] = [],
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.name = name
+        self.url = url
+        self.path = path?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? path!.trimmingCharacters(in: .whitespacesAndNewlines)
+            : "proxy_providers/managed-\(id.uuidString.lowercased()).yaml"
+        self.interval = interval
+        self.enabled = enabled
+        self.profileIDs = profileIDs
+        self.updatedAt = updatedAt
+    }
+
+    func applies(to profileID: UUID) -> Bool {
+        enabled && profileIDs.contains(profileID)
+    }
+
+    var providerItem: ProviderItem {
+        ProviderItem(
+            kind: "Node",
+            name: name,
+            detail: "type: http · url: \(url) · path: \(path) · interval: \(interval)",
+            providerType: "http",
+            remoteURL: url,
+            path: path,
+            interval: interval
+        )
+    }
+}
+
 struct ProviderUpdateRecord: Identifiable, Codable, Hashable {
     var id = UUID()
     var date = Date()

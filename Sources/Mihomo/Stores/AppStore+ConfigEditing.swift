@@ -23,7 +23,8 @@ extension AppStore {
                 profile: activeProfile,
                 settings: settings,
                 fragments: configFragments,
-                disabledRules: disabledRules
+                disabledRules: disabledRules,
+                nodeProviders: nodeProviders
             )
             let preview = try String(contentsOf: candidate, encoding: .utf8)
             publishIfChanged(\.configPreview, preview)

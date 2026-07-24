@@ -25,6 +25,8 @@ struct MihomoSidebarView: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(MihomoUI.pageBackground)
         .animation(reduceMotion ? nil : MihomoUI.Motion.soft, value: selection)
         .safeAreaInset(edge: .top, spacing: 0) {
             brandHeader
@@ -59,7 +61,7 @@ struct MihomoSidebarView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background(MihomoUI.pageBackground)
         .accessibilityElement(children: .combine)
     }
 
@@ -109,7 +111,7 @@ struct MihomoSidebarView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background(MihomoUI.pageBackground)
     }
 
     private func sidebarStatus(_ title: String, isOn: Bool, activeColor: Color) -> some View {

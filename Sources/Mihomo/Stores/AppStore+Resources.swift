@@ -1,6 +1,42 @@
 import Foundation
 
 extension AppStore {
+    func saveNodeProviders(_ updatedProviders: [NodeProvider]) {
+        do {
+            try nodeProviderStore.save(updatedProviders)
+            nodeProviders = updatedProviders.sorted {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+            profileQualityCache.removeAll()
+            refreshConfigArtifacts()
+            appendLog("info", "已保存 \(nodeProviders.count) 个独立节点提供商")
+        } catch {
+            resourceUpdateStatus = "保存节点提供商失败：\(error.localizedDescription)"
+            appendLog("error", resourceUpdateStatus)
+        }
+    }
+
+    func setNodeProvider(_ provider: NodeProvider, enabledFor profile: ProfileItem, isSelected: Bool) {
+        guard let index = nodeProviders.firstIndex(where: { $0.id == provider.id }) else { return }
+        var updated = nodeProviders
+        if isSelected {
+            if updated[index].profileIDs.contains(profile.id) == false {
+                updated[index].profileIDs.append(profile.id)
+            }
+        } else {
+            updated[index].profileIDs.removeAll { $0 == profile.id }
+        }
+        saveNodeProviders(updated)
+    }
+
+    func refreshNodeProvider(_ provider: NodeProvider) async {
+        guard await refreshProviderResource(provider.providerItem) else { return }
+        guard let index = nodeProviders.firstIndex(where: { $0.id == provider.id }) else { return }
+        var updated = nodeProviders
+        updated[index].updatedAt = Date()
+        saveNodeProviders(updated)
+    }
+
     func refreshGeoDataStatus() {
         let expected = ["geoip.dat", "geosite.dat", "Country.mmdb", "ASN.mmdb"]
         let existing = expected.filter {
@@ -11,7 +47,8 @@ extension AppStore {
             : "Geo 数据 \(existing.count)/\(expected.count) 项"
     }
 
-    func updateProviderResource(_ provider: ProviderItem) async {
+    @discardableResult
+    func updateProviderResource(_ provider: ProviderItem) async -> Bool {
         do {
             let result = try await ProviderResourceManager().download(provider)
             let backupSuffix = result.backup.map { "；已备份上一版：\($0.path)" } ?? ""
@@ -26,6 +63,7 @@ extension AppStore {
                 backupPath: result.backup?.path
             )
             refreshConfigArtifacts()
+            return true
         } catch {
             resourceUpdateStatus = "\(provider.name) 更新失败：\(error.localizedDescription)"
             appendLog("error", resourceUpdateStatus)
@@ -36,13 +74,14 @@ extension AppStore {
                 targetPath: provider.path ?? "-",
                 message: error.localizedDescription
             )
+            return false
         }
     }
 
-    func refreshProviderResource(_ provider: ProviderItem) async {
+    @discardableResult
+    func refreshProviderResource(_ provider: ProviderItem) async -> Bool {
         if provider.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-            await updateProviderResource(provider)
-            return
+            return await updateProviderResource(provider)
         }
 
         do {
@@ -56,6 +95,7 @@ extension AppStore {
                 message: resourceUpdateStatus
             )
             refreshConfigArtifacts()
+            return true
         } catch {
             resourceUpdateStatus = "\(provider.name) 重新载入失败：\(error.localizedDescription)"
             appendLog("error", resourceUpdateStatus)
@@ -66,6 +106,7 @@ extension AppStore {
                 targetPath: provider.path ?? "-",
                 message: error.localizedDescription
             )
+            return false
         }
     }
 
@@ -142,7 +183,7 @@ extension AppStore {
 
     func updateAllExternalResources() async {
         refreshConfigArtifacts()
-        let providerItems = providers
+        let providerItems = providers + nodeProviders.map(\.providerItem)
         let maxConcurrent = max(1, min(settings.resourceUpdateMaxConcurrent, 12))
         var succeeded = 0
         var failed = 0

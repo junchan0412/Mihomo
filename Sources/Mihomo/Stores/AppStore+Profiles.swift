@@ -390,6 +390,7 @@ struct ProfileQualityFingerprint: Hashable {
     var settings: AppSettings
     var fragments: [ConfigFragment]
     var disabledRules: Set<String>
+    var nodeProviders: [NodeProvider]
     var migrationLog: [String]
 }
 

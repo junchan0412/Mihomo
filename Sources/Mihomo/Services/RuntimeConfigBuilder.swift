@@ -8,7 +8,8 @@ struct RuntimeConfigBuilder {
         profileContent: String,
         settings: AppSettings,
         fragments: [ConfigFragment] = [],
-        disabledRules: Set<String> = []
+        disabledRules: Set<String> = [],
+        nodeProviders: [NodeProvider] = []
     ) throws -> String {
         var configuredMap = try yamlMapping(from: profileContent, label: "profile")
 
@@ -18,6 +19,8 @@ struct RuntimeConfigBuilder {
                 configuredMap = deepMerge(configuredMap, fragmentMap)
             }
         }
+
+        try injectNodeProviders(nodeProviders, into: &configuredMap)
 
         filterDisabledRules(in: &configuredMap, disabledRules: disabledRules)
 
@@ -194,6 +197,28 @@ struct RuntimeConfigBuilder {
             guard let rule = item as? String else { return true }
             return disabledRules.contains(rule.trimmingCharacters(in: .whitespacesAndNewlines)) == false
         }
+    }
+
+    private func injectNodeProviders(_ nodeProviders: [NodeProvider], into map: inout YAMLMap) throws {
+        let selected = nodeProviders.filter(\.enabled)
+        guard selected.isEmpty == false else { return }
+
+        var proxyProviders = map["proxy-providers"] as? YAMLMap ?? [:]
+        for provider in selected {
+            let name = provider.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard proxyProviders[name] == nil else {
+                throw NSError(domain: "RuntimeConfigBuilder", code: 2, userInfo: [
+                    NSLocalizedDescriptionKey: "独立节点提供商“\(name)”与 Profile 或覆写中的 proxy-provider 同名。请重命名其中一项后再启动。"
+                ])
+            }
+            proxyProviders[name] = [
+                "type": "http",
+                "url": provider.url,
+                "path": provider.path,
+                "interval": provider.interval
+            ]
+        }
+        map["proxy-providers"] = proxyProviders
     }
 
     private func lineList(_ text: String) -> [String] {
