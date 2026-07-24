@@ -2,13 +2,22 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.19.0`
+当前版本：`v1.20.0`
+
+## v1.20.0 更新重点
+
+- 策略页按可用性与延迟自动排序，并提供未测速、快速、一般、较慢、不可用筛选；菜单栏支持节点/策略组搜索、按组测速和节点延迟展示。
+- 节点提供商支持批量导入、分组与标签。导入 Profile 会提取已有 `proxy-providers`；新增或关联节点提供商会同步回关联 Profile。
+- 远程刷新 Profile 时合并上一个版本中远端遗漏的 `proxy-providers`，防止已关联 Provider 被刷新置空。
+- 侧栏支持可折叠分区、右键快捷收藏，并与内容区使用一致的页面背景。
+
+完整变更见 [v1.20.0 Release Notes](docs/releases/v1.20.0.md)，竞品对比与后续清单见[桌面客户端差距分析](docs/design/desktop-client-gap-analysis.md)。
 
 ## v1.19.0 更新重点
 
 - 主窗口侧栏改用与内容区一致的页面背景，消除系统侧栏底色带来的视觉割裂。
 - 菜单栏升级为策略组工作面板：可展开查看每个节点、显示实时延迟、单组测速或全量测速，并保留核心、系统代理、TUN 与常用操作。
-- 节点提供商从配置资源中独立保存；可添加订阅并为每个 Profile 复选接入，生成 runtime config 时注入 `proxy-providers`，不回写 Profile YAML。
+- 节点提供商从配置资源中独立保存；可添加订阅并为每个 Profile 复选接入。
 
 完整变更见 [v1.19.0 Release Notes](docs/releases/v1.19.0.md)。
 
@@ -98,7 +107,7 @@ git diff --check
 ./script/build_and_run.sh --verify
 ```
 
-当前测试集包含 161 个 XCTest，覆盖 Activity/日志展示、两色流量语义、Profile↔App 设置同步、覆写 YAML/JavaScript 分析、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量来源、DIRECT/代理测速设置、独立节点提供商持久化与 Runtime Config 合并、Profile 结构编辑、Provider 更新与回滚、网络请求超时、核心实时状态恢复、Helper 超时、签名部署选择、传统安装路径与 ad-hoc 更新 CDHash 固定、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
+当前测试集包含 165 个 XCTest，覆盖 Activity/日志展示、两色流量语义、Profile↔App 设置同步、覆写 YAML/JavaScript 分析、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量来源、DIRECT/代理测速设置、节点提供商与 Profile 双向同步、Provider 更新与回滚、网络请求超时、核心实时状态恢复、Helper 超时、签名部署选择、传统安装路径与 ad-hoc 更新 CDHash 固定、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
 
 网络恢复与辅助功能人工检查：
 
@@ -124,7 +133,7 @@ JS 输出
 最终 Runtime Config
 ```
 
-独立节点提供商保存在 `node-providers.json`，可按 Profile 复选；只在生成 runtime config 时注入 `proxy-providers`。同名项会中止生成，避免无提示覆盖 Profile 或覆写中的 Provider。配置页的“字段来源”和“合并层级”应始终与此规则一致。新增设置字段时，必须同时检查 `RuntimeConfigBuilder`、`ProfileQualityAnalyzer`、设置迁移和相关测试。
+独立节点提供商保存在 `node-providers.json`，可按 Profile 复选。导入、刷新 Profile 时会提取其 `proxy-providers` 并建立关联；从资源页新增、编辑或关联 Provider 时会回写关联 Profile 的同名定义。若 Profile 已有同名 Provider，运行时不重复注入，而是以 Profile 定义为来源。远程 Profile 刷新缺少旧 Provider 时，旧定义会保留，避免把已关联 Provider 置空。配置页的“字段来源”和“合并层级”应始终与此规则一致。新增设置字段时，必须同时检查 `RuntimeConfigBuilder`、`ProfileQualityAnalyzer`、设置迁移和相关测试。
 
 当前 Profile 与 App 之间还有一条同步链：
 

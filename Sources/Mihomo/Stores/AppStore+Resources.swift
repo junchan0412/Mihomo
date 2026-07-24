@@ -3,16 +3,74 @@ import Foundation
 extension AppStore {
     func saveNodeProviders(_ updatedProviders: [NodeProvider]) {
         do {
-            try nodeProviderStore.save(updatedProviders)
-            nodeProviders = updatedProviders.sorted {
-                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
-            }
-            profileQualityCache.removeAll()
-            refreshConfigArtifacts()
-            appendLog("info", "已保存 \(nodeProviders.count) 个独立节点提供商")
+            try persistNodeProviders(updatedProviders, synchronizeProfiles: true)
+            appendLog("info", "已保存 \(nodeProviders.count) 个独立节点提供商，并同步关联配置")
         } catch {
             resourceUpdateStatus = "保存节点提供商失败：\(error.localizedDescription)"
             appendLog("error", resourceUpdateStatus)
+        }
+    }
+
+    func importNodeProviders(from importedProfiles: [ProfileItem]) throws {
+        guard importedProfiles.isEmpty == false else { return }
+        var updatedProviders = nodeProviders
+        var changed = false
+
+        for profile in importedProfiles {
+            let content = try profileStore.loadProfileContent(profile, settings: settings)
+            for imported in try nodeProviderSynchronizer.nodeProviders(from: content, profileID: profile.id) {
+                let normalizedName = imported.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let index = updatedProviders.firstIndex(where: {
+                    $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .caseInsensitiveCompare(normalizedName) == .orderedSame
+                }) {
+                    if updatedProviders[index].profileIDs.contains(profile.id) == false {
+                        updatedProviders[index].profileIDs.append(profile.id)
+                        changed = true
+                    }
+                } else {
+                    var provider = imported
+                    provider.group = "从配置导入"
+                    provider.tags = ["配置导入"]
+                    updatedProviders.append(provider)
+                    changed = true
+                }
+            }
+        }
+
+        if changed {
+            try persistNodeProviders(updatedProviders, synchronizeProfiles: true)
+        }
+    }
+
+    private func persistNodeProviders(_ updatedProviders: [NodeProvider], synchronizeProfiles: Bool) throws {
+        try nodeProviderStore.save(updatedProviders)
+        nodeProviders = updatedProviders.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+        if synchronizeProfiles {
+            try synchronizeNodeProvidersIntoProfiles()
+        }
+        profileQualityCache.removeAll()
+        refreshConfigArtifacts()
+    }
+
+    private func synchronizeNodeProvidersIntoProfiles() throws {
+        var updatedProfiles = profiles
+        var changed = false
+        for index in updatedProfiles.indices {
+            let profile = updatedProfiles[index]
+            let selected = nodeProviders.filter { $0.applies(to: profile.id) }
+            guard selected.isEmpty == false else { continue }
+            let original = try profileStore.loadProfileContent(profile, settings: settings)
+            let synchronized = try nodeProviderSynchronizer.synchronizing(selected, into: original)
+            guard synchronized != original else { continue }
+            updatedProfiles[index] = try profileStore.saveProfileContent(profile, content: synchronized, settings: settings)
+            changed = true
+        }
+        if changed {
+            profiles = updatedProfiles
+            try profileStore.saveProfiles(updatedProfiles)
         }
     }
 

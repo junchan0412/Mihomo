@@ -110,6 +110,7 @@ final class AppStore: ObservableObject {
     let notificationManager = NotificationManager()
     let configFragmentStore = ConfigFragmentStore()
     let nodeProviderStore = NodeProviderStore()
+    let nodeProviderSynchronizer = NodeProviderProfileSynchronizer()
     let managedCoreManager = ManagedCoreManager()
     let geoUpdateManager = GeoUpdateManager()
     let profileSettingsSynchronizer = ProfileSettingsSynchronizer()
@@ -210,6 +211,7 @@ final class AppStore: ObservableObject {
             profiles = try profileStore.loadProfiles(settings: settings)
             configFragments = try configFragmentStore.loadFragments()
             nodeProviders = try nodeProviderStore.load()
+            try importNodeProviders(from: profiles)
             disabledRules = try configFragmentStore.loadDisabledRules()
             providerUpdateHistory = loadProviderUpdateHistory()
             if settings.activeProfileID == nil {

@@ -206,17 +206,19 @@ struct RuntimeConfigBuilder {
         var proxyProviders = map["proxy-providers"] as? YAMLMap ?? [:]
         for provider in selected {
             let name = provider.name.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard proxyProviders[name] == nil else {
-                throw NSError(domain: "RuntimeConfigBuilder", code: 2, userInfo: [
-                    NSLocalizedDescriptionKey: "独立节点提供商“\(name)”与 Profile 或覆写中的 proxy-provider 同名。请重命名其中一项后再启动。"
-                ])
-            }
-            proxyProviders[name] = [
-                "type": "http",
-                "url": provider.url,
-                "path": provider.path,
-                "interval": provider.interval
+            // 已写回 Profile 的独立条目不重复注入；Profile 内容是运行时定义的来源。
+            guard proxyProviders[name] == nil else { continue }
+            var definition: YAMLMap = [
+                "type": provider.providerType,
+                "path": provider.path
             ]
+            if provider.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                definition["url"] = provider.url
+            }
+            if provider.interval > 0 {
+                definition["interval"] = provider.interval
+            }
+            proxyProviders[name] = definition
         }
         map["proxy-providers"] = proxyProviders
     }

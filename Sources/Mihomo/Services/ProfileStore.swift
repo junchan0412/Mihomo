@@ -7,6 +7,7 @@ final class ProfileStore {
     private let jsOverrideRunner = JSOverrideRunner()
     private let secretVault = LocalSecretVault()
     private let ageService = ProfileAgeService()
+    private let nodeProviderSynchronizer = NodeProviderProfileSynchronizer()
 
     init() {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -149,7 +150,12 @@ final class ProfileStore {
             throw NSError(domain: "Mihomo", code: 3, userInfo: [NSLocalizedDescriptionKey: "Subscription refresh failed"])
         }
         let content = try profileString(data: data)
-        try writeProfileContent(content, to: profileFile(profile, settings: settings), settings: settings)
+        let previousContent = try loadProfileContent(profile, settings: settings)
+        let preservedContent = try nodeProviderSynchronizer.preservingExistingProviders(
+            from: previousContent,
+            in: content
+        )
+        try writeProfileContent(preservedContent, to: profileFile(profile, settings: settings), settings: settings)
         var updated = profile
         updated.updatedAt = Date()
         updated.certificateFingerprint = fingerprint ?? profile.certificateFingerprint

@@ -32,13 +32,20 @@ struct NodeProviderStore {
             let key = name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
             guard names.insert(key).inserted else { throw error("节点提供商名称重复：\(name)。") }
 
-            guard let url = URL(string: provider.url.trimmingCharacters(in: .whitespacesAndNewlines)),
-                  let scheme = url.scheme?.lowercased(),
-                  ["http", "https"].contains(scheme),
-                  url.host?.isEmpty == false
-            else { throw error("节点提供商 URL 必须是有效的 HTTP(S) 地址。") }
+            let type = provider.providerType.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            guard type.isEmpty == false else { throw error("节点提供商类型不能为空。") }
+            if ["http", "https"].contains(type) {
+                guard let url = URL(string: provider.url.trimmingCharacters(in: .whitespacesAndNewlines)),
+                      let scheme = url.scheme?.lowercased(),
+                      ["http", "https"].contains(scheme),
+                      url.host?.isEmpty == false
+                else { throw error("HTTP 节点提供商 URL 必须是有效的 HTTP(S) 地址。") }
+            }
 
             guard provider.interval >= 0 else { throw error("节点提供商更新间隔不能小于 0。") }
+            guard provider.group.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
+                throw error("节点提供商分组不能为空。")
+            }
             _ = try ProviderResourceManager().targetURL(for: provider.providerItem)
         }
     }

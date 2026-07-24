@@ -10,6 +10,8 @@ struct ResourcesView: View {
     @State private var showsOnlyUnready = false
     @State private var confirmsRollback = false
     @State private var nodeProviderEditor: NodeProviderEditorRoute?
+    @State private var showingNodeProviderBatchImport = false
+    @State private var nodeProviderGroupFilter = "全部"
 
     private var latestRecords: [String: ProviderUpdateRecord] {
         var records: [String: ProviderUpdateRecord] = [:]
@@ -106,6 +108,10 @@ struct ResourcesView: View {
             NodeProviderEditorSheet(
                 provider: route.provider,
                 save: { provider in
+                    var provider = provider
+                    if provider.profileIDs.isEmpty, let profileID = store.activeProfile?.id {
+                        provider.profileIDs = [profileID]
+                    }
                     var updated = store.nodeProviders
                     if let index = updated.firstIndex(where: { $0.id == provider.id }) {
                         updated[index] = provider
@@ -117,6 +123,13 @@ struct ResourcesView: View {
                 },
                 cancel: { nodeProviderEditor = nil }
             )
+        }
+        .sheet(isPresented: $showingNodeProviderBatchImport) {
+            if let profileID = store.activeProfile?.id {
+                NodeProviderBatchImportSheet(profileID: profileID) { imported in
+                    mergeImportedNodeProviders(imported)
+                }
+            }
         }
     }
 
@@ -210,7 +223,7 @@ struct ResourcesView: View {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("独立节点提供商")
                             .font(.headline)
-                        Text("勾选后会在启动与预览时注入 \(activeProfile.name) 的 proxy-providers，不会修改 Profile 文件。")
+                        Text("新增或关联后会同步到 \(activeProfile.name) 的 proxy-providers；远程刷新不会清空本地已关联的 Provider。")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .lineLimit(2)
@@ -222,8 +235,36 @@ struct ResourcesView: View {
                         Label("添加", systemImage: "plus")
                     }
                     .buttonStyle(.borderedProminent)
+
+                    Button {
+                        showingNodeProviderBatchImport = true
+                    } label: {
+                        Label("批量导入", systemImage: "text.badge.plus")
+                    }
                 }
                 .padding(14)
+
+                Divider()
+
+                HStack {
+                    Text("筛选分组")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Picker("筛选分组", selection: $nodeProviderGroupFilter) {
+                        Text("全部").tag("全部")
+                        ForEach(nodeProviderGroups, id: \.self) { group in
+                            Text(group).tag(group)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    Spacer()
+                    Text("\(filteredNodeProviders.count) 项")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
 
                 Divider()
 
@@ -267,17 +308,40 @@ struct ResourcesView: View {
 
     private var filteredNodeProviders: [NodeProvider] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.isEmpty == false else { return store.nodeProviders }
-        return store.nodeProviders.filter {
+        let groupFiltered = store.nodeProviders.filter {
+            nodeProviderGroupFilter == "全部" || $0.group == nodeProviderGroupFilter
+        }
+        guard query.isEmpty == false else { return groupFiltered }
+        return groupFiltered.filter {
             $0.name.localizedCaseInsensitiveContains(query)
                 || $0.url.localizedCaseInsensitiveContains(query)
                 || $0.path.localizedCaseInsensitiveContains(query)
+                || $0.tags.contains { $0.localizedCaseInsensitiveContains(query) }
         }
+    }
+
+    private var nodeProviderGroups: [String] {
+        Array(Set(store.nodeProviders.map(\.group))).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private var selectedNodeProviders: [NodeProvider] {
         guard let activeProfile = store.activeProfile else { return [] }
         return store.nodeProviders.filter { $0.applies(to: activeProfile.id) }
+    }
+
+    private func mergeImportedNodeProviders(_ imported: [NodeProvider]) {
+        var updated = store.nodeProviders
+        for provider in imported {
+            if let index = updated.firstIndex(where: { $0.name.caseInsensitiveCompare(provider.name) == .orderedSame }) {
+                var merged = provider
+                merged.id = updated[index].id
+                merged.profileIDs = Array(Set(updated[index].profileIDs + provider.profileIDs))
+                updated[index] = merged
+            } else {
+                updated.append(provider)
+            }
+        }
+        store.saveNodeProviders(updated)
     }
 
     private var bottomBar: some View {

@@ -8,8 +8,11 @@ final class AppSettingsCodableTests: XCTestCase {
         let provider = NodeProvider(
             name: "订阅 A",
             url: "https://example.com/sub",
+            providerType: "https",
             interval: 3_600,
-            profileIDs: [profileID]
+            profileIDs: [profileID],
+            group: "工作",
+            tags: ["稳定", "优先"]
         )
 
         let decoded = try JSONDecoder().decode(NodeProvider.self, from: JSONEncoder().encode(provider))

@@ -34,6 +34,7 @@ extension AppStore {
             )
             profiles.append(item)
             try profileStore.saveProfiles(profiles)
+            try importNodeProviders(from: [item])
             try synchronizeAppSettings(from: item)
             newRemoteURL = ""
             newRemoteName = ""
@@ -49,6 +50,7 @@ extension AppStore {
             let item = try profileStore.importLocalProfile(fileURL: url, settings: settings)
             profiles.append(item)
             try profileStore.saveProfiles(profiles)
+            try importNodeProviders(from: [item])
             try synchronizeAppSettings(from: item)
             refreshConfigArtifacts()
             appendLog("info", "已导入本地配置 \(item.name)")
@@ -64,6 +66,7 @@ extension AppStore {
                 profiles[index] = updated
                 try profileStore.saveProfiles(profiles)
             }
+            try importNodeProviders(from: [updated])
             if settings.activeProfileID == updated.id {
                 try synchronizeAppSettings(from: updated)
             }
@@ -134,6 +137,7 @@ extension AppStore {
                     profiles[index] = updated
                     try? profileStore.saveProfiles(profiles)
                 }
+                try? importNodeProviders(from: [updated])
                 if settings.activeProfileID == updated.id {
                     do {
                         try synchronizeAppSettings(from: updated)

@@ -10,6 +10,8 @@ struct NodeProviderEditorSheet: View {
     @State private var url: String
     @State private var interval: Int
     @State private var enabled: Bool
+    @State private var group: String
+    @State private var tags: String
     @State private var validationMessage = ""
 
     init(provider: NodeProvider?, save: @escaping (NodeProvider) -> Void, cancel: @escaping () -> Void) {
@@ -20,6 +22,8 @@ struct NodeProviderEditorSheet: View {
         _url = State(initialValue: provider?.url ?? "")
         _interval = State(initialValue: provider?.interval ?? 86_400)
         _enabled = State(initialValue: provider?.enabled ?? true)
+        _group = State(initialValue: provider?.group ?? "未分组")
+        _tags = State(initialValue: provider?.tags.joined(separator: ", ") ?? "")
     }
 
     var body: some View {
@@ -34,6 +38,8 @@ struct NodeProviderEditorSheet: View {
             Form {
                 TextField("名称", text: $name, prompt: Text("例如：订阅 A"))
                 TextField("订阅 URL", text: $url, prompt: Text("https://example.com/subscribe"))
+                TextField("分组", text: $group, prompt: Text("例如：机场订阅"))
+                TextField("标签", text: $tags, prompt: Text("例如：香港, 主力"))
                 Stepper(value: $interval, in: 0...604_800, step: 3_600) {
                     HStack {
                         Text("更新间隔")
@@ -78,6 +84,10 @@ struct NodeProviderEditorSheet: View {
             interval: interval,
             enabled: enabled,
             profileIDs: original?.profileIDs ?? [],
+            group: group.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "未分组" : group.trimmingCharacters(in: .whitespacesAndNewlines),
+            tags: tags.components(separatedBy: CharacterSet(charactersIn: ",，\n"))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { $0.isEmpty == false },
             updatedAt: original?.updatedAt ?? Date()
         )
         do {
@@ -118,12 +128,24 @@ struct NodeProviderRow: View {
                             .padding(.vertical, 2)
                             .background(.quaternary, in: Capsule())
                     }
+                    Text(provider.group)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.quaternary, in: Capsule())
                 }
                 Text(provider.url)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                if provider.tags.isEmpty == false {
+                    Text(provider.tags.prefix(3).joined(separator: " · "))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 8)

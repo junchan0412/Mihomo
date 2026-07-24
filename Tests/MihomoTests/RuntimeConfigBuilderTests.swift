@@ -226,10 +226,31 @@ final class RuntimeConfigBuilderTests: XCTestCase {
         XCTAssertFalse(generated.contains("已停用订阅:"), generated)
     }
 
-    func testIndependentNodeProviderNameCollisionIsReported() throws {
+    func testFileNodeProviderPreservesTypeWithoutEmptyURL() throws {
+        let provider = NodeProvider(
+            name: "本地缓存",
+            url: "",
+            path: "proxy_providers/cache.yaml",
+            providerType: "file",
+            interval: 0
+        )
+
+        let generated = try RuntimeConfigBuilder().build(
+            profileContent: "proxy-groups: []\n",
+            settings: AppSettings(),
+            nodeProviders: [provider]
+        )
+
+        XCTAssertTrue(generated.contains("本地缓存:"), generated)
+        XCTAssertTrue(generated.contains("type: file"), generated)
+        XCTAssertTrue(generated.contains("path: proxy_providers/cache.yaml"), generated)
+        XCTAssertFalse(generated.contains("url: \"\""), generated)
+    }
+
+    func testIndependentNodeProviderAlreadyDefinedByProfileIsNotInjectedAgain() throws {
         let provider = NodeProvider(name: "shared", url: "https://example.com/subscription")
 
-        XCTAssertThrowsError(try RuntimeConfigBuilder().build(
+        let generated = try RuntimeConfigBuilder().build(
             profileContent: """
             proxy-providers:
               shared:
@@ -238,8 +259,10 @@ final class RuntimeConfigBuilderTests: XCTestCase {
             """,
             settings: AppSettings(),
             nodeProviders: [provider]
-        )) { error in
-            XCTAssertTrue(error.localizedDescription.contains("同名"))
-        }
+        )
+
+        XCTAssertEqual(generated.components(separatedBy: "shared:").count - 1, 1, generated)
+        XCTAssertTrue(generated.contains("https://example.com/existing"), generated)
+        XCTAssertFalse(generated.contains("https://example.com/subscription"), generated)
     }
 }

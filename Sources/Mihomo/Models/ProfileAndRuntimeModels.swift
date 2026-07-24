@@ -159,9 +159,12 @@ struct NodeProvider: Identifiable, Codable, Hashable {
     var name: String
     var url: String
     var path: String
+    var providerType = "http"
     var interval: Int = 86_400
     var enabled = true
     var profileIDs: [UUID] = []
+    var group = "未分组"
+    var tags: [String] = []
     var updatedAt = Date()
 
     init(
@@ -169,9 +172,12 @@ struct NodeProvider: Identifiable, Codable, Hashable {
         name: String,
         url: String,
         path: String? = nil,
+        providerType: String = "http",
         interval: Int = 86_400,
         enabled: Bool = true,
         profileIDs: [UUID] = [],
+        group: String = "未分组",
+        tags: [String] = [],
         updatedAt: Date = Date()
     ) {
         self.id = id
@@ -180,9 +186,12 @@ struct NodeProvider: Identifiable, Codable, Hashable {
         self.path = path?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
             ? path!.trimmingCharacters(in: .whitespacesAndNewlines)
             : "proxy_providers/managed-\(id.uuidString.lowercased()).yaml"
+        self.providerType = providerType
         self.interval = interval
         self.enabled = enabled
         self.profileIDs = profileIDs
+        self.group = group
+        self.tags = tags
         self.updatedAt = updatedAt
     }
 
@@ -194,12 +203,32 @@ struct NodeProvider: Identifiable, Codable, Hashable {
         ProviderItem(
             kind: "Node",
             name: name,
-            detail: "type: http · url: \(url) · path: \(path) · interval: \(interval)",
-            providerType: "http",
-            remoteURL: url,
+            detail: "type: \(providerType) · url: \(url) · path: \(path) · interval: \(interval)",
+            providerType: providerType,
+            remoteURL: url.isEmpty ? nil : url,
             path: path,
             interval: interval
         )
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, url, path, providerType, interval, enabled, profileIDs, group, tags, updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decode(String.self, forKey: .name)
+        url = try container.decodeIfPresent(String.self, forKey: .url) ?? ""
+        path = try container.decodeIfPresent(String.self, forKey: .path)
+            ?? "proxy_providers/managed-\(id.uuidString.lowercased()).yaml"
+        providerType = try container.decodeIfPresent(String.self, forKey: .providerType) ?? "http"
+        interval = try container.decodeIfPresent(Int.self, forKey: .interval) ?? 86_400
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        profileIDs = try container.decodeIfPresent([UUID].self, forKey: .profileIDs) ?? []
+        group = try container.decodeIfPresent(String.self, forKey: .group) ?? "未分组"
+        tags = try container.decodeIfPresent([String].self, forKey: .tags) ?? []
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
     }
 }
 

@@ -6,6 +6,7 @@ struct MenuBarView: View {
     @EnvironmentObject private var store: AppStore
     @State private var expandedGroupIDs: Set<String> = []
     @State private var isTestingDelays = false
+    @State private var nodeSearchText = ""
 
     var body: some View {
         VStack(spacing: 0) {
@@ -59,27 +60,33 @@ struct MenuBarView: View {
     }
 
     private var delayTestBar: some View {
-        HStack(spacing: 10) {
-            Button {
-                testAllDelays()
-            } label: {
-                Label(isTestingDelays ? "正在测速" : "延迟测试", systemImage: isTestingDelays ? "hourglass" : "speedometer")
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
-            .disabled(store.proxyGroups.isEmpty || isTestingDelays)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Button {
+                    testAllDelays()
+                } label: {
+                    Label(isTestingDelays ? "正在测速" : "延迟测试", systemImage: isTestingDelays ? "hourglass" : "speedometer")
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(store.proxyGroups.isEmpty || isTestingDelays)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text("策略组与节点")
-                    .font(.caption.weight(.semibold))
-                Text(store.delayTestStatus)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("策略组与节点")
+                        .font(.caption.weight(.semibold))
+                    Text(store.delayTestStatus)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 0)
             }
 
-            Spacer(minLength: 0)
+            TextField("搜索节点或策略组", text: $nodeSearchText)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
@@ -93,10 +100,11 @@ struct MenuBarView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        ForEach(store.proxyGroups) { group in
+                        ForEach(visibleGroups) { group in
                             MenuBarPolicyGroupRow(
                                 group: group,
                                 image: store.policyGroupIconImages[group.id],
+                                searchText: nodeSearchText,
                                 isExpanded: expandedBinding(for: group),
                                 selectNode: { node in
                                     Task { await store.selectProxy(group: group.name, proxy: node.name) }
@@ -106,7 +114,7 @@ struct MenuBarView: View {
                                 }
                             )
 
-                            if group.id != store.proxyGroups.last?.id {
+                            if group.id != visibleGroups.last?.id {
                                 Divider()
                                     .padding(.leading, 42)
                             }
@@ -233,6 +241,16 @@ struct MenuBarView: View {
         store.isCoreRunning ? "核心运行中" : "核心已停止"
     }
 
+    private var visibleGroups: [ProxyGroup] {
+        let query = nodeSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else { return store.proxyGroups }
+        return store.proxyGroups.filter {
+            $0.name.localizedCaseInsensitiveContains(query)
+                || $0.now.localizedCaseInsensitiveContains(query)
+                || $0.all.contains { $0.name.localizedCaseInsensitiveContains(query) }
+        }
+    }
+
     private func expandedBinding(for group: ProxyGroup) -> Binding<Bool> {
         Binding(
             get: { expandedGroupIDs.contains(group.id) },
@@ -277,6 +295,7 @@ struct MenuBarView: View {
 private struct MenuBarPolicyGroupRow: View {
     var group: ProxyGroup
     var image: NSImage?
+    var searchText: String
     @Binding var isExpanded: Bool
     var selectNode: (ProxyNode) -> Void
     var testGroup: () -> Void
@@ -285,7 +304,7 @@ private struct MenuBarPolicyGroupRow: View {
         HStack(alignment: .top, spacing: 8) {
             DisclosureGroup(isExpanded: $isExpanded) {
                 LazyVStack(spacing: 2) {
-                    ForEach(group.all) { node in
+                    ForEach(filteredNodes) { node in
                         MenuBarProxyNodeRow(
                             node: node,
                             isCurrent: node.name == group.now,
@@ -331,6 +350,14 @@ private struct MenuBarPolicyGroupRow: View {
 
     private var currentNode: ProxyNode? {
         group.all.first { $0.name == group.now }
+    }
+
+    private var filteredNodes: [ProxyNode] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false, group.name.localizedCaseInsensitiveContains(query) == false else {
+            return group.all
+        }
+        return group.all.filter { $0.name.localizedCaseInsensitiveContains(query) }
     }
 
     private var currentNodeTitle: String {
