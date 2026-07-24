@@ -119,11 +119,11 @@ enum RuleTypeCategory: String, CaseIterable, Identifiable {
     var color: Color {
         switch self {
         case .domain: return .blue
-        case .ip: return .purple
+        case .ip: return .green
         case .geo: return .teal
         case .process: return .orange
-        case .set: return .indigo
-        case .logic: return .pink
+        case .set: return .brown
+        case .logic: return .purple
         case .match: return .red
         case .other: return .secondary
         }

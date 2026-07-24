@@ -17,7 +17,7 @@ extension AppStore {
                 policyGroupCount: snapshot.groups.count,
                 proxyCount: snapshot.proxyNames.count,
                 ruleCount: snapshot.rules.count,
-                proxyProviderCount: providers.filter { $0.kind == "Proxy" }.count,
+                proxyProviderCount: providers.filter { $0.kind == "Proxy" }.count + nodeProviders.filter { $0.applies(to: profile.id) }.count,
                 ruleProviderCount: providers.filter { $0.kind == "Rule" }.count,
                 errorMessage: nil
             )
@@ -45,6 +45,7 @@ extension AppStore {
                 settings: settings,
                 fragments: configFragments,
                 disabledRules: disabledRules,
+                nodeProviders: nodeProviders,
                 migrationLog: settingsMigrationLog
             )
             profileQualityCache[profile.id] = ProfileQualityCacheEntry(fingerprint: fingerprint, report: report)
@@ -105,6 +106,7 @@ extension AppStore {
             settings: settings,
             fragments: configFragments,
             disabledRules: disabledRules,
+            nodeProviders: nodeProviders,
             migrationLog: settingsMigrationLog
         )
     }

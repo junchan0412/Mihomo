@@ -24,10 +24,11 @@ extension AppStore {
             results.append(.init(title: "当前配置", detail: exists ? activeProfile.name : "配置文件丢失", state: exists ? .ok : .failed))
             do {
                 let candidate = try profileStore.generateRuntimeConfigCandidate(
-                    profile: activeProfile,
-                    settings: settings,
-                    fragments: configFragments,
-                    disabledRules: disabledRules
+                profile: activeProfile,
+                settings: settings,
+                fragments: configFragments,
+                disabledRules: disabledRules,
+                nodeProviders: nodeProviders
                 )
                 try syncGeoDataToRuntimeDirectory()
                 let result = try await helperClient.validateConfig(mihomoPath: mihomoPath, configPath: candidate, workDirectory: AppPaths.runtimeDirectory)

@@ -7,6 +7,7 @@ final class ProfileStore {
     private let jsOverrideRunner = JSOverrideRunner()
     private let secretVault = LocalSecretVault()
     private let ageService = ProfileAgeService()
+    private let nodeProviderSynchronizer = NodeProviderProfileSynchronizer()
 
     init() {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -139,9 +140,15 @@ final class ProfileStore {
         return item
     }
 
-    func refreshRemoteProfile(_ profile: ProfileItem, settings: AppSettings = .default) async throws -> ProfileItem {
+    func prepareRemoteProfileRefresh(_ profile: ProfileItem, settings: AppSettings = .default) async throws -> RemoteProfileRefreshPreview {
         guard profile.source == .remote, let url = URL(string: profile.location) else {
-            return profile
+            return RemoteProfileRefreshPreview(
+                originalProfile: profile,
+                refreshedProfile: profile,
+                originalContent: try loadProfileContent(profile, settings: settings),
+                refreshedContent: try loadProfileContent(profile, settings: settings),
+                preservedProviderNames: []
+            )
         }
         let pinningSession = CertificatePinningSession(expectedFingerprint: profile.certificateFingerprint)
         let (data, response, fingerprint) = try await pinningSession.fetch(url)
@@ -149,12 +156,36 @@ final class ProfileStore {
             throw NSError(domain: "Mihomo", code: 3, userInfo: [NSLocalizedDescriptionKey: "Subscription refresh failed"])
         }
         let content = try profileString(data: data)
-        try writeProfileContent(content, to: profileFile(profile, settings: settings), settings: settings)
+        let previousContent = try loadProfileContent(profile, settings: settings)
+        let preservation = try nodeProviderSynchronizer.preservingExistingProvidersPreview(
+            from: previousContent,
+            in: content
+        )
         var updated = profile
         updated.updatedAt = Date()
         updated.certificateFingerprint = fingerprint ?? profile.certificateFingerprint
         applySubscriptionInfo(response: http, to: &updated)
-        return updated
+        return RemoteProfileRefreshPreview(
+            originalProfile: profile,
+            refreshedProfile: updated,
+            originalContent: previousContent,
+            refreshedContent: preservation.content,
+            preservedProviderNames: preservation.preservedProviderNames
+        )
+    }
+
+    func applyRemoteProfileRefresh(_ preview: RemoteProfileRefreshPreview, settings: AppSettings = .default) throws -> ProfileItem {
+        let current = try loadProfileContent(preview.originalProfile, settings: settings)
+        guard current == preview.originalContent else {
+            throw NSError(domain: "Mihomo", code: 5, userInfo: [NSLocalizedDescriptionKey: "Profile changed after refresh preview"])
+        }
+        try writeProfileContent(preview.refreshedContent, to: profileFile(preview.originalProfile, settings: settings), settings: settings)
+        return preview.refreshedProfile
+    }
+
+    func refreshRemoteProfile(_ profile: ProfileItem, settings: AppSettings = .default) async throws -> ProfileItem {
+        let preview = try await prepareRemoteProfileRefresh(profile, settings: settings)
+        return try applyRemoteProfileRefresh(preview, settings: settings)
     }
 
     func profileFile(_ profile: ProfileItem, settings: AppSettings = .default) -> URL {
@@ -220,7 +251,8 @@ final class ProfileStore {
         profile: ProfileItem,
         settings: AppSettings,
         fragments: [ConfigFragment],
-        disabledRules: Set<String>
+        disabledRules: Set<String>,
+        nodeProviders: [NodeProvider] = []
     ) throws -> URL {
         try AppPaths.ensureBaseDirectories()
         let applicableFragments = fragments.filter { $0.applies(to: profile.id) }
@@ -232,7 +264,8 @@ final class ProfileStore {
             profileContent: profileContent,
             settings: settings,
             fragments: applicableFragments,
-            disabledRules: disabledRules
+            disabledRules: disabledRules,
+            nodeProviders: nodeProviders.filter { $0.applies(to: profile.id) }
         )
         try content.write(to: AppPaths.runtimeCandidateConfigFile, atomically: true, encoding: .utf8)
         return AppPaths.runtimeCandidateConfigFile

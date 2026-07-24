@@ -169,7 +169,7 @@ struct MihomoApp: App {
         } label: {
             MenuBarStatusLabel(store: store, activityStore: store.activityStore)
         }
-        .menuBarExtraStyle(.menu)
+        .menuBarExtraStyle(.window)
     }
 }
 

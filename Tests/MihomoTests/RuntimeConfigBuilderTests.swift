@@ -192,4 +192,77 @@ final class RuntimeConfigBuilderTests: XCTestCase {
         XCTAssertFalse(generated.contains("enable: false"))
         XCTAssertTrue(generated.contains("dns-hijack:"))
     }
+
+    func testIndependentNodeProvidersAreInjectedWithoutChangingProfileContent() throws {
+        let provider = NodeProvider(
+            id: UUID(uuidString: "6E6BB02D-A610-4E5B-8D5D-52B0D8F0B067")!,
+            name: "独立订阅",
+            url: "https://example.com/subscription",
+            path: "proxy_providers/managed-subscription.yaml",
+            interval: 7_200
+        )
+
+        let generated = try RuntimeConfigBuilder().build(
+            profileContent: "proxy-groups: []\n",
+            settings: AppSettings(),
+            nodeProviders: [provider]
+        )
+
+        XCTAssertTrue(generated.contains("独立订阅:"), generated)
+        XCTAssertTrue(generated.contains("https://example.com/subscription"), generated)
+        XCTAssertTrue(generated.contains("managed-subscription.yaml"), generated)
+        XCTAssertTrue(generated.contains("interval: 7200"), generated)
+    }
+
+    func testDisabledIndependentNodeProviderIsNotInjected() throws {
+        let provider = NodeProvider(name: "已停用订阅", url: "https://example.com/subscription", enabled: false)
+
+        let generated = try RuntimeConfigBuilder().build(
+            profileContent: "proxy-groups: []\n",
+            settings: AppSettings(),
+            nodeProviders: [provider]
+        )
+
+        XCTAssertFalse(generated.contains("已停用订阅:"), generated)
+    }
+
+    func testFileNodeProviderPreservesTypeWithoutEmptyURL() throws {
+        let provider = NodeProvider(
+            name: "本地缓存",
+            url: "",
+            path: "proxy_providers/cache.yaml",
+            providerType: "file",
+            interval: 0
+        )
+
+        let generated = try RuntimeConfigBuilder().build(
+            profileContent: "proxy-groups: []\n",
+            settings: AppSettings(),
+            nodeProviders: [provider]
+        )
+
+        XCTAssertTrue(generated.contains("本地缓存:"), generated)
+        XCTAssertTrue(generated.contains("type: file"), generated)
+        XCTAssertTrue(generated.contains("path: proxy_providers/cache.yaml"), generated)
+        XCTAssertFalse(generated.contains("url: \"\""), generated)
+    }
+
+    func testIndependentNodeProviderAlreadyDefinedByProfileIsNotInjectedAgain() throws {
+        let provider = NodeProvider(name: "shared", url: "https://example.com/subscription")
+
+        let generated = try RuntimeConfigBuilder().build(
+            profileContent: """
+            proxy-providers:
+              shared:
+                type: http
+                url: https://example.com/existing
+            """,
+            settings: AppSettings(),
+            nodeProviders: [provider]
+        )
+
+        XCTAssertEqual(generated.components(separatedBy: "shared:").count - 1, 1, generated)
+        XCTAssertTrue(generated.contains("https://example.com/existing"), generated)
+        XCTAssertFalse(generated.contains("https://example.com/subscription"), generated)
+    }
 }

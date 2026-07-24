@@ -63,6 +63,13 @@ struct ProfilesView: View {
             RemoteProfileImportSheet()
                 .environmentObject(store)
         }
+        .sheet(item: pendingProfileRefreshPreviewBinding) { preview in
+            RemoteProfileRefreshPreviewSheet(
+                preview: preview,
+                apply: store.applyPendingProfileRefreshPreview,
+                cancel: store.discardPendingProfileRefreshPreview
+            )
+        }
     }
 
     private var header: some View {
@@ -230,6 +237,17 @@ struct ProfilesView: View {
     private var selectedProfile: ProfileItem? {
         guard selectedProfileIDs.count == 1, let selectedProfileID = selectedProfileIDs.first else { return nil }
         return store.profiles.first { $0.id == selectedProfileID }
+    }
+
+    private var pendingProfileRefreshPreviewBinding: Binding<RemoteProfileRefreshPreview?> {
+        Binding(
+            get: { store.pendingProfileRefreshPreview },
+            set: { preview in
+                if preview == nil, store.pendingProfileRefreshPreview != nil {
+                    store.discardPendingProfileRefreshPreview()
+                }
+            }
+        )
     }
 
     private var selectedProfiles: [ProfileItem] {

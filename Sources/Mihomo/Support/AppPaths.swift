@@ -60,6 +60,10 @@ enum AppPaths {
         supportDirectory.appendingPathComponent("provider-update-history.json")
     }
 
+    static var nodeProvidersFile: URL {
+        supportDirectory.appendingPathComponent("node-providers.json")
+    }
+
     static var secretVaultFile: URL {
         supportDirectory.appendingPathComponent("secrets.vault")
     }

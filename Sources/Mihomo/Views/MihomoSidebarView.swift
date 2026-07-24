@@ -6,25 +6,44 @@ struct MihomoSidebarView: View {
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var activityStore: RuntimeActivityStore
     @Binding var selection: AppSection
+    @AppStorage("sidebar.favorites") private var favoriteSectionValues = ""
+    @AppStorage("sidebar.section.general.expanded") private var mainSectionsExpanded = true
+    @AppStorage("sidebar.section.engine.expanded") private var engineSectionsExpanded = true
+    @AppStorage("sidebar.section.application.expanded") private var applicationSectionsExpanded = true
 
     private let mainSections: [AppSection] = [.overview, .policies, .rules, .profiles, .overrides, .resources, .logs]
     private let engineSections: [AppSection] = [.networkSecurity, .advanced, .diagnostics]
 
     var body: some View {
         List(selection: $selection) {
-            Section("常规") {
+            if favoriteSections.isEmpty == false {
+                Section("收藏") {
+                    sidebarRows(favoriteSections)
+                }
+            }
+
+            Section(isExpanded: $mainSectionsExpanded) {
                 sidebarRows(mainSections)
+            } header: {
+                Text("常规")
             }
 
-            Section("引擎") {
+            Section(isExpanded: $engineSectionsExpanded) {
                 sidebarRows(engineSections)
+            } header: {
+                Text("引擎")
             }
 
-            Section("应用") {
+            Section(isExpanded: $applicationSectionsExpanded) {
                 sidebarRows([.settings])
+            } header: {
+                Text("应用")
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .listRowBackground(MihomoUI.pageBackground)
+        .background(MihomoUI.pageBackground)
         .animation(reduceMotion ? nil : MihomoUI.Motion.soft, value: selection)
         .safeAreaInset(edge: .top, spacing: 0) {
             brandHeader
@@ -40,7 +59,28 @@ struct MihomoSidebarView: View {
             Label(section.sidebarTitle, systemImage: section.systemImage)
                 .tag(section)
                 .help(section.title)
+                .contextMenu {
+                    Button(favoriteSections.contains(section) ? "从收藏移除" : "添加到收藏") {
+                        toggleFavorite(section)
+                    }
+                }
         }
+    }
+
+    private var favoriteSections: [AppSection] {
+        favoriteSectionValues
+            .split(separator: ",")
+            .compactMap { AppSection(rawValue: String($0)) }
+    }
+
+    private func toggleFavorite(_ section: AppSection) {
+        var values = favoriteSections
+        if let index = values.firstIndex(of: section) {
+            values.remove(at: index)
+        } else {
+            values.append(section)
+        }
+        favoriteSectionValues = values.map(\.rawValue).joined(separator: ",")
     }
 
     private var brandHeader: some View {
@@ -59,7 +99,7 @@ struct MihomoSidebarView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background(MihomoUI.pageBackground)
         .accessibilityElement(children: .combine)
     }
 
@@ -109,7 +149,7 @@ struct MihomoSidebarView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(.bar)
+        .background(MihomoUI.pageBackground)
     }
 
     private func sidebarStatus(_ title: String, isOn: Bool, activeColor: Color) -> some View {

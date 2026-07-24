@@ -30,6 +30,7 @@ struct ProfileQualityAnalyzer {
         settings: AppSettings,
         fragments: [ConfigFragment],
         disabledRules: Set<String>,
+        nodeProviders: [NodeProvider] = [],
         migrationLog: [String] = []
     ) -> ProfileQualityReport {
         var issues: [ProfileQualityIssue] = []
@@ -93,7 +94,8 @@ struct ProfileQualityAnalyzer {
                 profileContent: transformedContent,
                 settings: settings,
                 fragments: applicableFragments,
-                disabledRules: disabledRules
+                disabledRules: disabledRules,
+                nodeProviders: nodeProviders.filter { $0.applies(to: profile.id) }
             )
         } catch {
             issues.append(.init(

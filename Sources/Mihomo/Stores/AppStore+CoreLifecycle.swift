@@ -26,7 +26,8 @@ extension AppStore {
                 profile: activeProfile,
                 settings: settings,
                 fragments: configFragments,
-                disabledRules: disabledRules
+                disabledRules: disabledRules,
+                nodeProviders: nodeProviders
             )
             try profileStore.promoteRuntimeConfig(candidate: candidate)
             try syncGeoDataToRuntimeDirectory()
@@ -211,7 +212,8 @@ extension AppStore {
                 profile: activeProfile,
                 settings: settings,
                 fragments: configFragments,
-                disabledRules: disabledRules
+                disabledRules: disabledRules,
+                nodeProviders: nodeProviders
             )
             try syncGeoDataToRuntimeDirectory()
             try profileStore.promoteRuntimeConfig(candidate: candidate)

@@ -15,6 +15,8 @@ struct PoliciesView: View {
     @State private var expandedGroupIDs: Set<String> = []
     @State private var hideUnavailableNodes = false
     @State private var showHiddenGroups = false
+    @State private var sortsByDelay = true
+    @State private var delayFilter: PolicyDelayFilter = .all
 
     private var displayGroups: [ProxyGroup] {
         store.proxyGroups.isEmpty ? store.offlineProxyGroups : store.proxyGroups
@@ -25,10 +27,12 @@ struct PoliciesView: View {
     }
 
     private var visibleGroups: [ProxyGroup] {
-        let groups = displayGroups.filter { showHiddenGroups || !$0.hidden }
+        let groups = displayGroups.filter { group in
+            guard showHiddenGroups || !group.hidden else { return false }
+            return group.all.contains { matchesDelayFilter($0) } || group.all.isEmpty
+        }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.isEmpty == false else { return groups }
-        return groups.filter { group in
+        let searched = query.isEmpty ? groups : groups.filter { group in
             group.name.localizedCaseInsensitiveContains(query)
                 || group.now.localizedCaseInsensitiveContains(query)
                 || group.type.localizedCaseInsensitiveContains(query)
@@ -37,6 +41,7 @@ struct PoliciesView: View {
                         || node.type.localizedCaseInsensitiveContains(query)
                 }
         }
+        return sortsByDelay ? searched.sorted(by: groupDelayOrder) : searched
     }
 
     private var selectedGroup: ProxyGroup? {
@@ -207,6 +212,13 @@ struct PoliciesView: View {
             .disabled(store.proxyGroups.isEmpty)
 
             Menu {
+                Toggle("按延迟排序", isOn: $sortsByDelay)
+                Divider()
+                Picker("延迟筛选", selection: $delayFilter) {
+                    ForEach(PolicyDelayFilter.allCases) { filter in
+                        Text(filter.title).tag(filter)
+                    }
+                }
                 Toggle("隐藏不可用的节点", isOn: $hideUnavailableNodes)
                 Toggle("显示隐藏的策略组", isOn: $showHiddenGroups)
             } label: {
@@ -294,9 +306,48 @@ struct PoliciesView: View {
                 || group.name.localizedCaseInsensitiveContains(query)
         }
         let visibleNodes = nodes.isEmpty && query.isEmpty == false ? group.all : nodes
-        return visibleNodes
+        let filtered = visibleNodes
             .filter { !hideUnavailableNodes || $0.available != false }
-            .map { PolicyNodeRow(group: group, node: $0) }
+            .filter(matchesDelayFilter)
+        let ordered = sortsByDelay ? filtered.sorted(by: nodeDelayOrder) : filtered
+        return ordered.map { PolicyNodeRow(group: group, node: $0) }
+    }
+
+    private func matchesDelayFilter(_ node: ProxyNode) -> Bool {
+        switch delayFilter {
+        case .all: return true
+        case .untested: return node.delay == nil || node.delay == 0
+        case .fast: return node.delay.map { $0 > 0 && $0 < 150 } ?? false
+        case .moderate: return node.delay.map { $0 >= 150 && $0 < 350 } ?? false
+        case .slow: return node.delay.map { $0 >= 350 } ?? false
+        case .unavailable: return node.available == false
+        }
+    }
+
+    private func nodeDelayOrder(_ lhs: ProxyNode, _ rhs: ProxyNode) -> Bool {
+        if lhs.available == false { return false }
+        if rhs.available == false { return true }
+        let lhsDelay = lhs.delay.flatMap { $0 > 0 ? $0 : nil } ?? .max
+        let rhsDelay = rhs.delay.flatMap { $0 > 0 ? $0 : nil } ?? .max
+        if lhsDelay == rhsDelay {
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+        return lhsDelay < rhsDelay
+    }
+
+    private func groupDelayOrder(_ lhs: ProxyGroup, _ rhs: ProxyGroup) -> Bool {
+        let lhsDelay = selectedDelay(in: lhs)
+        let rhsDelay = selectedDelay(in: rhs)
+        if lhsDelay == rhsDelay {
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+        return lhsDelay < rhsDelay
+    }
+
+    private func selectedDelay(in group: ProxyGroup) -> Int {
+        group.all.first(where: { $0.name == group.now })?.delay.flatMap { $0 > 0 ? $0 : nil }
+            ?? group.all.compactMap(\.delay).filter { $0 > 0 }.min()
+            ?? .max
     }
 
     private var allGroupsExpanded: Bool {
@@ -413,5 +464,26 @@ struct PoliciesView: View {
             collapseSelection: searchIsFocused || selectedGroup == nil ? nil : collapseSelectedGroup,
             expandSelection: searchIsFocused || selectedGroup == nil ? nil : expandSelectedGroup
         )
+    }
+}
+
+private enum PolicyDelayFilter: String, CaseIterable, Identifiable {
+    case all
+    case untested
+    case fast
+    case moderate
+    case slow
+    case unavailable
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .all: return "全部延迟"
+        case .untested: return "未测速"
+        case .fast: return "快速 (<150 ms)"
+        case .moderate: return "一般 (150-349 ms)"
+        case .slow: return "较慢 (>=350 ms)"
+        case .unavailable: return "不可用"
+        }
     }
 }

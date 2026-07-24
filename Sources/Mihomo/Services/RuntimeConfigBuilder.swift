@@ -8,7 +8,8 @@ struct RuntimeConfigBuilder {
         profileContent: String,
         settings: AppSettings,
         fragments: [ConfigFragment] = [],
-        disabledRules: Set<String> = []
+        disabledRules: Set<String> = [],
+        nodeProviders: [NodeProvider] = []
     ) throws -> String {
         var configuredMap = try yamlMapping(from: profileContent, label: "profile")
 
@@ -18,6 +19,8 @@ struct RuntimeConfigBuilder {
                 configuredMap = deepMerge(configuredMap, fragmentMap)
             }
         }
+
+        try injectNodeProviders(nodeProviders, into: &configuredMap)
 
         filterDisabledRules(in: &configuredMap, disabledRules: disabledRules)
 
@@ -194,6 +197,30 @@ struct RuntimeConfigBuilder {
             guard let rule = item as? String else { return true }
             return disabledRules.contains(rule.trimmingCharacters(in: .whitespacesAndNewlines)) == false
         }
+    }
+
+    private func injectNodeProviders(_ nodeProviders: [NodeProvider], into map: inout YAMLMap) throws {
+        let selected = nodeProviders.filter(\.enabled)
+        guard selected.isEmpty == false else { return }
+
+        var proxyProviders = map["proxy-providers"] as? YAMLMap ?? [:]
+        for provider in selected {
+            let name = provider.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            // 已写回 Profile 的独立条目不重复注入；Profile 内容是运行时定义的来源。
+            guard proxyProviders[name] == nil else { continue }
+            var definition: YAMLMap = [
+                "type": provider.providerType,
+                "path": provider.path
+            ]
+            if provider.url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                definition["url"] = provider.url
+            }
+            if provider.interval > 0 {
+                definition["interval"] = provider.interval
+            }
+            proxyProviders[name] = definition
+        }
+        map["proxy-providers"] = proxyProviders
     }
 
     private func lineList(_ text: String) -> [String] {

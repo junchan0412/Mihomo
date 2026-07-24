@@ -3,6 +3,59 @@ import XCTest
 @testable import Mihomo
 
 final class AppSettingsCodableTests: XCTestCase {
+    func testNodeProviderRoundTripPreservesProfileAssignments() throws {
+        let profileID = UUID(uuidString: "1F8973DC-A8F3-4C7D-8AA2-CE5F526CBD5A")!
+        let provider = NodeProvider(
+            name: "订阅 A",
+            url: "https://example.com/sub",
+            providerType: "https",
+            interval: 3_600,
+            profileIDs: [profileID],
+            sourceProfileID: profileID,
+            group: "工作",
+            tags: ["稳定", "优先"]
+        )
+
+        let decoded = try JSONDecoder().decode(NodeProvider.self, from: JSONEncoder().encode(provider))
+
+        XCTAssertEqual(decoded, provider)
+        XCTAssertTrue(decoded.applies(to: profileID))
+        XCTAssertEqual(decoded.sourceIdentity, provider.sourceIdentity)
+    }
+
+    func testCanonicalNodeProvidersMergeSameNameIntoProfileDefinition() {
+        let profileID = UUID(uuidString: "AFEACBC6-54B9-4A2F-93DD-58256947B8A7")!
+        let local = NodeProvider(
+            id: UUID(uuidString: "349AD742-3D0A-4F33-AD9E-F95AE154F62D")!,
+            name: "星网",
+            url: "https://old.example.com/sub",
+            path: "proxy_providers/old.yaml",
+            profileIDs: [profileID],
+            group: "常用",
+            tags: ["手动添加"]
+        )
+        let imported = NodeProvider(
+            name: "星网",
+            url: "https://profile.example.com/sub",
+            path: "proxy_providers/profile.yaml",
+            interval: 3_600,
+            profileIDs: [profileID],
+            sourceProfileID: profileID,
+            group: "从配置导入",
+            tags: ["配置导入"]
+        )
+
+        let canonical = NodeProvider.canonicalized([local, imported])
+
+        XCTAssertEqual(canonical.count, 1)
+        XCTAssertEqual(canonical[0].id, local.id)
+        XCTAssertEqual(canonical[0].sourceProfileID, profileID)
+        XCTAssertEqual(canonical[0].url, "https://profile.example.com/sub")
+        XCTAssertEqual(canonical[0].path, "proxy_providers/profile.yaml")
+        XCTAssertEqual(canonical[0].group, "常用")
+        XCTAssertEqual(Set(canonical[0].tags), ["手动添加", "配置导入"])
+    }
+
     func testRoundTripPreservesNonDefaultSettings() throws {
         let profileID = UUID(uuidString: "8C08A1E5-8DF4-48BE-9E15-5503C3176AE6")!
         let settings = AppSettings(
