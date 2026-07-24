@@ -330,7 +330,7 @@ private struct MenuBarPolicyGroupRow: View {
 
                     Spacer(minLength: 8)
 
-                    MenuBarDelayBadge(node: currentNode)
+                    MenuBarGroupLatencySummary(group: group, currentNode: currentNode)
                 }
                 .padding(.vertical, 8)
             }
@@ -444,4 +444,32 @@ private struct MenuBarDelayBadge: View {
         if delay < 350 { return .orange }
         return .red
     }
+}
+
+private struct MenuBarGroupLatencySummary: View {
+    var group: ProxyGroup
+    var currentNode: ProxyNode?
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            MenuBarDelayBadge(node: currentNode)
+            Text(coverageTitle)
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.tertiary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(group.name) 延迟状态")
+        .accessibilityValue("\(MenuBarDelayBadgeTitle(node: currentNode))，\(coverageTitle)")
+    }
+
+    private var coverageTitle: String {
+        let tested = group.all.filter { ($0.delay ?? 0) > 0 }.count
+        return "\(tested)/\(group.all.count) 已测速"
+    }
+}
+
+private func MenuBarDelayBadgeTitle(node: ProxyNode?) -> String {
+    if node?.available == false { return "不可用" }
+    guard let delay = node?.delay, delay > 0 else { return "未测试" }
+    return "\(delay) ms"
 }

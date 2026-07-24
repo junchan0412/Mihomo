@@ -12,6 +12,8 @@ struct ResourcesView: View {
     @State private var nodeProviderEditor: NodeProviderEditorRoute?
     @State private var showingNodeProviderBatchImport = false
     @State private var nodeProviderGroupFilter = "全部"
+    @State private var nodeProviderChangePreview: NodeProviderChangePreview?
+    @State private var nodeProviderPreviewError = ""
 
     private var latestRecords: [String: ProviderUpdateRecord] {
         var records: [String: ProviderUpdateRecord] = [:]
@@ -96,7 +98,7 @@ struct ResourcesView: View {
         .onChange(of: showsOnlyUnready) {
             ensureSelection()
         }
-        .confirmationDialog("回滚所选资源？", isPresented: $confirmsRollback, titleVisibility: .visible) {
+        .confirmationDialog(rollbackConfirmationTitle, isPresented: $confirmsRollback, titleVisibility: .visible) {
             Button("回滚 \(rollbackableSelectedRows.count) 个资源", role: .destructive) {
                 rollbackSelectedResources()
             }
@@ -118,7 +120,7 @@ struct ResourcesView: View {
                     } else {
                         updated.append(provider)
                     }
-                    store.saveNodeProviders(updated)
+                    presentNodeProviderPreview(updated, title: route.provider == nil ? "添加节点提供商" : "编辑节点提供商")
                     nodeProviderEditor = nil
                 },
                 cancel: { nodeProviderEditor = nil }
@@ -130,6 +132,18 @@ struct ResourcesView: View {
                     mergeImportedNodeProviders(imported)
                 }
             }
+        }
+        .sheet(item: $nodeProviderChangePreview) { preview in
+            NodeProviderChangePreviewSheet(
+                preview: preview,
+                apply: { applyNodeProviderPreview(preview) },
+                cancel: { nodeProviderChangePreview = nil }
+            )
+        }
+        .alert("无法生成节点提供商变更预览", isPresented: nodeProviderPreviewErrorBinding) {
+            Button("好", role: .cancel) { nodeProviderPreviewError = "" }
+        } message: {
+            Text(nodeProviderPreviewError)
         }
     }
 
@@ -266,6 +280,22 @@ struct ResourcesView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
 
+                if let undoTitle = store.nodeProviderUndoTitle {
+                    Divider()
+                    HStack(spacing: 8) {
+                        Label("已应用\(undoTitle)", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("撤销", systemImage: "arrow.uturn.backward") {
+                            store.undoLastNodeProviderChange()
+                        }
+                        .help("撤销最近一次节点提供商变更")
+                    }
+                    .font(.caption)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                }
+
                 Divider()
 
                 if filteredNodeProviders.isEmpty {
@@ -283,12 +313,13 @@ struct ResourcesView: View {
                                     provider: provider,
                                     isSelected: provider.applies(to: activeProfile.id),
                                     toggleSelection: { selected in
-                                        store.setNodeProvider(provider, enabledFor: activeProfile, isSelected: selected)
+                                        guard let updated = store.proposedNodeProviderSelection(provider, enabledFor: activeProfile, isSelected: selected) else { return }
+                                        presentNodeProviderPreview(updated, title: selected ? "关联节点提供商" : "取消关联节点提供商")
                                     },
                                     refresh: { Task { await store.refreshNodeProvider(provider) } },
                                     edit: { nodeProviderEditor = .editing(provider) },
                                     delete: {
-                                        store.saveNodeProviders(store.nodeProviders.filter { $0.id != provider.id })
+                                        presentNodeProviderPreview(store.nodeProviders.filter { $0.id != provider.id }, title: "删除节点提供商")
                                     }
                                 )
                                 if provider.id != filteredNodeProviders.last?.id { Divider().padding(.leading, 48) }
@@ -332,7 +363,7 @@ struct ResourcesView: View {
     private func mergeImportedNodeProviders(_ imported: [NodeProvider]) {
         var updated = store.nodeProviders
         for provider in imported {
-            if let index = updated.firstIndex(where: { $0.name.caseInsensitiveCompare(provider.name) == .orderedSame }) {
+            if let index = updated.firstIndex(where: { $0.sourceIdentity == provider.sourceIdentity }) {
                 var merged = provider
                 merged.id = updated[index].id
                 merged.profileIDs = Array(Set(updated[index].profileIDs + provider.profileIDs))
@@ -341,7 +372,39 @@ struct ResourcesView: View {
                 updated.append(provider)
             }
         }
-        store.saveNodeProviders(updated)
+        presentNodeProviderPreview(updated, title: "批量导入节点提供商")
+    }
+
+    private var rollbackConfirmationTitle: String {
+        "回滚 \(rollbackableSelectedRows.count) 个资源？"
+    }
+
+    private var nodeProviderPreviewErrorBinding: Binding<Bool> {
+        Binding(
+            get: { nodeProviderPreviewError.isEmpty == false },
+            set: { visible in
+                if visible == false { nodeProviderPreviewError = "" }
+            }
+        )
+    }
+
+    private func presentNodeProviderPreview(_ updated: [NodeProvider], title: String) {
+        do {
+            nodeProviderChangePreview = try store.previewNodeProviderChange(updated, title: title)
+        } catch {
+            nodeProviderPreviewError = error.localizedDescription
+        }
+    }
+
+    private func applyNodeProviderPreview(_ preview: NodeProviderChangePreview) -> Bool {
+        do {
+            try store.applyNodeProviderChange(preview)
+            nodeProviderChangePreview = nil
+            return true
+        } catch {
+            nodeProviderPreviewError = error.localizedDescription
+            return false
+        }
     }
 
     private var bottomBar: some View {

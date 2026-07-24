@@ -11,6 +11,7 @@ final class AppSettingsCodableTests: XCTestCase {
             providerType: "https",
             interval: 3_600,
             profileIDs: [profileID],
+            sourceProfileID: profileID,
             group: "工作",
             tags: ["稳定", "优先"]
         )
@@ -19,6 +20,7 @@ final class AppSettingsCodableTests: XCTestCase {
 
         XCTAssertEqual(decoded, provider)
         XCTAssertTrue(decoded.applies(to: profileID))
+        XCTAssertEqual(decoded.sourceIdentity, provider.sourceIdentity)
     }
 
     func testRoundTripPreservesNonDefaultSettings() throws {

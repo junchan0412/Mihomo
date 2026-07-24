@@ -26,6 +26,7 @@ final class AppStore: ObservableObject {
     @Published var loginItemStatus = "未检查"
     @Published var profileRefreshQueue: [ProfileRefreshJob] = []
     @Published var profileRefreshFailureCount = 0
+    @Published var pendingProfileRefreshPreviews: [RemoteProfileRefreshPreview] = []
     @Published var delayTestStatus = "未运行"
     @Published var delayTestFailureSummary = ""
     @Published var offlineProxyGroups: [ProxyGroup] = []
@@ -37,6 +38,7 @@ final class AppStore: ObservableObject {
     @Published var rules: [RuleItem] = []
     @Published var providers: [ProviderItem] = []
     @Published var nodeProviders: [NodeProvider] = []
+    @Published var nodeProviderUndoTitle: String?
     @Published var configPreview = ""
     @Published var configDiff = ""
     @Published var providerUpdateHistory: [ProviderUpdateRecord] = []
@@ -111,6 +113,7 @@ final class AppStore: ObservableObject {
     let configFragmentStore = ConfigFragmentStore()
     let nodeProviderStore = NodeProviderStore()
     let nodeProviderSynchronizer = NodeProviderProfileSynchronizer()
+    var nodeProviderUndoSnapshot: NodeProviderUndoSnapshot?
     let managedCoreManager = ManagedCoreManager()
     let geoUpdateManager = GeoUpdateManager()
     let profileSettingsSynchronizer = ProfileSettingsSynchronizer()
@@ -155,6 +158,10 @@ final class AppStore: ObservableObject {
 
     var activeProfile: ProfileItem? {
         profiles.first { $0.id == settings.activeProfileID } ?? profiles.first
+    }
+
+    var pendingProfileRefreshPreview: RemoteProfileRefreshPreview? {
+        pendingProfileRefreshPreviews.first
     }
 
     var effectiveMihomoPath: String {

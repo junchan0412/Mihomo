@@ -23,7 +23,7 @@ struct ProfileQualityPane: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(maxWidth: 520)
+                .frame(maxWidth: 520, alignment: .leading)
                 .padding(12)
 
                 Divider()
@@ -43,7 +43,7 @@ struct ProfileQualityPane: View {
                 .frame(minHeight: 250, alignment: .topLeading)
                 .transition(.opacity)
             }
-            .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .frame(maxWidth: .infinity, alignment: .leading)
             .animation(reduceMotion ? nil : MihomoUI.Motion.quick, value: section)
         }
         .padding(16)
@@ -140,12 +140,17 @@ struct ProfileQualityPane: View {
                 ContentUnavailableView("没有字段来源", systemImage: "point.3.connected.trianglepath.dotted")
                     .frame(maxWidth: .infinity, minHeight: 120)
             } else {
-                ForEach(Array(report.sourceItems.enumerated()), id: \.element.id) { index, item in
-                    RuntimeSourceRow(item: item)
-                    if index < report.sourceItems.count - 1 {
-                        Divider()
+                ScrollView(.vertical) {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(report.sourceItems.enumerated()), id: \.element.id) { index, item in
+                            RuntimeSourceRow(item: item)
+                            if index < report.sourceItems.count - 1 {
+                                Divider()
+                            }
+                        }
                     }
                 }
+                .frame(maxHeight: 360)
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)

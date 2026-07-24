@@ -31,7 +31,7 @@ struct NodeProviderEditorSheet: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(original == nil ? "添加节点提供商" : "编辑节点提供商")
                     .font(.title2.weight(.semibold))
-                Text("Provider 元数据独立保存；仅在选中的 Profile 生成运行时配置时注入。")
+                Text("保存前会显示关联 Profile 的字段变更；确认后才会写入配置文件。")
                     .foregroundStyle(.secondary)
             }
 
@@ -81,9 +81,11 @@ struct NodeProviderEditorSheet: View {
             name: normalizedName,
             url: normalizedURL,
             path: original?.path,
+            providerType: original?.providerType ?? "http",
             interval: interval,
             enabled: enabled,
             profileIDs: original?.profileIDs ?? [],
+            sourceProfileID: original?.sourceProfileID,
             group: group.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "未分组" : group.trimmingCharacters(in: .whitespacesAndNewlines),
             tags: tags.components(separatedBy: CharacterSet(charactersIn: ",，\n"))
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }

@@ -42,6 +42,7 @@ struct MihomoSidebarView: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
+        .listRowBackground(MihomoUI.pageBackground)
         .background(MihomoUI.pageBackground)
         .animation(reduceMotion ? nil : MihomoUI.Motion.soft, value: selection)
         .safeAreaInset(edge: .top, spacing: 0) {

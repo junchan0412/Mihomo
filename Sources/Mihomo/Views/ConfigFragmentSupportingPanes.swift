@@ -213,8 +213,8 @@ struct ConfigFragmentOverviewPane: View {
 
             if let fragment {
                 let report = analyzer.analyze(fragment)
-                Grid(horizontalSpacing: 12, verticalSpacing: 10) {
-                    GridRow {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 12) {
                         OverviewMetric(title: "语法状态", value: report.statusTitle, color: statusColor(report))
                         OverviewMetric(title: "行数", value: "\(report.lineCount)")
                         OverviewMetric(title: "大小", value: Formatters.bytes(Int64(report.byteCount)))
@@ -224,7 +224,7 @@ struct ConfigFragmentOverviewPane: View {
                         value: fragment.kind == .yaml ? topLevelKeySummary(report) : "transform(config)",
                         lineLimit: 3
                     )
-                    .gridCellColumns(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 Divider()

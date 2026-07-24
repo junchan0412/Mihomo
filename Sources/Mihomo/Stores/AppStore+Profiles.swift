@@ -61,20 +61,34 @@ extension AppStore {
 
     func refreshProfile(_ profile: ProfileItem) async {
         do {
-            let updated = try await profileStore.refreshRemoteProfile(profile, settings: settings)
-            if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
-                profiles[index] = updated
-                try profileStore.saveProfiles(profiles)
+            let preview = try await profileStore.prepareRemoteProfileRefresh(profile, settings: settings)
+            if preview.requiresProviderConfirmation {
+                pendingProfileRefreshPreviews.append(preview)
+                appendLog("warning", "配置 \(profile.name) 刷新将保留 \(preview.preservedProviderNames.count) 个 Provider，等待确认")
+            } else {
+                try applyRemoteProfileRefreshPreview(preview)
             }
-            try importNodeProviders(from: [updated])
-            if settings.activeProfileID == updated.id {
-                try synchronizeAppSettings(from: updated)
-            }
-            refreshConfigArtifacts()
-            appendLog("info", "已刷新配置 \(profile.name)")
         } catch {
             appendLog("error", "配置刷新失败：\(error.localizedDescription)")
         }
+    }
+
+    func applyPendingProfileRefreshPreview() -> Bool {
+        guard let preview = pendingProfileRefreshPreview else { return false }
+        do {
+            try applyRemoteProfileRefreshPreview(preview)
+            pendingProfileRefreshPreviews.removeFirst()
+            return true
+        } catch {
+            appendLog("error", "应用配置刷新失败：\(error.localizedDescription)")
+            return false
+        }
+    }
+
+    func discardPendingProfileRefreshPreview() {
+        guard let preview = pendingProfileRefreshPreview else { return }
+        pendingProfileRefreshPreviews.removeFirst()
+        appendLog("info", "已取消配置 \(preview.originalProfile.name) 的 Provider 合并刷新")
     }
 
     func refreshAllRemoteProfiles() async {
@@ -120,10 +134,10 @@ extension AppStore {
                 runningTasks.append(Task {
                     let store = ProfileStore()
                     do {
-                        let updated = try await store.refreshRemoteProfile(profile, settings: refreshSettings)
-                        return ProfileRefreshResult(profileID: profile.id, updated: updated, errorMessage: nil)
+                        let preview = try await store.prepareRemoteProfileRefresh(profile, settings: refreshSettings)
+                        return ProfileRefreshResult(profileID: profile.id, preview: preview, errorMessage: nil)
                     } catch {
-                        return ProfileRefreshResult(profileID: profile.id, updated: nil, errorMessage: error.localizedDescription)
+                        return ProfileRefreshResult(profileID: profile.id, preview: nil, errorMessage: error.localizedDescription)
                     }
                 })
             }
@@ -132,22 +146,23 @@ extension AppStore {
             let result = await runningTasks.removeFirst().value
             completed += 1
 
-            if let updated = result.updated {
-                if let index = profiles.firstIndex(where: { $0.id == result.profileID }) {
-                    profiles[index] = updated
-                    try? profileStore.saveProfiles(profiles)
-                }
-                try? importNodeProviders(from: [updated])
-                if settings.activeProfileID == updated.id {
+            if let preview = result.preview {
+                if preview.requiresProviderConfirmation {
+                    pendingProfileRefreshPreviews.append(preview)
+                    succeeded += 1
+                    markRefreshJob(profileID: result.profileID, state: .succeeded, message: "等待确认 Provider 合并", finishedAt: Date())
+                } else {
                     do {
-                        try synchronizeAppSettings(from: updated)
+                        try applyRemoteProfileRefreshPreview(preview)
+                        succeeded += 1
+                        markRefreshJob(profileID: result.profileID, state: .succeeded, message: "刷新成功", finishedAt: Date())
                     } catch {
-                        appendLog("error", "配置刷新后同步 App 设置失败：\(error.localizedDescription)")
+                        failed += 1
+                        profileRefreshFailureCount = failed
+                        markRefreshJob(profileID: result.profileID, state: .failed, message: error.localizedDescription, finishedAt: Date())
+                        appendLog("error", "订阅刷新应用失败：\(error.localizedDescription)")
                     }
                 }
-                refreshConfigArtifacts()
-                succeeded += 1
-                markRefreshJob(profileID: result.profileID, state: .succeeded, message: "刷新成功", finishedAt: Date())
             } else {
                 failed += 1
                 profileRefreshFailureCount = failed
@@ -163,6 +178,20 @@ extension AppStore {
         }
 
         profileAutoRefreshStatus = "上次刷新：\(Formatters.shortDate.string(from: Date()))，成功 \(succeeded)/\(remoteProfiles.count)，失败 \(failed)"
+    }
+
+    private func applyRemoteProfileRefreshPreview(_ preview: RemoteProfileRefreshPreview) throws {
+        let updated = try profileStore.applyRemoteProfileRefresh(preview, settings: settings)
+        if let index = profiles.firstIndex(where: { $0.id == updated.id }) {
+            profiles[index] = updated
+            try profileStore.saveProfiles(profiles)
+        }
+        try importNodeProviders(from: [updated])
+        if settings.activeProfileID == updated.id {
+            try synchronizeAppSettings(from: updated)
+        }
+        refreshConfigArtifacts()
+        appendLog("info", "已刷新配置 \(updated.name)")
     }
 
     func setActiveProfile(_ profile: ProfileItem) async {
@@ -378,7 +407,7 @@ private struct ProfileEditorSnapshot {
 
 private struct ProfileRefreshResult {
     var profileID: UUID
-    var updated: ProfileItem?
+    var preview: RemoteProfileRefreshPreview?
     var errorMessage: String?
 }
 
