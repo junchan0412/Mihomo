@@ -14,6 +14,7 @@ struct ConfigFragmentEditorWindowView: View {
     @State private var fragmentAppliesGlobally = true
     @State private var fragmentProfileIDs: Set<UUID> = []
     @State private var hasLoaded = false
+    @State private var showingVersionHistory = false
 
     private var selectedFragment: ConfigFragment? {
         guard let fragmentID = route.fragmentID else { return nil }
@@ -34,6 +35,14 @@ struct ConfigFragmentEditorWindowView: View {
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .navigationTitle(isCreating ? "新增覆写" : (selectedFragment?.name ?? "覆写编辑器"))
+        .sheet(isPresented: $showingVersionHistory) {
+            ConfigRevisionHistorySheet(
+                revisions: store.revisions(kind: .overrides, subjectID: "all"),
+                currentContent: encodedCurrentFragments,
+                restore: { revision in _ = store.restoreConfigFragmentsRevision(revision) }
+            )
+            .environmentObject(store)
+        }
         .onAppear { loadSelectionIfNeeded() }
     }
 
@@ -178,6 +187,12 @@ struct ConfigFragmentEditorWindowView: View {
             Button("取消") { dismiss() }
                 .keyboardShortcut(.cancelAction)
             Spacer()
+            Button {
+                showingVersionHistory = true
+            } label: {
+                Label("版本", systemImage: "clock.arrow.circlepath")
+            }
+            .disabled(isCreating)
             Button("还原") { loadSelection() }
                 .disabled(isCreating)
             Button(isCreating ? "添加覆写" : "保存覆写") {
@@ -214,7 +229,9 @@ struct ConfigFragmentEditorWindowView: View {
         fragmentName = fragment.name
         fragmentKind = fragment.kind
         fragmentEnabled = fragment.enabled
-        fragmentContent = fragment.content
+        fragmentContent = fragment.kind == .yaml
+            ? YAMLText.editorText(from: fragment.content)
+            : fragment.content
         fragmentAppliesGlobally = fragment.appliesGlobally
         fragmentProfileIDs = Set(fragment.profileIDs)
     }
@@ -267,5 +284,13 @@ struct ConfigFragmentEditorWindowView: View {
 
     private var saveDisabled: Bool {
         validationMessage != nil || (isCreating == false && selectedFragment == nil)
+    }
+
+    private var encodedCurrentFragments: String {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(store.configFragments) else { return "" }
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }

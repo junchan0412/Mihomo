@@ -10,12 +10,12 @@ struct DiagnosticsView: View {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("诊断").font(MihomoUI.Fonts.pageTitle)
-                        Text("先定位问题，再执行对应修复；诊断包自动脱敏，可快速分享给支持方。")
+                        Text("先定位问题，再执行对应修复；运行健康报告会自动脱敏，可快速分享给支持方。")
                             .font(MihomoUI.Fonts.pageSubtitle).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button { store.exportDiagnosticBundle() } label: {
-                        Label("导出诊断包", systemImage: "square.and.arrow.up")
+                        Label("导出健康报告", systemImage: "square.and.arrow.up")
                     }
                     if let url = store.lastDiagnosticBundleURL {
                         ShareLink(item: url) {
@@ -77,7 +77,7 @@ struct DiagnosticsView: View {
             SettingsSection(title: "推荐流程", subtitle: "诊断不会直接修改系统状态。", systemImage: "list.number") {
                 SettingsRow("1") { Text("运行诊断并查看检查结果").foregroundStyle(.secondary) }
                 SettingsRow("2") { Text("仅对异常项目执行对应修复").foregroundStyle(.secondary) }
-                SettingsRow("3") { Text("仍无法解决时导出脱敏诊断包").foregroundStyle(.secondary) }
+                    SettingsRow("3") { Text("仍无法解决时导出脱敏运行健康报告").foregroundStyle(.secondary) }
             }
             Text(store.diagnosticExportStatus).foregroundStyle(.secondary).textSelection(.enabled)
         }

@@ -29,8 +29,12 @@ final class AppStore: ObservableObject {
     @Published var pendingProfileRefreshPreviews: [RemoteProfileRefreshPreview] = []
     @Published var delayTestStatus = "未运行"
     @Published var delayTestFailureSummary = ""
+    @Published var policyDelayHistory: [PolicyDelayHistoryEntry] = []
+    @Published var recentProxySelections: [RecentProxySelection] = []
+    @Published var favoritePolicyGroupNames: Set<String> = []
     @Published var offlineProxyGroups: [ProxyGroup] = []
     @Published var configFragments: [ConfigFragment] = []
+    @Published var configRevisions: [ConfigRevision] = []
     @Published var configFragmentRefreshStatus = "没有远程覆写"
     @Published var configFragmentRefreshFailureCount = 0
     @Published var configFragmentImportStatus = ""
@@ -61,6 +65,7 @@ final class AppStore: ObservableObject {
     @Published var ruleFocusQuery = ""
     @Published var networkWorkspaceTab: NetworkWorkspaceTab = .overview
     @Published var isLightweightModeActive = false
+    @Published var isCommandPalettePresented = false
 
     let logStore = LogStore()
     let activityStore = RuntimeActivityStore()
@@ -111,6 +116,7 @@ final class AppStore: ObservableObject {
     let loginItem = LoginItemManager()
     let notificationManager = NotificationManager()
     let configFragmentStore = ConfigFragmentStore()
+    let configRevisionStore = ConfigRevisionStore()
     let nodeProviderStore = NodeProviderStore()
     let nodeProviderSynchronizer = NodeProviderProfileSynchronizer()
     var nodeProviderUndoSnapshot: NodeProviderUndoSnapshot?
@@ -217,10 +223,12 @@ final class AppStore: ObservableObject {
             try migrateSettingsIfNeeded()
             profiles = try profileStore.loadProfiles(settings: settings)
             configFragments = try configFragmentStore.loadFragments()
+            configRevisions = try configRevisionStore.loadIndex()
             nodeProviders = try nodeProviderStore.load()
             try importNodeProviders(from: profiles)
             disabledRules = try configFragmentStore.loadDisabledRules()
             providerUpdateHistory = loadProviderUpdateHistory()
+            loadPolicyInteractionHistory()
             if settings.activeProfileID == nil {
                 settings.activeProfileID = profiles.first?.id
             }

@@ -8,6 +8,7 @@ struct ProfileEditorWindowView: View {
     @State private var editorContent = ""
     @State private var editorMode = "yaml"
     @State private var status = "选择配置后载入内容"
+    @State private var showingVersionHistory = false
 
     private var profile: ProfileItem? {
         store.profiles.first { $0.id == profileID }
@@ -47,6 +48,16 @@ struct ProfileEditorWindowView: View {
             }
         }
         .navigationTitle(profile?.name ?? "配置编辑器")
+        .sheet(isPresented: $showingVersionHistory) {
+            if let profile {
+                ConfigRevisionHistorySheet(
+                    revisions: store.revisions(kind: .profile, subjectID: profile.id.uuidString),
+                    currentContent: editorContent,
+                    restore: { revision in Task { _ = await store.restoreProfileRevision(revision); loadEditor() } }
+                )
+                .environmentObject(store)
+            }
+        }
         .onAppear(perform: loadEditor)
         .onChange(of: store.profiles) {
             guard profile == nil else { return }
@@ -81,6 +92,13 @@ struct ProfileEditorWindowView: View {
             }
 
             Button {
+                showingVersionHistory = true
+            } label: {
+                Label("版本", systemImage: "clock.arrow.circlepath")
+            }
+            .disabled(profile == nil)
+
+            Button {
                 saveEditor()
             } label: {
                 Label("保存", systemImage: "checkmark")
@@ -100,7 +118,7 @@ struct ProfileEditorWindowView: View {
             return
         }
         editorName = profile.name
-        editorContent = store.profileContent(for: profile)
+        editorContent = YAMLText.editorText(from: store.profileContent(for: profile))
         status = "已载入：\(Formatters.shortDate.string(from: Date()))"
     }
 

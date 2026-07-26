@@ -83,6 +83,11 @@ struct MihomoCommands: Commands {
         CommandGroup(after: .pasteboard) {
             Divider()
 
+            Button("命令面板...") {
+                store.isCommandPalettePresented = true
+            }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+
             Button("查找...") {
                 workspaceCommands?.search?()
             }

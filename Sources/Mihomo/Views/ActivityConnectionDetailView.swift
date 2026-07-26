@@ -254,6 +254,7 @@ struct ConnectionInlineDetailView: View {
             ]
         case .routing:
             return [
+                .init(title: "路由解释", rows: routingExplanationRows),
                 .init(title: "规则", rows: [
                     ("类型", connection.ruleTypeDisplay),
                     ("内容", connection.rulePayloadDisplay),
@@ -303,6 +304,16 @@ struct ConnectionInlineDetailView: View {
                 ])
             ]
         }
+    }
+
+    private var routingExplanationRows: [(String, String)] {
+        [
+            ("1. 进程", connection.processName),
+            ("2. 域名", connection.hostDisplay),
+            ("3. 规则", connection.ruleDisplay),
+            ("4. 策略链", connection.chainDisplay),
+            ("5. 出站", connection.policyDisplay)
+        ]
     }
 }
 

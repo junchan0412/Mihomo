@@ -208,6 +208,17 @@ fileprivate final class LineNumberRulerView: NSRulerView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.textBackgroundColor.setFill()
+        NSRect(
+            x: bounds.minX,
+            y: dirtyRect.minY,
+            width: min(bounds.width, ruleThickness + 1),
+            height: dirtyRect.height
+        ).fill()
+        drawHashMarksAndLabels(in: dirtyRect)
+    }
+
     override func drawHashMarksAndLabels(in rect: NSRect) {
         guard let textView,
               let layoutManager = textView.layoutManager,

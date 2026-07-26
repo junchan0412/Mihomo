@@ -1,5 +1,22 @@
 import Foundation
 
+enum ConfigRevisionKind: String, Codable, Hashable {
+    case profile
+    case overrides
+
+    var title: String { self == .profile ? "Profile" : "覆写" }
+}
+
+struct ConfigRevision: Identifiable, Codable, Hashable {
+    var id: UUID
+    var kind: ConfigRevisionKind
+    var subjectID: String
+    var subjectName: String
+    var actionName: String
+    var createdAt: Date
+    var fileName: String
+}
+
 enum ConfigFragmentKind: String, Codable, CaseIterable, Hashable {
     case yaml
     case javascript
@@ -552,6 +569,35 @@ struct ProxyGroup: Identifiable, Hashable {
     var all: [ProxyNode]
     var icon: String?
     var hidden: Bool = false
+}
+
+struct PolicyDelayHistoryEntry: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var proxyName: String
+    var groupNames: [String]
+    var recordedAt = Date()
+    var delay: Int?
+    var failureReason: String?
+    var skippedReason: String?
+
+    var outcomeTitle: String {
+        if let delay, delay > 0 { return "\(delay) ms" }
+        if let skippedReason { return skippedReason }
+        return failureReason ?? "未完成"
+    }
+}
+
+struct RecentProxySelection: Identifiable, Codable, Hashable {
+    var id: String { "\(groupName)\u{1f}\(proxyName)" }
+    var groupName: String
+    var proxyName: String
+    var selectedAt = Date()
+}
+
+struct PolicyInteractionHistory: Codable, Hashable {
+    var delayEntries: [PolicyDelayHistoryEntry] = []
+    var recentSelections: [RecentProxySelection] = []
+    var favoriteGroupNames: [String] = []
 }
 
 struct PolicyTableRow: Identifiable, Hashable {

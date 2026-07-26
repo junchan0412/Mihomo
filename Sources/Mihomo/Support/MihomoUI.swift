@@ -45,6 +45,12 @@ enum MihomoUI {
         Color(nsColor: .textBackgroundColor)
     }
 
+    /// Keep the primary navigation column in the same visual plane as the workspace.
+    /// Using the text background avoids the large material contrast of the system sidebar.
+    static var sidebarBackground: Color {
+        Color(nsColor: .textBackgroundColor)
+    }
+
     static var mutedFill: Color {
         if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
             return Color(nsColor: .unemphasizedSelectedContentBackgroundColor)

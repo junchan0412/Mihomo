@@ -229,6 +229,9 @@ extension AppStore {
         undoManager: UndoManager?
     ) -> Bool {
         let previous = configFragments
+        if previous != next {
+            captureConfigFragmentsRevision(previous, actionName: actionName)
+        }
         configFragments = next
         do {
             try configFragmentStore.saveFragments(configFragments)
@@ -294,6 +297,10 @@ extension AppStore {
         profile: ProfileItem,
         snapshot: ProfileConfigMutationSnapshot
     ) throws {
+        let previousContent = try profileStore.loadProfileContent(profile, settings: settings)
+        if previousContent != snapshot.content {
+            captureProfileRevision(profile, content: previousContent, actionName: "编辑规则")
+        }
         let updatedProfile = try profileStore.saveProfileContent(profile, content: snapshot.content, settings: settings)
         profiles[profileIndex] = updatedProfile
         disabledRules = snapshot.disabledRules

@@ -132,6 +132,7 @@ struct PoliciesView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(selectedGroup.name).font(.title2.weight(.semibold))
                     Text("\(selectedGroup.type) · \(selectedGroup.all.count) 个候选").foregroundStyle(.secondary)
+                    PolicyDelayHistoryPane(entries: store.delayHistory(for: selectedGroup))
                     ScrollView {
                         PolicyNodeCardGrid(rows: nodeRows, isOffline: isOfflinePolicyMode, selectedNodeID: $selectedNodeID, activate: handleNodeDoubleClick)
                     }
@@ -464,6 +465,38 @@ struct PoliciesView: View {
             collapseSelection: searchIsFocused || selectedGroup == nil ? nil : collapseSelectedGroup,
             expandSelection: searchIsFocused || selectedGroup == nil ? nil : expandSelectedGroup
         )
+    }
+}
+
+private struct PolicyDelayHistoryPane: View {
+    var entries: [PolicyDelayHistoryEntry]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Label("最近测速", systemImage: "clock.arrow.circlepath")
+                .font(.headline)
+            if entries.isEmpty {
+                Text("尚无测速记录。运行一次延迟测试后会保留结果、失败原因和时间。")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(entries) { entry in
+                    HStack(spacing: 10) {
+                        Text(entry.proxyName)
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        Text(entry.outcomeTitle)
+                            .font(.callout.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(entry.delay == nil ? .orange : .green)
+                        Text(Formatters.shortDate.string(from: entry.recordedAt))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(MihomoUI.mutedFill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
     }
 }
 

@@ -181,6 +181,7 @@ extension AppStore {
     }
 
     private func applyRemoteProfileRefreshPreview(_ preview: RemoteProfileRefreshPreview) throws {
+        captureProfileRevision(preview.originalProfile, content: preview.originalContent, actionName: "刷新订阅")
         let updated = try profileStore.applyRemoteProfileRefresh(preview, settings: settings)
         if let index = profiles.firstIndex(where: { $0.id == updated.id }) {
             profiles[index] = updated
@@ -229,6 +230,7 @@ extension AppStore {
                 name: profile.name,
                 content: try profileStore.loadProfileContent(profile, settings: settings)
             )
+            captureProfileRevision(profile, content: before.content, actionName: "编辑配置")
             profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? profile.name : name
             let updated = try profileStore.saveProfileContent(profile, content: content, settings: settings)
             profiles[index] = updated

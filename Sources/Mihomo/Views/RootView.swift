@@ -11,6 +11,7 @@ struct RootView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             MihomoSidebarView(selection: $store.selectedSection)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 236, max: 260)
+                .background(MihomoUI.sidebarBackground)
         } detail: {
             DetailSwitchView(section: store.selectedSection)
                 .id(store.selectedSection)
@@ -75,6 +76,10 @@ struct RootView: View {
             }
         }
         .toolbarRole(.editor)
+        .sheet(isPresented: $store.isCommandPalettePresented) {
+            CommandPaletteView()
+                .environmentObject(store)
+        }
         .background(WindowIdentifierView(identifier: AppWindowIdentifier.main))
         .onAppear {
             store.isLightweightModeActive = false

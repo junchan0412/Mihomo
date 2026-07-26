@@ -100,17 +100,28 @@ struct MenuBarView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
+                        if nodeSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                           store.recentProxySelections.isEmpty == false {
+                            recentSelectionPane
+                            Divider()
+                                .padding(.leading, 14)
+                        }
+
                         ForEach(visibleGroups) { group in
                             MenuBarPolicyGroupRow(
                                 group: group,
                                 image: store.policyGroupIconImages[group.id],
                                 searchText: nodeSearchText,
                                 isExpanded: expandedBinding(for: group),
+                                isFavorite: store.favoritePolicyGroupNames.contains(group.name),
                                 selectNode: { node in
                                     Task { await store.selectProxy(group: group.name, proxy: node.name) }
                                 },
                                 testGroup: {
                                     Task { await store.testGroupDelay(group) }
+                                },
+                                toggleFavorite: {
+                                    store.toggleFavoritePolicyGroup(group.name)
                                 }
                             )
 
@@ -243,11 +254,54 @@ struct MenuBarView: View {
 
     private var visibleGroups: [ProxyGroup] {
         let query = nodeSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.isEmpty == false else { return store.proxyGroups }
-        return store.proxyGroups.filter {
+        let filtered = query.isEmpty ? store.proxyGroups : store.proxyGroups.filter {
             $0.name.localizedCaseInsensitiveContains(query)
                 || $0.now.localizedCaseInsensitiveContains(query)
                 || $0.all.contains { $0.name.localizedCaseInsensitiveContains(query) }
+        }
+        return filtered.sorted { lhs, rhs in
+            let lhsFavorite = store.favoritePolicyGroupNames.contains(lhs.name)
+            let rhsFavorite = store.favoritePolicyGroupNames.contains(rhs.name)
+            if lhsFavorite != rhsFavorite { return lhsFavorite }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    private var recentSelectionPane: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("最近切换")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+            ForEach(store.recentProxySelections) { selection in
+                if let group = store.proxyGroups.first(where: { $0.name == selection.groupName }),
+                   let node = group.all.first(where: { $0.name == selection.proxyName }) {
+                    Button {
+                        Task { await store.selectProxy(group: group.name, proxy: node.name) }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: node.name == group.now ? "checkmark.circle.fill" : "arrow.turn.down.right")
+                                .foregroundStyle(node.name == group.now ? Color.accentColor : Color.secondary)
+                                .frame(width: 14)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(Formatters.trimmedMenuText(node.name, limit: 28))
+                                    .lineLimit(1)
+                                Text(group.name)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 8)
+                            MenuBarDelayBadge(node: node)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
     }
 
@@ -290,186 +344,4 @@ struct MenuBarView: View {
             MainWindowPresenter.present(openWindow: openWindow)
         }
     }
-}
-
-private struct MenuBarPolicyGroupRow: View {
-    var group: ProxyGroup
-    var image: NSImage?
-    var searchText: String
-    @Binding var isExpanded: Bool
-    var selectNode: (ProxyNode) -> Void
-    var testGroup: () -> Void
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            DisclosureGroup(isExpanded: $isExpanded) {
-                LazyVStack(spacing: 2) {
-                    ForEach(filteredNodes) { node in
-                        MenuBarProxyNodeRow(
-                            node: node,
-                            isCurrent: node.name == group.now,
-                            select: { selectNode(node) }
-                        )
-                    }
-                }
-                .padding(.top, 6)
-                .padding(.leading, 2)
-            } label: {
-                HStack(spacing: 9) {
-                    groupIcon
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(Formatters.trimmedMenuText(group.name, limit: 28))
-                            .font(.callout.weight(.semibold))
-                            .lineLimit(1)
-                        Text(currentNodeTitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    MenuBarGroupLatencySummary(group: group, currentNode: currentNode)
-                }
-                .padding(.vertical, 8)
-            }
-
-            Button(action: testGroup) {
-                Image(systemName: "speedometer")
-                    .frame(width: 18, height: 18)
-            }
-            .buttonStyle(.borderless)
-            .help("测试 \(group.name) 的节点延迟")
-            .accessibilityLabel("测试 \(group.name) 的节点延迟")
-            .padding(.top, 7)
-        }
-        .padding(.leading, 14)
-        .padding(.trailing, 12)
-    }
-
-    private var currentNode: ProxyNode? {
-        group.all.first { $0.name == group.now }
-    }
-
-    private var filteredNodes: [ProxyNode] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.isEmpty == false, group.name.localizedCaseInsensitiveContains(query) == false else {
-            return group.all
-        }
-        return group.all.filter { $0.name.localizedCaseInsensitiveContains(query) }
-    }
-
-    private var currentNodeTitle: String {
-        let current = group.now.trimmingCharacters(in: .whitespacesAndNewlines)
-        return current.isEmpty ? group.type : "\(current) · \(group.type)"
-    }
-
-    @ViewBuilder
-    private var groupIcon: some View {
-        if let image {
-            Image(nsImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 16, height: 16)
-        } else {
-            Image(systemName: groupIconName)
-                .foregroundStyle(.secondary)
-                .frame(width: 16, height: 16)
-        }
-    }
-
-    private var groupIconName: String {
-        let type = group.type.lowercased()
-        if type.contains("url") { return "speedometer" }
-        if type.contains("fallback") { return "arrow.triangle.2.circlepath" }
-        return "switch.2"
-    }
-}
-
-private struct MenuBarProxyNodeRow: View {
-    var node: ProxyNode
-    var isCurrent: Bool
-    var select: () -> Void
-
-    var body: some View {
-        Button(action: select) {
-            HStack(spacing: 8) {
-                Image(systemName: isCurrent ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isCurrent ? Color.accentColor : Color.secondary.opacity(0.45))
-                    .imageScale(.small)
-                    .frame(width: 14)
-
-                Text(Formatters.trimmedMenuText(node.name, limit: 34))
-                    .font(.callout)
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                MenuBarDelayBadge(node: node)
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(isCurrent ? Color.accentColor.opacity(0.10) : Color.clear, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(node.name)
-    }
-}
-
-private struct MenuBarDelayBadge: View {
-    var node: ProxyNode?
-
-    var body: some View {
-        Text(title)
-            .font(.caption.weight(.semibold).monospacedDigit())
-            .foregroundStyle(color)
-            .lineLimit(1)
-            .frame(minWidth: 44, alignment: .trailing)
-            .accessibilityLabel("延迟")
-            .accessibilityValue(title)
-    }
-
-    private var title: String {
-        if node?.available == false { return "不可用" }
-        guard let delay = node?.delay, delay > 0 else { return "未测试" }
-        return "\(delay) ms"
-    }
-
-    private var color: Color {
-        if node?.available == false { return .red }
-        guard let delay = node?.delay, delay > 0 else { return .secondary }
-        if delay < 150 { return .green }
-        if delay < 350 { return .orange }
-        return .red
-    }
-}
-
-private struct MenuBarGroupLatencySummary: View {
-    var group: ProxyGroup
-    var currentNode: ProxyNode?
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 1) {
-            MenuBarDelayBadge(node: currentNode)
-            Text(coverageTitle)
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.tertiary)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(group.name) 延迟状态")
-        .accessibilityValue("\(MenuBarDelayBadgeTitle(node: currentNode))，\(coverageTitle)")
-    }
-
-    private var coverageTitle: String {
-        let tested = group.all.filter { ($0.delay ?? 0) > 0 }.count
-        return "\(tested)/\(group.all.count) 已测速"
-    }
-}
-
-private func MenuBarDelayBadgeTitle(node: ProxyNode?) -> String {
-    if node?.available == false { return "不可用" }
-    guard let delay = node?.delay, delay > 0 else { return "未测试" }
-    return "\(delay) ms"
 }

@@ -281,7 +281,7 @@ extension AppStore {
         }.joined(separator: "\n")
 
         return """
-        Mihomo Diagnostic Bundle
+        Mihomo Privacy-Safe Runtime Health Report
         Generated: \(Formatters.shortDate.string(from: Date()))
         App: \(currentAppVersion) (\(currentAppBuild))
         Core: \(coreVersion)

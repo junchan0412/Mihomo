@@ -18,6 +18,7 @@ extension AppStore {
         do {
             let client = controllerClient()
             try await client.selectProxy(group: group, proxy: proxy)
+            recordProxySelection(groupName: group, proxyName: proxy)
             if settings.closeConnectionsOnPolicyChange {
                 try? await client.closeConnections()
             }
@@ -46,6 +47,7 @@ extension AppStore {
             if Self.isDirectProxy(type: proxyType, name: proxy) {
                 let delay = try await Self.measureDirectDelay(urls: directURLs, timeout: timeout)
                 updateDelay(proxy: proxy, delay: delay)
+                recordDelayResult(proxyName: proxy, delay: delay)
                 delayTestStatus = "\(proxy)：\(delay) ms（直连）"
                 delayTestFailureSummary = ""
                 appendLog("info", "\(proxy) 延迟：\(delay) ms（直连测速）")
@@ -57,6 +59,7 @@ extension AppStore {
                 do {
                     let delay = try await client.proxyDelay(proxy: proxy, url: url, timeout: timeout)
                     updateDelay(proxy: proxy, delay: delay)
+                    recordDelayResult(proxyName: proxy, delay: delay)
                     delayTestStatus = "\(proxy)：\(delay) ms"
                     delayTestFailureSummary = ""
                     appendLog("info", "\(proxy) 延迟：\(delay) ms（\(url)）")
@@ -70,6 +73,7 @@ extension AppStore {
         } catch {
             delayTestStatus = "\(proxy) 延迟测试失败：\(friendlyDelayError(error.localizedDescription))"
             delayTestFailureSummary = friendlyDelayError(error.localizedDescription)
+            recordDelayResult(proxyName: proxy, delay: nil, failureReason: delayTestFailureSummary)
             appendLog("error", "\(proxy) 延迟测试失败：\(error.localizedDescription)")
         }
     }
@@ -162,12 +166,15 @@ extension AppStore {
             if let delay = result.delay {
                 succeeded += 1
                 updateDelay(proxy: result.proxy, delay: delay)
+                recordDelayResult(proxyName: result.proxy, delay: delay)
             } else if result.skippedMessage != nil {
                 skipped += 1
+                recordDelayResult(proxyName: result.proxy, delay: nil, skippedReason: result.skippedMessage)
             } else {
                 failed += 1
                 let reason = friendlyDelayError(result.errorMessage ?? "未知错误")
                 failureReasons[reason, default: 0] += 1
+                recordDelayResult(proxyName: result.proxy, delay: nil, failureReason: reason)
             }
             let summary = delayFailureSummary(failureReasons)
             delayTestFailureSummary = summary

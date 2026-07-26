@@ -26,6 +26,14 @@ enum AppPaths {
         supportDirectory.appendingPathComponent("Backups", isDirectory: true)
     }
 
+    static var configRevisionsDirectory: URL {
+        backupsDirectory.appendingPathComponent("ConfigRevisions", isDirectory: true)
+    }
+
+    static var configRevisionsIndexFile: URL {
+        configRevisionsDirectory.appendingPathComponent("index.json")
+    }
+
     static var providerBackupsDirectory: URL {
         backupsDirectory.appendingPathComponent("ProviderResources", isDirectory: true)
     }
@@ -58,6 +66,10 @@ enum AppPaths {
 
     static var providerUpdateHistoryFile: URL {
         supportDirectory.appendingPathComponent("provider-update-history.json")
+    }
+
+    static var policyInteractionHistoryFile: URL {
+        supportDirectory.appendingPathComponent("policy-interaction-history.json")
     }
 
     static var nodeProvidersFile: URL {
@@ -120,7 +132,7 @@ enum AppPaths {
 
     static func ensureBaseDirectories() throws {
         let manager = FileManager.default
-        for directory in [supportDirectory, profilesDirectory, runtimeDirectory, coreDirectory, geoDirectory, backupsDirectory, providerBackupsDirectory, toolsDirectory, logsDirectory] {
+        for directory in [supportDirectory, profilesDirectory, runtimeDirectory, coreDirectory, geoDirectory, backupsDirectory, configRevisionsDirectory, providerBackupsDirectory, toolsDirectory, logsDirectory] {
             try manager.createDirectory(at: directory, withIntermediateDirectories: true)
         }
     }

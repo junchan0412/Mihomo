@@ -432,6 +432,21 @@ struct ResourcesView: View {
                 Label("更新所选", systemImage: "arrow.clockwise")
             }
             .disabled(selectedRows.contains(where: \.canRefresh) == false)
+
+            if resourceURLs(for: selectedRows).isEmpty == false {
+                ShareLink(items: resourceURLs(for: selectedRows)) {
+                    Label("导出所选", systemImage: "square.and.arrow.up")
+                }
+                .help("导出所选资源文件的副本")
+            }
+
+            Button {
+                confirmsRollback = true
+            } label: {
+                Image(systemName: "arrow.uturn.backward.circle")
+            }
+            .help("回滚所选资源")
+            .disabled(rollbackableSelectedRows.isEmpty)
         }
         .font(.callout)
         .padding(.horizontal, 12)

@@ -4,7 +4,7 @@ import Yams
 enum YAMLText {
     /// Prefer human-readable Unicode when dumping maps that users edit.
     static func dump(_ object: Any, indent: Int = 2) throws -> String {
-        try Yams.dump(
+        let dumped = try Yams.dump(
             object: object,
             indent: indent,
             width: -1,
@@ -15,6 +15,71 @@ enum YAMLText {
             version: nil,
             sortKeys: false
         )
+        return editorText(from: dumped)
+    }
+
+    /// Renders YAML escape sequences as the characters users expect to edit.
+    /// Only double-quoted YAML scalars treat these sequences as escapes.
+    static func editorText(from content: String) -> String {
+        var result = ""
+        var index = content.startIndex
+        var isInsideDoubleQuotes = false
+        var isInsideSingleQuotes = false
+        var isInsideComment = false
+
+        while index < content.endIndex {
+            let character = content[index]
+
+            if character.isNewline {
+                isInsideComment = false
+            }
+
+            if isInsideComment {
+                result.append(character)
+                index = content.index(after: index)
+                continue
+            }
+
+            if isInsideDoubleQuotes == false,
+               isInsideSingleQuotes == false,
+               character == "#",
+               isCommentStart(in: content, at: index) {
+                isInsideComment = true
+                result.append(character)
+                index = content.index(after: index)
+                continue
+            }
+
+            if isInsideDoubleQuotes, character == "\\" {
+                let escapeStart = content.index(after: index)
+                if let decoded = decodedUnicodeEscape(in: content, from: escapeStart) {
+                    result.unicodeScalars.append(decoded.scalar)
+                    index = decoded.endIndex
+                    continue
+                }
+                if escapeStart < content.endIndex {
+                    result.append(character)
+                    result.append(content[escapeStart])
+                    index = content.index(after: escapeStart)
+                    continue
+                }
+            }
+
+            if character == "\"", isInsideSingleQuotes == false {
+                isInsideDoubleQuotes.toggle()
+            } else if character == "'", isInsideDoubleQuotes == false {
+                isInsideSingleQuotes.toggle()
+            }
+            result.append(character)
+            index = content.index(after: index)
+        }
+
+        return result
+    }
+
+    private static func isCommentStart(in content: String, at index: String.Index) -> Bool {
+        guard index > content.startIndex else { return true }
+        return content[content.index(before: index)].isWhitespace
     }
 
     static func loadMap(_ content: String) throws -> [String: Any] {
@@ -27,6 +92,31 @@ enum YAMLText {
             )
         }
         return map
+    }
+
+    private static func decodedUnicodeEscape(in content: String, from index: String.Index) -> (scalar: UnicodeScalar, endIndex: String.Index)? {
+        guard index < content.endIndex else { return nil }
+        let marker = content[index]
+        let digitCount: Int
+        switch marker {
+        case "u": digitCount = 4
+        case "U": digitCount = 8
+        default: return nil
+        }
+
+        let digitsStart = content.index(after: index)
+        guard let digitsEnd = content.index(digitsStart, offsetBy: digitCount, limitedBy: content.endIndex) else {
+            return nil
+        }
+        let digits = content[digitsStart..<digitsEnd]
+        guard digits.count == digitCount,
+              digits.allSatisfy({ $0.isHexDigit }),
+              let value = UInt32(digits, radix: 16),
+              let scalar = UnicodeScalar(value)
+        else {
+            return nil
+        }
+        return (scalar, digitsEnd)
     }
 }
 
