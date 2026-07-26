@@ -1,5 +1,4 @@
 import SwiftUI
-import Yams
 
 struct ConfigRevisionHistorySheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -78,9 +77,11 @@ private struct RevisionDiffSummary: View {
     private var revisionContent: String { store.revisionContent(revision) ?? "" }
 
     private var changedFields: [String] {
-        let before = topLevelFields(in: revisionContent)
-        let after = topLevelFields(in: currentContent)
-        return Array(Set(before.keys).union(after.keys)).filter { before[$0] != after[$0] }.sorted()
+        ConfigRevisionDiff.changedFields(
+            currentContent: currentContent,
+            revisionContent: revisionContent,
+            kind: revision.kind
+        )
     }
 
     var body: some View {
@@ -111,12 +112,5 @@ private struct RevisionDiffSummary: View {
             .background(MihomoUI.mutedFill, in: RoundedRectangle(cornerRadius: 6))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private func topLevelFields(in content: String) -> [String: String] {
-        guard let loaded = try? Yams.load(yaml: content), let fields = loaded as? [String: Any] else { return [:] }
-        return fields.reduce(into: [:]) { result, entry in
-            result[entry.key] = String(describing: entry.value)
-        }
     }
 }

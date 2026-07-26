@@ -2,7 +2,14 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.22.0`
+当前版本：`v1.22.1`
+
+## v1.22.1 更新重点
+
+- 修复覆写版本历史把 JSON 快照误当 YAML 顶层映射解析而显示“无字段变更”的问题；现在会准确显示覆写的新增、删除、内容、状态、类型、作用范围与来源变化。
+- 命令面板改用稳定命令 ID，并支持在搜索框内使用上/下箭头选择、Enter 执行、Esc 关闭；实机验证可正常跳转页面。
+
+完整变更见 [v1.22.1 Release Notes](docs/releases/v1.22.1.md)。
 
 ## v1.22.0 更新重点
 
@@ -133,7 +140,7 @@ git diff --check
 ./script/build_and_run.sh --verify
 ```
 
-当前测试集包含 170 个 XCTest，覆盖 Activity/日志展示、两色流量语义、Profile↔App 设置同步、覆写 YAML/JavaScript 分析、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量来源、DIRECT/代理测速设置、节点提供商与 Profile 双向同步、Provider 更新与回滚、网络请求超时、核心实时状态恢复、Helper 超时、签名部署选择、传统安装路径与 ad-hoc 更新 CDHash 固定、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
+当前测试集包含 172 个 XCTest，覆盖 Activity/日志展示、两色流量语义、Profile↔App 设置同步、覆写 YAML/JavaScript 分析、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量来源、DIRECT/代理测速设置、节点提供商与 Profile 双向同步、Provider 更新与回滚、网络请求超时、核心实时状态恢复、Helper 超时、签名部署选择、传统安装路径与 ad-hoc 更新 CDHash 固定、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
 
 网络恢复与辅助功能人工检查：
 
