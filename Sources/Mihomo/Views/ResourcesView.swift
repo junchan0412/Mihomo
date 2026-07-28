@@ -9,11 +9,6 @@ struct ResourcesView: View {
     @FocusState private var searchIsFocused: Bool
     @State private var showsOnlyUnready = false
     @State private var confirmsRollback = false
-    @State private var nodeProviderEditor: NodeProviderEditorRoute?
-    @State private var showingNodeProviderBatchImport = false
-    @State private var nodeProviderGroupFilter = "全部"
-    @State private var nodeProviderChangePreview: NodeProviderChangePreview?
-    @State private var nodeProviderPreviewError = ""
 
     private var latestRecords: [String: ProviderUpdateRecord] {
         var records: [String: ProviderUpdateRecord] = [:]
@@ -26,40 +21,28 @@ struct ResourcesView: View {
         return records
     }
 
-    private var allRows: [ExternalResourceRow] {
-        let records = latestRecords
-        return store.providers.map { provider in
-            ExternalResourceRow(provider: provider, latestRecord: records[store.providerHistoryKey(for: provider)])
-        }
+    private func resourcePresentation() -> ResourceTablePresentation {
+        ResourceTablePresentation.make(
+            providers: store.providers,
+            latestRecords: latestRecords,
+            historyKey: store.providerHistoryKey(for:),
+            searchText: searchText,
+            showsOnlyUnready: showsOnlyUnready
+        )
     }
 
-    private var visibleRows: [ExternalResourceRow] {
-        let readinessRows = showsOnlyUnready ? allRows.filter { $0.isReady == false } : allRows
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.isEmpty == false else { return readinessRows }
-        return readinessRows.filter {
-            $0.nameText.localizedCaseInsensitiveContains(query)
-                || $0.typeText.localizedCaseInsensitiveContains(query)
-                || $0.pathText.localizedCaseInsensitiveContains(query)
-        }
-    }
-
-    private var selectedRow: ExternalResourceRow? {
-        guard selectedResourceIDs.count == 1, let selectedResourceID = selectedResourceIDs.first else { return nil }
-        return allRows.first { $0.id == selectedResourceID }
-    }
-
-    private var selectedRows: [ExternalResourceRow] {
-        allRows.filter { selectedResourceIDs.contains($0.id) }
-    }
-
-    private var refreshableCount: Int {
-        allRows.filter(\.canRefresh).count
+    private var selectedNodeProviderCount: Int {
+        guard let activeProfile = store.activeProfile else { return 0 }
+        return store.nodeProviders.count { $0.applies(to: activeProfile.id) }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            header
+        let presentation = resourcePresentation()
+        let selectedRows = presentation.selectedRows(for: selectedResourceIDs)
+        let rollbackableRows = rollbackableSelectedRows(in: selectedRows)
+
+        return VStack(alignment: .leading, spacing: 14) {
+            header(presentation)
             Picker("资源工作区", selection: $workspace) {
                 ForEach(ResourceWorkspace.allCases) { workspace in
                     Label(workspace.title, systemImage: workspace.systemImage).tag(workspace)
@@ -70,10 +53,27 @@ struct ResourcesView: View {
             .frame(maxWidth: 360)
 
             if workspace == .nodeProviders {
-                nodeProviderPane
+                NodeProviderWorkspaceView(searchText: $searchText)
             } else {
-                resourceTablePane
-                selectedResourcePane
+                ResourceTablePane(
+                    presentation: presentation,
+                    selectedResourceIDs: $selectedResourceIDs,
+                    showsOnlyUnready: $showsOnlyUnready,
+                    updateStatus: store.resourceUpdateStatus,
+                    emptyState: ResourceEmptyState(
+                        searchText: searchText,
+                        showsOnlyUnready: showsOnlyUnready
+                    ),
+                    selectedRows: selectedRows,
+                    rollbackableRows: rollbackableRows,
+                    selectedURLs: resourceURLs(for: selectedRows),
+                    contextMenuActions: resourceContextMenuActions,
+                    updateAll: { Task { await store.updateAllExternalResources() } },
+                    refresh: refreshResources,
+                    preview: previewResources,
+                    requestRollback: { confirmsRollback = true }
+                )
+                selectedResourcePane(presentation)
             }
         }
         .padding(.horizontal, MihomoUI.pageHorizontalPadding)
@@ -83,7 +83,7 @@ struct ResourcesView: View {
         .background(MihomoUI.pageBackground)
         .searchable(text: $searchText, placement: .toolbar, prompt: "搜索 Provider 或路径")
         .compatibleSearchFocused($searchIsFocused)
-        .focusedSceneValue(\.workspaceCommands, commandContext)
+        .focusedSceneValue(\.workspaceCommands, commandContext(presentation, selectedRows: selectedRows))
         .onAppear {
             store.refreshConfigArtifacts()
             ensureSelection()
@@ -98,56 +98,18 @@ struct ResourcesView: View {
         .onChange(of: showsOnlyUnready) {
             ensureSelection()
         }
-        .confirmationDialog(rollbackConfirmationTitle, isPresented: $confirmsRollback, titleVisibility: .visible) {
-            Button("回滚 \(rollbackableSelectedRows.count) 个资源", role: .destructive) {
-                rollbackSelectedResources()
+        .onChange(of: searchText) { ensureSelection() }
+        .confirmationDialog(rollbackConfirmationTitle(count: rollbackableRows.count), isPresented: $confirmsRollback, titleVisibility: .visible) {
+            Button("回滚 \(rollbackableRows.count) 个资源", role: .destructive) {
+                rollbackSelectedResources(rollbackableRows)
             }
             Button("取消", role: .cancel) {}
         } message: {
             Text("当前资源文件会被备份版本替换；Mihomo 会保留被替换版本供后续再次回滚。")
         }
-        .sheet(item: $nodeProviderEditor) { route in
-            NodeProviderEditorSheet(
-                provider: route.provider,
-                save: { provider in
-                    var provider = provider
-                    if provider.profileIDs.isEmpty, let profileID = store.activeProfile?.id {
-                        provider.profileIDs = [profileID]
-                    }
-                    var updated = store.nodeProviders
-                    if let index = updated.firstIndex(where: { $0.id == provider.id }) {
-                        updated[index] = provider
-                    } else {
-                        updated.append(provider)
-                    }
-                    presentNodeProviderPreview(updated, title: route.provider == nil ? "添加节点提供商" : "编辑节点提供商")
-                    nodeProviderEditor = nil
-                },
-                cancel: { nodeProviderEditor = nil }
-            )
-        }
-        .sheet(isPresented: $showingNodeProviderBatchImport) {
-            if let profileID = store.activeProfile?.id {
-                NodeProviderBatchImportSheet(profileID: profileID) { imported in
-                    mergeImportedNodeProviders(imported)
-                }
-            }
-        }
-        .sheet(item: $nodeProviderChangePreview) { preview in
-            NodeProviderChangePreviewSheet(
-                preview: preview,
-                apply: { applyNodeProviderPreview(preview) },
-                cancel: { nodeProviderChangePreview = nil }
-            )
-        }
-        .alert("无法生成节点提供商变更预览", isPresented: nodeProviderPreviewErrorBinding) {
-            Button("好", role: .cancel) { nodeProviderPreviewError = "" }
-        } message: {
-            Text(nodeProviderPreviewError)
-        }
     }
 
-    private var header: some View {
+    private func header(_ presentation: ResourceTablePresentation) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("外部资源")
@@ -162,11 +124,11 @@ struct ResourcesView: View {
             HStack(spacing: 8) {
                 if workspace == .nodeProviders {
                     ResourceCountBadge(title: "节点提供商", value: store.nodeProviders.count)
-                    ResourceCountBadge(title: "当前配置", value: selectedNodeProviders.count)
+                    ResourceCountBadge(title: "当前配置", value: selectedNodeProviderCount)
                 } else {
-                    ResourceCountBadge(title: "Proxy", value: allRows.filter { $0.provider.kind == "Proxy" }.count)
-                    ResourceCountBadge(title: "Rule", value: allRows.filter { $0.provider.kind == "Rule" }.count)
-                    ResourceCountBadge(title: "未就绪", value: allRows.filter { $0.isReady == false }.count)
+                    ResourceCountBadge(title: "Proxy", value: presentation.proxyCount)
+                    ResourceCountBadge(title: "Rule", value: presentation.ruleCount)
+                    ResourceCountBadge(title: "未就绪", value: presentation.unreadyCount)
                 }
                 Divider().frame(height: 22)
                 Text("并发").foregroundStyle(.secondary)
@@ -189,307 +151,47 @@ struct ResourcesView: View {
         )
     }
 
-    private var resourceTablePane: some View {
-        VStack(spacing: 0) {
-            AppKitTable(
-                rows: visibleRows,
-                selection: $selectedResourceIDs,
-                columns: [
-                    .init(title: "名称", width: 160) { $0.nameText },
-                    .init(title: "类型", width: 150) { $0.typeText },
-                    .init(title: "最后更新", width: 150) { $0.lastUpdatedText },
-                    .init(title: "状态", width: 150, textColor: statusTextColor) { $0.statusText },
-                    .init(title: "路径", width: 420) { $0.pathText }
-                ],
-                allowsMultipleSelection: true,
-                onDoubleClick: handleDoubleClick,
-                onActivate: { rows in refreshResources(rows) },
-                onPreview: { rows in previewResources(rows) },
-                hasHorizontalScroller: true,
-                contextMenuActions: resourceContextMenuActions
-            )
-            .frame(minHeight: 360, maxHeight: .infinity)
-            .overlay {
-                if visibleRows.isEmpty {
-                    ContentUnavailableView(
-                        showsOnlyUnready ? "没有未就绪资源" : "没有外部资源",
-                        systemImage: "shippingbox",
-                        description: Text(showsOnlyUnready ? "当前本地与远程资源均已就绪。" : "当前配置没有声明 Provider 或本地规则集。")
-                    )
-                }
-            }
-
-            Divider()
-
-            bottomBar
-        }
-        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(MihomoUI.cardStroke, lineWidth: 1)
-        }
+    private func rollbackConfirmationTitle(count: Int) -> String {
+        "回滚 \(count) 个资源？"
     }
 
-    private var nodeProviderPane: some View {
-        VStack(spacing: 0) {
-            if let activeProfile = store.activeProfile {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("独立节点提供商")
-                            .font(.headline)
-                        Text("新增或关联后会同步到 \(activeProfile.name) 的 proxy-providers；远程刷新不会清空本地已关联的 Provider。")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                    Spacer()
-                    Button {
-                        nodeProviderEditor = .creating
-                    } label: {
-                        Label("添加", systemImage: "plus")
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    Button {
-                        showingNodeProviderBatchImport = true
-                    } label: {
-                        Label("批量导入", systemImage: "text.badge.plus")
-                    }
-                }
-                .padding(14)
-
-                Divider()
-
-                HStack {
-                    Text("筛选分组")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Picker("筛选分组", selection: $nodeProviderGroupFilter) {
-                        Text("全部").tag("全部")
-                        ForEach(nodeProviderGroups, id: \.self) { group in
-                            Text(group).tag(group)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    Spacer()
-                    Text("\(filteredNodeProviders.count) 项")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-
-                if let undoTitle = store.nodeProviderUndoTitle {
-                    Divider()
-                    HStack(spacing: 8) {
-                        Label("已应用\(undoTitle)", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("撤销", systemImage: "arrow.uturn.backward") {
-                            store.undoLastNodeProviderChange()
-                        }
-                        .help("撤销最近一次节点提供商变更")
-                    }
-                    .font(.caption)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                }
-
-                Divider()
-
-                if filteredNodeProviders.isEmpty {
-                    ContentUnavailableView(
-                        searchText.isEmpty ? "还没有节点提供商" : "没有匹配的节点提供商",
-                        systemImage: "point.3.connected.trianglepath.dotted",
-                        description: Text(searchText.isEmpty ? "添加订阅后，可为当前配置复选多个节点来源。" : "调整搜索条件后再试。")
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 260)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(filteredNodeProviders) { provider in
-                                NodeProviderRow(
-                                    provider: provider,
-                                    isSelected: provider.applies(to: activeProfile.id),
-                                    toggleSelection: { selected in
-                                        guard let updated = store.proposedNodeProviderSelection(provider, enabledFor: activeProfile, isSelected: selected) else { return }
-                                        presentNodeProviderPreview(updated, title: selected ? "关联节点提供商" : "取消关联节点提供商")
-                                    },
-                                    refresh: { Task { await store.refreshNodeProvider(provider) } },
-                                    edit: { nodeProviderEditor = .editing(provider) },
-                                    delete: {
-                                        presentNodeProviderPreview(store.nodeProviders.filter { $0.id != provider.id }, title: "删除节点提供商")
-                                    }
-                                )
-                                if provider.id != filteredNodeProviders.last?.id { Divider().padding(.leading, 48) }
-                            }
-                        }
-                    }
-                    .frame(minHeight: 290, maxHeight: .infinity)
-                }
-            } else {
-                ContentUnavailableView("先选择配置", systemImage: "doc.badge.plus", description: Text("节点提供商可以独立保存，接入时需要指定一个 Profile。"))
-                    .frame(maxWidth: .infinity, minHeight: 320)
-            }
-        }
-        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
-        .overlay { RoundedRectangle(cornerRadius: 8).stroke(MihomoUI.cardStroke, lineWidth: 1) }
-    }
-
-    private var filteredNodeProviders: [NodeProvider] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let groupFiltered = store.nodeProviders.filter {
-            nodeProviderGroupFilter == "全部" || $0.group == nodeProviderGroupFilter
-        }
-        guard query.isEmpty == false else { return groupFiltered }
-        return groupFiltered.filter {
-            $0.name.localizedCaseInsensitiveContains(query)
-                || $0.url.localizedCaseInsensitiveContains(query)
-                || $0.path.localizedCaseInsensitiveContains(query)
-                || $0.tags.contains { $0.localizedCaseInsensitiveContains(query) }
-        }
-    }
-
-    private var nodeProviderGroups: [String] {
-        Array(Set(store.nodeProviders.map(\.group))).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-    }
-
-    private var selectedNodeProviders: [NodeProvider] {
-        guard let activeProfile = store.activeProfile else { return [] }
-        return store.nodeProviders.filter { $0.applies(to: activeProfile.id) }
-    }
-
-    private func mergeImportedNodeProviders(_ imported: [NodeProvider]) {
-        presentNodeProviderPreview(
-            NodeProvider.canonicalized(store.nodeProviders + imported),
-            title: "批量导入节点提供商"
-        )
-    }
-
-    private var rollbackConfirmationTitle: String {
-        "回滚 \(rollbackableSelectedRows.count) 个资源？"
-    }
-
-    private var nodeProviderPreviewErrorBinding: Binding<Bool> {
-        Binding(
-            get: { nodeProviderPreviewError.isEmpty == false },
-            set: { visible in
-                if visible == false { nodeProviderPreviewError = "" }
-            }
-        )
-    }
-
-    private func presentNodeProviderPreview(_ updated: [NodeProvider], title: String) {
-        do {
-            nodeProviderChangePreview = try store.previewNodeProviderChange(updated, title: title)
-        } catch {
-            nodeProviderPreviewError = error.localizedDescription
-        }
-    }
-
-    private func applyNodeProviderPreview(_ preview: NodeProviderChangePreview) -> Bool {
-        do {
-            try store.applyNodeProviderChange(preview)
-            nodeProviderChangePreview = nil
-            return true
-        } catch {
-            nodeProviderPreviewError = error.localizedDescription
-            return false
-        }
-    }
-
-    private var bottomBar: some View {
-        HStack(spacing: 10) {
-            Toggle("仅显示未就绪的项目", isOn: $showsOnlyUnready)
-                .toggleStyle(.checkbox)
-
-            Text("\(visibleRows.count)/\(allRows.count) 项")
-                .foregroundStyle(.secondary)
-
-            Divider()
-                .frame(height: 16)
-
-            Text(store.resourceUpdateStatus)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-
-            Spacer()
-
-            Button {
-                Task { await store.updateAllExternalResources() }
-            } label: {
-                Label("全部更新", systemImage: "arrow.down.circle")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(refreshableCount == 0)
-
-            Button {
-                refreshResources(selectedRows)
-            } label: {
-                Label("更新所选", systemImage: "arrow.clockwise")
-            }
-            .disabled(selectedRows.contains(where: \.canRefresh) == false)
-
-            if resourceURLs(for: selectedRows).isEmpty == false {
-                ShareLink(items: resourceURLs(for: selectedRows)) {
-                    Label("导出所选", systemImage: "square.and.arrow.up")
-                }
-                .help("导出所选资源文件的副本")
-            }
-
-            Button {
-                confirmsRollback = true
-            } label: {
-                Image(systemName: "arrow.uturn.backward.circle")
-            }
-            .help("回滚所选资源")
-            .disabled(rollbackableSelectedRows.isEmpty)
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-    }
-
-    private var selectedResourcePane: some View {
+    private func selectedResourcePane(_ presentation: ResourceTablePresentation) -> some View {
         Group {
-            if let selectedRow {
+            if let selectedRow = presentation.selectedRow(for: selectedResourceIDs) {
                 let history = store.providerUpdateHistory(for: selectedRow.provider)
                 let rollbackRecord = store.latestProviderRollbackRecord(for: selectedRow.provider)
                 VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Label(selectedRow.provider.name, systemImage: selectedRow.provider.kind == "Proxy" ? "point.3.connected.trianglepath.dotted" : "list.bullet.clipboard")
-                        .font(.headline)
-                        .lineLimit(1)
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Label(selectedRow.provider.name, systemImage: selectedRow.provider.kind == "Proxy" ? "point.3.connected.trianglepath.dotted" : "list.bullet.clipboard")
+                            .font(.headline)
+                            .lineLimit(1)
 
-                    Text(selectedRow.detailText)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .textSelection(.enabled)
+                        Text(selectedRow.detailText)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
 
-                    Spacer()
+                        Spacer()
 
-                    Button {
-                        Task { await store.rollbackProviderResource(selectedRow.provider) }
-                    } label: {
-                        Label("回滚", systemImage: "arrow.uturn.backward.circle")
+                        Button {
+                            Task { await store.rollbackProviderResource(selectedRow.provider) }
+                        } label: {
+                            Label("回滚", systemImage: "arrow.uturn.backward.circle")
+                        }
+                        .disabled(rollbackRecord == nil)
+                        .help(rollbackRecord?.backupPath ?? "没有可用备份")
+
+                        Button {
+                            Task { await store.refreshProviderResource(selectedRow.provider) }
+                        } label: {
+                            Label(selectedRow.updateActionTitle, systemImage: selectedRow.canDownload ? "arrow.down.circle" : "arrow.clockwise")
+                        }
+                        .disabled(selectedRow.canRefresh == false)
                     }
-                    .disabled(rollbackRecord == nil)
-                    .help(rollbackRecord?.backupPath ?? "没有可用备份")
 
-                    Button {
-                        Task { await store.refreshProviderResource(selectedRow.provider) }
-                    } label: {
-                        Label(selectedRow.updateActionTitle, systemImage: selectedRow.canDownload ? "arrow.down.circle" : "arrow.clockwise")
-                    }
-                    .disabled(selectedRow.canRefresh == false)
+                    ProviderHistoryPane(records: Array(history.prefix(6)))
                 }
-
-                ProviderHistoryPane(records: Array(history.prefix(6)))
-            }
             } else {
                 ContentUnavailableView(
                     showsOnlyUnready ? "没有需要处理的资源" : "选择一个资源",
@@ -506,23 +208,12 @@ struct ResourcesView: View {
     }
 
     private func ensureSelection() {
-        let rows = visibleRows
-        guard rows.isEmpty == false else {
-            selectedResourceIDs.removeAll()
-            return
-        }
-        selectedResourceIDs.formIntersection(Set(rows.map(\.id)))
-        if selectedResourceIDs.isEmpty == false {
-            return
-        }
-        if let firstID = rows.first?.id {
-            selectedResourceIDs = [firstID]
-        }
-    }
-
-    private func handleDoubleClick(_ row: ExternalResourceRow) {
-        guard row.canRefresh else { return }
-        Task { await store.refreshProviderResource(row.provider) }
+        let visibleRows = resourcePresentation().visibleRows
+        selectedResourceIDs = TableSelection.reconciled(
+            selectedResourceIDs,
+            visibleIDs: visibleRows.map(\.id),
+            selectsFirstWhenEmpty: true
+        )
     }
 
     private func refreshResources(_ rows: [ExternalResourceRow]) {
@@ -546,12 +237,14 @@ struct ResourcesView: View {
         }
     }
 
-    private var rollbackableSelectedRows: [ExternalResourceRow] {
-        selectedRows.filter { store.latestProviderRollbackRecord(for: $0.provider) != nil }
+    private func rollbackableSelectedRows(
+        in rows: [ExternalResourceRow]
+    ) -> [ExternalResourceRow] {
+        rows.filter { store.latestProviderRollbackRecord(for: $0.provider) != nil }
     }
 
-    private func rollbackSelectedResources() {
-        let providers = rollbackableSelectedRows.map(\.provider)
+    private func rollbackSelectedResources(_ rows: [ExternalResourceRow]) {
+        let providers = rows.map(\.provider)
         Task {
             for provider in providers {
                 await store.rollbackProviderResource(provider)
@@ -581,50 +274,20 @@ struct ResourcesView: View {
         ]
     }
 
-    private var commandContext: WorkspaceCommandContext {
-        WorkspaceCommandContext(
+    private func commandContext(
+        _ presentation: ResourceTablePresentation,
+        selectedRows: [ExternalResourceRow]
+    ) -> WorkspaceCommandContext {
+        let selectedURLs = resourceURLs(for: selectedRows)
+        return WorkspaceCommandContext(
             search: {
                 searchIsFocused = true
                 MihomoSearchFocus.request()
             },
-            refresh: { refreshResources(selectedRows.isEmpty ? visibleRows : selectedRows) },
+            refresh: { refreshResources(selectedRows.isEmpty ? presentation.visibleRows : selectedRows) },
             activateSelection: searchIsFocused || selectedRows.isEmpty ? nil : { refreshResources(selectedRows) },
-            previewSelection: searchIsFocused || resourceURLs(for: selectedRows).isEmpty ? nil : { previewResources(selectedRows) }
+            previewSelection: searchIsFocused || selectedURLs.isEmpty ? nil : { previewResources(selectedRows) }
         )
     }
 
-    private func statusTextColor(_ row: ExternalResourceRow) -> NSColor? {
-        switch row.statusKind {
-        case .ready:
-            return .systemGreen
-        case .pending:
-            return .systemOrange
-        case .failed:
-            return .systemRed
-        case .localOnly:
-            return .secondaryLabelColor
-        }
-    }
-}
-
-private enum ResourceWorkspace: String, CaseIterable, Identifiable {
-    case nodeProviders
-    case configResources
-
-    var id: String { rawValue }
-    var title: String { self == .nodeProviders ? "节点提供商" : "配置资源" }
-    var systemImage: String { self == .nodeProviders ? "point.3.connected.trianglepath.dotted" : "shippingbox" }
-    var subtitle: String {
-        self == .nodeProviders
-            ? "独立保存节点订阅，并按 Profile 复选注入运行时配置。"
-            : "查看当前配置声明的 Proxy Provider、Rule Provider、本地规则集与 Geo 数据。"
-    }
-}
-
-private struct NodeProviderEditorRoute: Identifiable {
-    var id: UUID
-    var provider: NodeProvider?
-
-    static var creating: Self { Self(id: UUID(), provider: nil) }
-    static func editing(_ provider: NodeProvider) -> Self { Self(id: provider.id, provider: provider) }
 }

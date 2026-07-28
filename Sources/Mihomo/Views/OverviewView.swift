@@ -101,35 +101,52 @@ struct OverviewView: View {
     }
 
     private var trafficTimelinePanel: some View {
-        OverviewPanel(title: "流量时间轴", systemImage: "chart.bar", tint: .indigo) {
-            VStack(spacing: 8) {
-                HStack(alignment: .bottom, spacing: 4) {
-                    ForEach(timelineBars) { bar in
-                        VStack(spacing: 0) {
-                            Rectangle()
-                                .fill(proxyRoutingColor)
-                                .frame(height: bar.height * bar.mix.proxyRatio)
-                            Rectangle()
-                                .fill(directRoutingColor)
-                                .frame(height: bar.height * bar.mix.directRatio)
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: 2))
-                        .frame(maxWidth: .infinity)
-                        .frame(height: bar.height, alignment: .bottom)
-                        .help(bar.helpText)
-                    }
-                }
-                .frame(maxWidth: .infinity, minHeight: 82, maxHeight: 82, alignment: .bottomLeading)
-                .drawingGroup(opaque: false)
+        let presentation = OverviewTimelinePresentation.make(
+            samples: Array(activityStore.trafficSamples.suffix(48)),
+            policySamples: activityStore.policyTrafficSamples,
+            fallbackMix: TimelineRoutingMix(
+                directBytes: directTrafficBytes,
+                proxyBytes: proxyTrafficBytes
+            ),
+            timeText: { Self.timelineTimeFormatter.string(from: $0) }
+        )
 
-                HStack {
-                    ForEach(timelineAxisLabels, id: \.date) { label in
-                        Text(label.text)
-                        if label.date != timelineAxisLabels.last?.date { Spacer() }
+        return OverviewPanel(title: "流量时间轴", systemImage: "chart.bar", tint: .indigo) {
+            if presentation.bars.isEmpty {
+                Label("暂无流量数据", systemImage: "chart.bar")
+                    .font(MihomoUI.Fonts.bodyMedium)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 90, alignment: .center)
+            } else {
+                VStack(spacing: 8) {
+                    HStack(alignment: .bottom, spacing: 4) {
+                        ForEach(presentation.bars) { bar in
+                            VStack(spacing: 0) {
+                                Rectangle()
+                                    .fill(proxyRoutingColor)
+                                    .frame(height: bar.height * bar.mix.proxyRatio)
+                                Rectangle()
+                                    .fill(directRoutingColor)
+                                    .frame(height: bar.height * bar.mix.directRatio)
+                            }
+                            .clipShape(RoundedRectangle(cornerRadius: 2))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: bar.height, alignment: .bottom)
+                            .help(bar.helpText)
+                        }
                     }
+                    .frame(maxWidth: .infinity, minHeight: 82, maxHeight: 82, alignment: .bottomLeading)
+                    .drawingGroup(opaque: false)
+
+                    HStack {
+                        ForEach(presentation.axisLabels) { label in
+                            Text(label.text)
+                            if label.id != presentation.axisLabels.last?.id { Spacer() }
+                        }
+                    }
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
                 }
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.secondary)
             }
         }
         .frame(minHeight: 168)
@@ -191,41 +208,6 @@ struct OverviewView: View {
         activityStore.proxyTrafficBytes
     }
 
-    private var timelineSamples: [TrafficSample] {
-        Array(activityStore.trafficSamples.suffix(48))
-    }
-
-    private var timelineAxisLabels: [(date: Date, text: String)] {
-        guard timelineSamples.isEmpty == false else { return [] }
-        let indices = Set([0, timelineSamples.count / 2, timelineSamples.count - 1]).sorted()
-        return indices.map { (timelineSamples[$0].date, Self.timelineTimeFormatter.string(from: timelineSamples[$0].date)) }
-    }
-
-    private var timelineBars: [TimelineBarItem] {
-        let samples = timelineSamples
-        guard samples.isEmpty == false else { return [] }
-
-        let maxValue = max(samples.map { max($0.downloadRate, $0.uploadRate) }.max() ?? 1, 1)
-        let policySamples = activityStore.policyTrafficSamples
-        let fallbackMix = TimelineRoutingMix(directBytes: directTrafficBytes, proxyBytes: proxyTrafficBytes)
-
-        return samples.enumerated().map { index, sample in
-            let mix = timelineRoutingMix(
-                samples: samples,
-                policySamples: policySamples,
-                index: index,
-                fallback: fallbackMix
-            )
-            let height = max(8, CGFloat(max(sample.downloadRate, sample.uploadRate)) / CGFloat(maxValue) * 104)
-            return TimelineBarItem(
-                id: sample.id,
-                height: height,
-                mix: mix,
-                helpText: "\(Self.timelineTimeFormatter.string(from: sample.date)) · 直连 \(Formatters.bytes(mix.directBytes)) · 代理 \(Formatters.bytes(mix.proxyBytes)) · ↓ \(Formatters.rate(sample.downloadRate)) · ↑ \(Formatters.rate(sample.uploadRate))"
-            )
-        }
-    }
-
     private static let timelineTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
@@ -233,38 +215,6 @@ struct OverviewView: View {
         return formatter
     }()
 
-    private func timelineRoutingMix(
-        samples: [TrafficSample],
-        policySamples: [PolicyTrafficSample],
-        index: Int,
-        fallback: TimelineRoutingMix
-    ) -> TimelineRoutingMix {
-        let sample = samples[index]
-        let lowerBound: Date
-        let upperBound: Date
-
-        if index > 0 {
-            lowerBound = Date(timeIntervalSince1970: (samples[index - 1].date.timeIntervalSince1970 + sample.date.timeIntervalSince1970) / 2)
-        } else {
-            lowerBound = sample.date.addingTimeInterval(-1)
-        }
-        if index + 1 < samples.count {
-            upperBound = Date(timeIntervalSince1970: (sample.date.timeIntervalSince1970 + samples[index + 1].date.timeIntervalSince1970) / 2)
-        } else {
-            upperBound = sample.date.addingTimeInterval(1)
-        }
-
-        let bucket = policySamples.filter { $0.date >= lowerBound && $0.date < upperBound }
-        let direct = bucket.filter { TimelineRoutingMix.isDirect(policy: $0.policy) }
-            .reduce(Int64(0)) { $0 + $1.uploadBytes + $1.downloadBytes }
-        let proxy = bucket.filter { TimelineRoutingMix.isDirect(policy: $0.policy) == false }
-            .reduce(Int64(0)) { $0 + $1.uploadBytes + $1.downloadBytes }
-
-        if direct + proxy > 0 {
-            return TimelineRoutingMix(directBytes: direct, proxyBytes: proxy)
-        }
-        return fallback
-    }
 }
 
 private struct OverviewPolicyGroupsContent: View {
@@ -339,33 +289,4 @@ private struct OverviewPolicyGroupsContent: View {
             }
         )
     }
-}
-
-struct TimelineRoutingMix: Equatable {
-    var directBytes: Int64
-    var proxyBytes: Int64
-
-    var directRatio: CGFloat {
-        let total = directBytes + proxyBytes
-        guard total > 0 else { return 0 }
-        return CGFloat(directBytes) / CGFloat(total)
-    }
-
-    var proxyRatio: CGFloat {
-        let total = directBytes + proxyBytes
-        guard total > 0 else { return 1 }
-        return CGFloat(proxyBytes) / CGFloat(total)
-    }
-
-    static func isDirect(policy: String) -> Bool {
-        let normalized = policy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return normalized == "direct" || normalized == "直连"
-    }
-}
-
-private struct TimelineBarItem: Identifiable {
-    var id: String
-    var height: CGFloat
-    var mix: TimelineRoutingMix
-    var helpText: String
 }

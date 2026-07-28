@@ -8,21 +8,9 @@ struct LogsView: View {
     @FocusState private var searchIsFocused: Bool
     @State private var selectedCategory: LogCategory = .all
     @State private var selectedRowIDs: Set<UUID> = []
+    @State private var allRows: [LogPresentationRow] = []
+    @State private var rows: [LogPresentationRow] = []
     @State private var confirmsClear = false
-
-    private var rows: [LogPresentationRow] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return logStore.entries.reversed()
-            .map(LogPresentationRow.init(entry:))
-            .filter { row in
-                selectedCategory.matches(row.category)
-                    && (query.isEmpty
-                        || row.title.localizedCaseInsensitiveContains(query)
-                        || row.detail.localizedCaseInsensitiveContains(query)
-                        || row.category.title.localizedCaseInsensitiveContains(query)
-                        || row.level.localizedCaseInsensitiveContains(query))
-            }
-    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -43,9 +31,13 @@ struct LogsView: View {
         .searchable(text: $searchText, placement: .toolbar, prompt: "搜索日志")
         .compatibleSearchFocused($searchIsFocused)
         .focusedSceneValue(\.workspaceCommands, commandContext)
-        .onChange(of: rows) {
-            selectedRowIDs.formIntersection(Set(rows.map(\.id)))
+        .onReceive(logStore.$entries) { entries in
+            let nextRows = LogPresentationRows.make(from: entries)
+            allRows = nextRows
+            applyFilter(to: nextRows)
         }
+        .onChange(of: searchText) { applyFilter(to: allRows) }
+        .onChange(of: selectedCategory) { applyFilter(to: allRows) }
         .confirmationDialog("清空当前日志？", isPresented: $confirmsClear, titleVisibility: .visible) {
             Button("全部清除", role: .destructive) {
                 selectedRowIDs.removeAll()
@@ -84,34 +76,35 @@ struct LogsView: View {
     }
 
     private var logTable: some View {
-        AppKitTable(
-            rows: rows,
-            selection: $selectedRowIDs,
-            columns: [
-                .init(title: "时间", width: 160) { $0.time },
-                .init(title: "分类", width: 110, textColor: { $0.category.color }) { $0.category.title },
-                .init(title: "标题", width: 360) { $0.title },
-                .init(title: "详情", width: 680) { $0.detail }
-            ],
-            allowsMultipleSelection: true,
-            onActivate: { copyRows($0) },
-            onPreview: { copyRows($0) },
-            hasHorizontalScroller: true,
-            borderType: .noBorder,
-            contextMenuActions: [
-                .init("复制") { copyRows($0) },
-                .init("按此分类过滤", isEnabled: { $0.count == 1 }) { selected in
-                    guard let row = selected.first else { return }
-                    selectedCategory = row.category
-                }
-            ]
-        )
-        .overlay {
+        Group {
             if rows.isEmpty {
                 ContentUnavailableView(
-                    "暂无日志",
-                    systemImage: "terminal",
-                    description: Text(searchText.isEmpty ? "新的运行事件会显示在这里。" : "没有符合当前筛选条件的日志。")
+                    logStore.entries.isEmpty ? "暂无日志" : "没有匹配的日志",
+                    systemImage: logStore.entries.isEmpty ? "terminal" : "magnifyingglass",
+                    description: Text(logStore.entries.isEmpty ? "新的运行事件会显示在这里。" : "请调整分类或尝试其他搜索词。")
+                )
+            } else {
+                AppKitTable(
+                    rows: rows,
+                    selection: $selectedRowIDs,
+                    columns: [
+                        .init(title: "时间", width: 160) { $0.time },
+                        .init(title: "分类", width: 110, textColor: { $0.category.color }) { $0.category.title },
+                        .init(title: "标题", width: 360) { $0.title },
+                        .init(title: "详情", width: 680) { $0.detail }
+                    ],
+                    allowsMultipleSelection: true,
+                    onActivate: { copyRows($0) },
+                    onPreview: { copyRows($0) },
+                    hasHorizontalScroller: true,
+                    borderType: .noBorder,
+                    contextMenuActions: [
+                        .init("复制") { copyRows($0) },
+                        .init("按此分类过滤", isEnabled: { $0.count == 1 }) { selected in
+                            guard let row = selected.first else { return }
+                            selectedCategory = row.category
+                        }
+                    ]
                 )
             }
         }
@@ -162,6 +155,19 @@ struct LogsView: View {
 
     private var selectedRows: [LogPresentationRow] {
         rows.filter { selectedRowIDs.contains($0.id) }
+    }
+
+    private func applyFilter(to allRows: [LogPresentationRow]) {
+        let nextRows = LogPresentationRows.filter(
+            allRows,
+            category: selectedCategory,
+            query: searchText
+        )
+        rows = nextRows
+        selectedRowIDs = TableSelection.reconciled(
+            selectedRowIDs,
+            visibleIDs: nextRows.map(\.id)
+        )
     }
 
     private func copyRows(_ rows: [LogPresentationRow]) {

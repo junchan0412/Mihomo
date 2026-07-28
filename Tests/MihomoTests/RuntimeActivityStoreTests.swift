@@ -49,6 +49,31 @@ final class RuntimeActivityStoreTests: XCTestCase {
         XCTAssertEqual(store.totalDownloadBytes, 20)
     }
 
+    func testConnectionRevisionsOnlyAdvanceForVisibleSnapshotChanges() {
+        let store = RuntimeActivityStore()
+        let item = ConnectionItem(
+            id: "1",
+            host: "example.com",
+            process: "Safari",
+            network: "tcp",
+            rule: "MATCH",
+            chain: "DIRECT",
+            upload: 10,
+            download: 20
+        )
+
+        store.replaceConnections([item])
+        XCTAssertEqual(store.connectionsRevision, 1)
+        XCTAssertEqual(store.recentConnectionsRevision, 1)
+
+        store.replaceConnections([item])
+        XCTAssertEqual(store.connectionsRevision, 1)
+        XCTAssertEqual(store.recentConnectionsRevision, 1)
+
+        store.clearRecentConnections()
+        XCTAssertEqual(store.recentConnectionsRevision, 2)
+    }
+
     func testReplaceConnectionsThrottlesByteOnlyUpdates() {
         let store = RuntimeActivityStore()
         let first = ConnectionItem(

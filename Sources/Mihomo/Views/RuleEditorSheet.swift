@@ -4,10 +4,7 @@ struct RuleEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     var isEditing: Bool
     var ruleTypes: [String]
-    @Binding var ruleType: String
-    @Binding var ruleValue: String
-    @Binding var rulePolicy: String
-    @Binding var ruleNote: String
+    @Binding var draft: RuleEditorDraft
     var save: () -> Void
 
     var body: some View {
@@ -19,7 +16,7 @@ struct RuleEditorSheet: View {
                 GridRow {
                     Text("类型")
                         .foregroundStyle(.secondary)
-                    Picker("类型", selection: $ruleType) {
+                    Picker("类型", selection: $draft.type) {
                         ForEach(ruleTypes, id: \.self) { type in
                             Text(type).tag(type)
                         }
@@ -29,18 +26,18 @@ struct RuleEditorSheet: View {
                 GridRow {
                     Text("值")
                         .foregroundStyle(.secondary)
-                    TextField(ruleType == "MATCH" ? "MATCH 可为空" : "域名、IP、Provider 或进程名", text: $ruleValue)
-                        .disabled(ruleType == "MATCH")
+                    TextField(draft.type == "MATCH" ? "MATCH 可为空" : "域名、IP、Provider 或进程名", text: $draft.value)
+                        .disabled(draft.type == "MATCH")
                 }
                 GridRow {
                     Text("策略")
                         .foregroundStyle(.secondary)
-                    TextField("DIRECT / REJECT / 策略组", text: $rulePolicy)
+                    TextField("DIRECT / REJECT / 策略组", text: $draft.policy)
                 }
                 GridRow {
                     Text("参数")
                         .foregroundStyle(.secondary)
-                    TextField("no-resolve 等附加参数，逗号分隔", text: $ruleNote)
+                    TextField("no-resolve 等附加参数，逗号分隔", text: $draft.optionsText)
                 }
             }
             .textFieldStyle(.roundedBorder)
@@ -55,13 +52,13 @@ struct RuleEditorSheet: View {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(rulePolicy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(draft.policy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(20)
-        .onChange(of: ruleType) {
-            if ruleType == "MATCH" {
-                ruleValue = ""
+        .onChange(of: draft.type) {
+            if draft.type == "MATCH" {
+                draft.value = ""
             }
         }
     }

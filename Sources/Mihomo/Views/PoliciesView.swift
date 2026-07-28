@@ -18,54 +18,24 @@ struct PoliciesView: View {
     @State private var sortsByDelay = true
     @State private var delayFilter: PolicyDelayFilter = .all
 
-    private var displayGroups: [ProxyGroup] {
-        store.proxyGroups.isEmpty ? store.offlineProxyGroups : store.proxyGroups
-    }
-
-    private var isOfflinePolicyMode: Bool {
-        store.proxyGroups.isEmpty && store.offlineProxyGroups.isEmpty == false
-    }
-
-    private var visibleGroups: [ProxyGroup] {
-        let groups = displayGroups.filter { group in
-            guard showHiddenGroups || !group.hidden else { return false }
-            return group.all.contains { matchesDelayFilter($0) } || group.all.isEmpty
-        }
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let searched = query.isEmpty ? groups : groups.filter { group in
-            group.name.localizedCaseInsensitiveContains(query)
-                || group.now.localizedCaseInsensitiveContains(query)
-                || group.type.localizedCaseInsensitiveContains(query)
-                || group.all.contains { node in
-                    node.name.localizedCaseInsensitiveContains(query)
-                        || node.type.localizedCaseInsensitiveContains(query)
-                }
-        }
-        return sortsByDelay ? searched.sorted(by: groupDelayOrder) : searched
-    }
-
-    private var selectedGroup: ProxyGroup? {
-        if let selectedGroupID,
-           let group = visibleGroups.first(where: { $0.id == selectedGroupID }) {
-            return group
-        }
-        return visibleGroups.first
-    }
-
-    private var nodeRows: [PolicyNodeRow] {
-        guard let selectedGroup else { return [] }
-        return nodes(for: selectedGroup)
-    }
-
-    private var selectedNodeRow: PolicyNodeRow? {
-        guard let selectedNodeID else { return nil }
-        return nodeRows.first { $0.id == selectedNodeID }
+    private var presentationSnapshot: PolicyPresentationSnapshot {
+        PolicyPresentation.make(
+            liveGroups: store.proxyGroups,
+            offlineGroups: store.offlineProxyGroups,
+            providers: store.providers,
+            searchText: searchText,
+            showHiddenGroups: showHiddenGroups,
+            hideUnavailableNodes: hideUnavailableNodes,
+            sortsByDelay: sortsByDelay,
+            delayFilter: delayFilter
+        )
     }
 
     var body: some View {
+        let presentation = presentationSnapshot
         VStack(alignment: .leading, spacing: 14) {
-            header
-            mainContent
+            header(presentation)
+            mainContent(presentation)
         }
         .padding(.horizontal, MihomoUI.pageHorizontalPadding)
         .padding(.vertical, MihomoUI.pageVerticalPadding)
@@ -74,31 +44,31 @@ struct PoliciesView: View {
         .background(MihomoUI.pageBackground)
         .searchable(text: $searchText, placement: .toolbar, prompt: "搜索策略组或节点")
         .compatibleSearchFocused($searchIsFocused)
-        .focusedSceneValue(\.workspaceCommands, commandContext)
+        .focusedSceneValue(\.workspaceCommands, commandContext(in: presentation))
         .onAppear {
-            if store.offlineProxyGroups.isEmpty {
+            if presentation.displayGroups.isEmpty {
                 store.refreshConfigArtifacts()
             }
-            ensureSelection()
-            Task { await store.preloadPolicyGroupIcons(for: displayGroups) }
+            ensureSelection(in: presentation)
+            Task { await store.preloadPolicyGroupIcons(for: presentation.displayGroups) }
         }
         .onChange(of: store.proxyGroups) {
-            ensureSelection()
-            Task { await store.preloadPolicyGroupIcons(for: displayGroups) }
+            let groups = store.proxyGroups.isEmpty ? store.offlineProxyGroups : store.proxyGroups
+            Task { await store.preloadPolicyGroupIcons(for: groups) }
         }
         .onChange(of: store.offlineProxyGroups) {
-            ensureSelection()
-            Task { await store.preloadPolicyGroupIcons(for: displayGroups) }
+            let groups = store.proxyGroups.isEmpty ? store.offlineProxyGroups : store.proxyGroups
+            Task { await store.preloadPolicyGroupIcons(for: groups) }
         }
-        .onChange(of: searchText) {
-            ensureSelection()
+        .onChange(of: presentation.selectionIDs) {
+            ensureSelection(in: presentation)
         }
         .onChange(of: selectedGroupID) {
-            guard let selectedGroup else {
+            guard let selectedGroup = presentation.selectedGroup(id: selectedGroupID) else {
                 selectedNodeID = nil
                 return
             }
-            ensureNodeSelection(in: selectedGroup)
+            ensureNodeSelection(in: selectedGroup, presentation: presentation)
         }
         .alert(
             "覆盖自动测速选择？",
@@ -128,13 +98,18 @@ struct PoliciesView: View {
             .frame(minWidth: 900, minHeight: 620)
         }
         .sheet(isPresented: $showingGroupDetail) {
-            if let selectedGroup {
+            if let selectedGroup = presentation.selectedGroup(id: selectedGroupID) {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(selectedGroup.name).font(.title2.weight(.semibold))
                     Text("\(selectedGroup.type) · \(selectedGroup.all.count) 个候选").foregroundStyle(.secondary)
                     PolicyDelayHistoryPane(entries: store.delayHistory(for: selectedGroup))
                     ScrollView {
-                        PolicyNodeCardGrid(rows: nodeRows, isOffline: isOfflinePolicyMode, selectedNodeID: $selectedNodeID, activate: handleNodeDoubleClick)
+                        PolicyNodeCardGrid(
+                            rows: presentation.rows(for: selectedGroup),
+                            isOffline: presentation.isOffline,
+                            selectedNodeID: $selectedNodeID,
+                            activate: handleNodeDoubleClick
+                        )
                     }
                 }
                 .padding(24).frame(minWidth: 620, minHeight: 480, alignment: .topLeading)
@@ -143,8 +118,8 @@ struct PoliciesView: View {
     }
 
     @ViewBuilder
-    private var mainContent: some View {
-        if displayGroups.isEmpty {
+    private func mainContent(_ presentation: PolicyPresentationSnapshot) -> some View {
+        if presentation.displayGroups.isEmpty {
             PolicyStartupEmptyState(
                 isCoreRunning: store.isCoreRunning,
                 coreStatus: store.coreStatus,
@@ -169,122 +144,52 @@ struct PoliciesView: View {
                     Task { await store.setTunEnabled(!store.settings.tunEnabled) }
                 }
             )
-        } else if visibleGroups.isEmpty {
+        } else if presentation.visibleGroups.isEmpty {
             PolicySearchEmptyState(query: searchText) {
                 searchText = ""
+                delayFilter = .all
+                hideUnavailableNodes = false
             }
         } else {
-            content
+            content(presentation)
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("策略")
-                    .font(MihomoUI.Fonts.pageTitle)
-                Text(isOfflinePolicyMode ? "离线预览策略组结构；启动核心后可切换节点与测速。" : "管理 Proxy Provider、策略组与当前节点。")
-                    .font(MihomoUI.Fonts.pageSubtitle)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                policySummaryStrip
-            }
-
-            Spacer()
-
-            Button {
-                toggleAllGroups()
-            } label: {
-                Image(systemName: allGroupsExpanded ? "rectangle.compress.vertical" : "rectangle.expand.vertical")
-            }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.circle)
-            .help(allGroupsExpanded ? "折叠全部策略组" : "展开全部策略组")
-            .disabled(visibleGroups.isEmpty)
-
-            Button {
-                Task { await store.testAllProxyDelays() }
-            } label: {
-                Image(systemName: "speedometer")
-            }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.circle)
-            .help("一键延迟测试")
-            .disabled(store.proxyGroups.isEmpty)
-
-            Menu {
-                Toggle("按延迟排序", isOn: $sortsByDelay)
-                Divider()
-                Picker("延迟筛选", selection: $delayFilter) {
-                    ForEach(PolicyDelayFilter.allCases) { filter in
-                        Text(filter.title).tag(filter)
-                    }
-                }
-                Toggle("隐藏不可用的节点", isOn: $hideUnavailableNodes)
-                Toggle("显示隐藏的策略组", isOn: $showHiddenGroups)
-            } label: {
-                Image(systemName: "slider.horizontal.3")
-            }
-            .menuStyle(.button)
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.circle)
-            .fixedSize()
-            .help("筛选策略和节点")
-        }
+    private func header(_ presentation: PolicyPresentationSnapshot) -> some View {
+        PolicyHeaderView(
+            groupCount: presentation.visibleGroups.count,
+            nodeCount: presentation.visibleNodeCount,
+            providerCount: presentation.proxyProviders.count,
+            isOffline: presentation.isOffline,
+            isCoreRunning: store.isCoreRunning,
+            allGroupsExpanded: allGroupsExpanded(in: presentation),
+            canExpandGroups: presentation.visibleGroups.isEmpty == false,
+            canTestAll: store.proxyGroups.isEmpty == false,
+            sortsByDelay: $sortsByDelay,
+            delayFilter: $delayFilter,
+            hideUnavailableNodes: $hideUnavailableNodes,
+            showHiddenGroups: $showHiddenGroups,
+            toggleAllGroups: { toggleAllGroups(in: presentation) },
+            testAllDelays: { Task { await store.testAllProxyDelays() } }
+        )
     }
 
-    private var policySummaryStrip: some View {
-        HStack(spacing: 8) {
-            summaryChip(title: "策略组", value: "\(visibleGroups.count)", tint: .blue)
-            summaryChip(title: "节点", value: "\(visibleGroups.reduce(0) { $0 + $1.all.count })", tint: .purple)
-            summaryChip(title: "Provider", value: "\(store.providers.filter { $0.kind.caseInsensitiveCompare("Proxy") == .orderedSame }.count)", tint: .cyan)
-            if isOfflinePolicyMode {
-                summaryChip(title: "模式", value: "离线", tint: .orange)
-            } else if store.isCoreRunning {
-                summaryChip(title: "核心", value: "运行中", tint: .green)
-            } else {
-                summaryChip(title: "核心", value: "未运行", tint: .secondary)
-            }
-        }
-    }
-
-    private func summaryChip(title: String, value: String, tint: Color) -> some View {
-        HStack(spacing: 6) {
-            Text(title)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.caption.weight(.semibold).monospacedDigit())
-                .foregroundStyle(tint)
-        }
-        .font(.caption)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(tint.opacity(0.10), in: Capsule())
-    }
-
-    private var headerSubtitle: String {
-        if isOfflinePolicyMode {
-            return selectedGroup.map { "\($0.name) · 离线配置预览" } ?? "离线配置预览"
-        }
-        return selectedGroup.map { "\($0.name) · 当前 \($0.now)" } ?? "启动 mihomo 并刷新核心状态"
-    }
-
-    private var content: some View {
+    private func content(_ presentation: PolicyPresentationSnapshot) -> some View {
         PolicyWorkspaceView(
-            providers: store.providers.filter { $0.kind.caseInsensitiveCompare("Proxy") == .orderedSame },
-            groups: visibleGroups,
+            providers: presentation.proxyProviders,
+            groups: presentation.visibleGroups,
             iconImages: store.policyGroupIconImages,
-            isOffline: isOfflinePolicyMode,
+            isOffline: presentation.isOffline,
             providerHistory: { store.providerUpdateHistory(for: $0).first },
             refreshProvider: { provider in Task { await store.refreshProviderResource(provider) } },
             testGroup: { group in Task { await store.testGroupDelay(group) } },
             expandedProviderIDs: $expandedProviderIDs,
             expandedGroupIDs: $expandedGroupIDs,
             selectedNodeID: $selectedNodeID,
-            nodesForGroup: nodes(for:),
+            nodesForGroup: presentation.rows(for:),
             toggleGroup: { group in
                 selectedGroupID = group.id
-                ensureNodeSelection(in: group)
+                ensureNodeSelection(in: group, presentation: presentation)
                 if expandedGroupIDs.contains(group.id) {
                     expandedGroupIDs.remove(group.id)
                 } else {
@@ -299,73 +204,22 @@ struct PoliciesView: View {
         )
     }
 
-    private func nodes(for group: ProxyGroup) -> [PolicyNodeRow] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let nodes = query.isEmpty ? group.all : group.all.filter {
-            $0.name.localizedCaseInsensitiveContains(query)
-                || $0.type.localizedCaseInsensitiveContains(query)
-                || group.name.localizedCaseInsensitiveContains(query)
-        }
-        let visibleNodes = nodes.isEmpty && query.isEmpty == false ? group.all : nodes
-        let filtered = visibleNodes
-            .filter { !hideUnavailableNodes || $0.available != false }
-            .filter(matchesDelayFilter)
-        let ordered = sortsByDelay ? filtered.sorted(by: nodeDelayOrder) : filtered
-        return ordered.map { PolicyNodeRow(group: group, node: $0) }
+    private func allGroupsExpanded(in presentation: PolicyPresentationSnapshot) -> Bool {
+        presentation.visibleGroups.isEmpty == false
+            && presentation.visibleGroups.allSatisfy { expandedGroupIDs.contains($0.id) }
     }
 
-    private func matchesDelayFilter(_ node: ProxyNode) -> Bool {
-        switch delayFilter {
-        case .all: return true
-        case .untested: return node.delay == nil || node.delay == 0
-        case .fast: return node.delay.map { $0 > 0 && $0 < 150 } ?? false
-        case .moderate: return node.delay.map { $0 >= 150 && $0 < 350 } ?? false
-        case .slow: return node.delay.map { $0 >= 350 } ?? false
-        case .unavailable: return node.available == false
-        }
-    }
-
-    private func nodeDelayOrder(_ lhs: ProxyNode, _ rhs: ProxyNode) -> Bool {
-        if lhs.available == false { return false }
-        if rhs.available == false { return true }
-        let lhsDelay = lhs.delay.flatMap { $0 > 0 ? $0 : nil } ?? .max
-        let rhsDelay = rhs.delay.flatMap { $0 > 0 ? $0 : nil } ?? .max
-        if lhsDelay == rhsDelay {
-            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-        }
-        return lhsDelay < rhsDelay
-    }
-
-    private func groupDelayOrder(_ lhs: ProxyGroup, _ rhs: ProxyGroup) -> Bool {
-        let lhsDelay = selectedDelay(in: lhs)
-        let rhsDelay = selectedDelay(in: rhs)
-        if lhsDelay == rhsDelay {
-            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-        }
-        return lhsDelay < rhsDelay
-    }
-
-    private func selectedDelay(in group: ProxyGroup) -> Int {
-        group.all.first(where: { $0.name == group.now })?.delay.flatMap { $0 > 0 ? $0 : nil }
-            ?? group.all.compactMap(\.delay).filter { $0 > 0 }.min()
-            ?? .max
-    }
-
-    private var allGroupsExpanded: Bool {
-        !visibleGroups.isEmpty && visibleGroups.allSatisfy { expandedGroupIDs.contains($0.id) }
-    }
-
-    private func toggleAllGroups() {
-        let ids = Set(visibleGroups.map(\.id))
-        if allGroupsExpanded {
+    private func toggleAllGroups(in presentation: PolicyPresentationSnapshot) {
+        let ids = Set(presentation.visibleGroups.map(\.id))
+        if allGroupsExpanded(in: presentation) {
             expandedGroupIDs.subtract(ids)
         } else {
             expandedGroupIDs.formUnion(ids)
         }
     }
 
-    private func ensureSelection() {
-        let groups = visibleGroups
+    private func ensureSelection(in presentation: PolicyPresentationSnapshot) {
+        let groups = presentation.visibleGroups
         guard groups.isEmpty == false else {
             selectedGroupID = nil
             selectedNodeID = nil
@@ -374,11 +228,11 @@ struct PoliciesView: View {
 
         let group = groups.first(where: { $0.id == selectedGroupID }) ?? groups.first!
         selectedGroupID = group.id
-        ensureNodeSelection(in: group)
+        ensureNodeSelection(in: group, presentation: presentation)
     }
 
-    private func ensureNodeSelection(in group: ProxyGroup) {
-        let rows = nodes(for: group)
+    private func ensureNodeSelection(in group: ProxyGroup, presentation: PolicyPresentationSnapshot) {
+        let rows = presentation.rows(for: group)
         guard rows.isEmpty == false else {
             selectedNodeID = nil
             return
@@ -401,7 +255,7 @@ struct PoliciesView: View {
     }
 
     private func handleNodeDoubleClick(_ row: PolicyNodeRow) {
-        guard isOfflinePolicyMode == false else { return }
+        guard presentationSnapshot.isOffline == false else { return }
         if row.isCurrent { return }
         if row.group.isAutomaticURLTestGroup {
             pendingAutomaticOverride = row
@@ -410,13 +264,21 @@ struct PoliciesView: View {
         }
     }
 
-    private var canApplySelectedNode: Bool {
-        guard let selectedNodeRow else { return false }
+    private func selectedNodeRow(in presentation: PolicyPresentationSnapshot) -> PolicyNodeRow? {
+        guard let selectedGroup = presentation.selectedGroup(id: selectedGroupID),
+              let selectedNodeID else { return nil }
+        return presentation.rows(for: selectedGroup).first { $0.id == selectedNodeID }
+    }
+
+    private func canApplySelectedNode(in presentation: PolicyPresentationSnapshot) -> Bool {
+        guard let selectedNodeRow = selectedNodeRow(in: presentation) else { return false }
         return selectedNodeRow.isCurrent == false
     }
 
     private func applySelectedNode() {
-        guard let selectedNodeRow, canApplySelectedNode else { return }
+        let presentation = presentationSnapshot
+        guard let selectedNodeRow = selectedNodeRow(in: presentation),
+              canApplySelectedNode(in: presentation) else { return }
         handleNodeDoubleClick(selectedNodeRow)
     }
 
@@ -453,70 +315,18 @@ struct PoliciesView: View {
         expandedGroupIDs.insert(selectedGroupID)
     }
 
-    private var commandContext: WorkspaceCommandContext {
-        WorkspaceCommandContext(
+    private func commandContext(in presentation: PolicyPresentationSnapshot) -> WorkspaceCommandContext {
+        let selectedGroup = presentation.selectedGroup(id: selectedGroupID)
+        return WorkspaceCommandContext(
             search: {
                 searchIsFocused = true
                 MihomoSearchFocus.request()
             },
             refresh: { Task { await store.refreshController() } },
-            activateSelection: searchIsFocused == false && canApplySelectedNode ? applySelectedNode : nil,
+            activateSelection: searchIsFocused == false && canApplySelectedNode(in: presentation) ? applySelectedNode : nil,
             previewSelection: searchIsFocused || selectedGroup == nil ? nil : { showingGroupDetail = true },
             collapseSelection: searchIsFocused || selectedGroup == nil ? nil : collapseSelectedGroup,
             expandSelection: searchIsFocused || selectedGroup == nil ? nil : expandSelectedGroup
         )
-    }
-}
-
-private struct PolicyDelayHistoryPane: View {
-    var entries: [PolicyDelayHistoryEntry]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            Label("最近测速", systemImage: "clock.arrow.circlepath")
-                .font(.headline)
-            if entries.isEmpty {
-                Text("尚无测速记录。运行一次延迟测试后会保留结果、失败原因和时间。")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            } else {
-                ForEach(entries) { entry in
-                    HStack(spacing: 10) {
-                        Text(entry.proxyName)
-                            .lineLimit(1)
-                        Spacer(minLength: 8)
-                        Text(entry.outcomeTitle)
-                            .font(.callout.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(entry.delay == nil ? .orange : .green)
-                        Text(Formatters.shortDate.string(from: entry.recordedAt))
-                            .font(.caption.monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-        .padding(12)
-        .background(MihomoUI.mutedFill, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-    }
-}
-
-private enum PolicyDelayFilter: String, CaseIterable, Identifiable {
-    case all
-    case untested
-    case fast
-    case moderate
-    case slow
-    case unavailable
-
-    var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .all: return "全部延迟"
-        case .untested: return "未测速"
-        case .fast: return "快速 (<150 ms)"
-        case .moderate: return "一般 (150-349 ms)"
-        case .slow: return "较慢 (>=350 ms)"
-        case .unavailable: return "不可用"
-        }
     }
 }

@@ -14,14 +14,33 @@ struct ProfilesView: View {
     @State private var confirmsDeletion = false
 
     var body: some View {
+        let presentation = ProfilesPresentationSnapshot(
+            profiles: store.profiles,
+            selectedIDs: selectedProfileIDs,
+            searchText: searchText,
+            activeProfileID: store.settings.activeProfileID
+        )
+
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                header
-                storagePane
+                ProfilesHeader(
+                    profileCount: store.profiles.count,
+                    activeProfileName: store.activeProfile?.name
+                )
+                ProfileStoragePane(
+                    directory: store.profileStorageDirectory,
+                    reveal: store.revealProfileStorageDirectory,
+                    choose: chooseProfileStorageDirectory
+                )
                 ProfileRefreshQueueStrip()
                     .environmentObject(store)
-                profileTablePane
-                detailPane
+                profileTablePane(presentation)
+                ProfilesDetailPane(
+                    profile: presentation.selectedProfile,
+                    stats: presentation.selectedProfile.map { store.profileStats(for: $0) },
+                    report: store.profileQualityReport(for: presentation.selectedProfile),
+                    editProfile: { openProfileEditor(presentation.selectedProfile) }
+                )
             }
             .padding(.horizontal, MihomoUI.pageHorizontalPadding)
             .padding(.vertical, MihomoUI.pageVerticalPadding)
@@ -32,26 +51,19 @@ struct ProfilesView: View {
         .background(MihomoUI.pageBackground)
         .searchable(text: $searchText, placement: .toolbar, prompt: "搜索配置名称或来源")
         .compatibleSearchFocused($searchIsFocused)
-        .focusedSceneValue(\.workspaceCommands, commandContext)
+        .focusedSceneValue(\.workspaceCommands, commandContext(for: presentation))
         .overlay {
-            DropTargetOverlay(isTargeted: isDropTargeted)
+            ProfileDropTargetOverlay(isTargeted: isDropTargeted)
         }
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted, perform: handleDrop)
-        .onAppear {
-            if let profileID = store.settings.activeProfileID ?? store.profiles.first?.id {
-                selectedProfileIDs = [profileID]
-            }
-        }
+        .onAppear { ensureSelection() }
         .onChange(of: store.profiles) {
-            selectedProfileIDs.formIntersection(Set(store.profiles.map(\.id)))
-            if selectedProfileIDs.isEmpty,
-               let profileID = store.settings.activeProfileID ?? store.profiles.first?.id {
-                selectedProfileIDs = [profileID]
-            }
+            ensureSelection()
         }
+        .onChange(of: searchText) { ensureSelection() }
         .confirmationDialog("删除所选配置？", isPresented: $confirmsDeletion, titleVisibility: .visible) {
-            Button("删除 \(selectedProfiles.count) 个配置", role: .destructive) {
-                let profiles = selectedProfiles
+            Button("删除 \(presentation.selectedProfiles.count) 个配置", role: .destructive) {
+                let profiles = presentation.selectedProfiles
                 selectedProfileIDs.removeAll()
                 Task { await store.deleteProfiles(profiles, undoManager: undoManager) }
             }
@@ -72,56 +84,7 @@ struct ProfilesView: View {
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("配置")
-                    .font(MihomoUI.Fonts.pageTitle)
-                Text("管理本地配置、远程订阅与运行时覆写。当前 \(store.profiles.count) 个配置，活跃 \(store.activeProfile?.name ?? "无")。")
-                    .font(MihomoUI.Fonts.pageSubtitle)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-        }
-    }
-
-    private var storagePane: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            Text("配置存储路径")
-                .font(.headline)
-                .frame(width: 110, alignment: .trailing)
-
-            Text(store.profileStorageDirectory.path)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-
-            Spacer()
-
-            Button {
-                store.revealProfileStorageDirectory()
-            } label: {
-                Label("在 Finder 中显示", systemImage: "folder")
-            }
-
-            Button {
-                chooseProfileStorageDirectory()
-            } label: {
-                Label("修改路径", systemImage: "folder.badge.gearshape")
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
-        .overlay {
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(MihomoUI.cardStroke, lineWidth: 1)
-        }
-    }
-
-    private var profileTablePane: some View {
+    private func profileTablePane(_ presentation: ProfilesPresentationSnapshot) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("配置列表")
@@ -132,56 +95,60 @@ struct ProfilesView: View {
                     .foregroundStyle(.secondary)
             }
 
-            AppKitTable(
-                rows: visibleProfiles,
-                selection: $selectedProfileIDs,
-                columns: profileColumns,
-                allowsMultipleSelection: true,
-                onDoubleClick: { profile in
-                    selectedProfileIDs = [profile.id]
-                    openProfileEditor()
-                },
-                onActivate: { profiles in
-                    guard let profile = profiles.first else { return }
-                    selectedProfileIDs = [profile.id]
-                    openProfileEditor()
-                },
-                onPreview: { profiles in previewProfiles(profiles) },
-                onDelete: { _ in requestDeleteSelectedProfiles() },
-                hasHorizontalScroller: false,
-                allowsParentScrollPassthrough: true,
-                contextMenuActions: profileContextMenuActions
-            )
-            .overlay {
-                if store.profiles.isEmpty {
-                    ContentUnavailableView("没有配置", systemImage: "doc.text")
-                }
+            if presentation.visibleProfiles.isEmpty {
+                ContentUnavailableView(
+                    store.profiles.isEmpty ? "没有配置" : "没有匹配的配置",
+                    systemImage: store.profiles.isEmpty ? "doc.text" : "magnifyingglass",
+                    description: Text(store.profiles.isEmpty ? "导入本地配置或添加远程订阅后会显示在这里。" : "请尝试其他搜索词。")
+                )
+                .frame(height: presentation.tableHeight)
+            } else {
+                AppKitTable(
+                    rows: presentation.visibleProfiles,
+                    selection: $selectedProfileIDs,
+                    columns: presentation.columns,
+                    allowsMultipleSelection: true,
+                    onDoubleClick: { profile in
+                        selectedProfileIDs = [profile.id]
+                        openProfileEditor(profile)
+                    },
+                    onActivate: { profiles in
+                        guard let profile = profiles.first else { return }
+                        selectedProfileIDs = [profile.id]
+                        openProfileEditor(profile)
+                    },
+                    onPreview: { profiles in previewProfiles(profiles) },
+                    onDelete: requestDeleteProfiles,
+                    hasHorizontalScroller: false,
+                    allowsParentScrollPassthrough: true,
+                    contextMenuActions: profileContextMenuActions
+                )
+                .frame(height: presentation.tableHeight)
             }
-            .frame(height: profileTableHeight)
 
             HStack(spacing: 10) {
                 Button {
-                    if let selectedProfile {
+                    if let selectedProfile = presentation.selectedProfile {
                         Task { await store.setActiveProfile(selectedProfile) }
                     }
                 } label: {
                     Label("启用", systemImage: "checkmark.circle")
                 }
-                .disabled(selectedProfile == nil)
+                .disabled(presentation.selectedProfile == nil)
 
                 Button {
-                    openProfileEditor()
+                    openProfileEditor(presentation.selectedProfile)
                 } label: {
                     Label("编辑", systemImage: "pencil")
                 }
-                .disabled(selectedProfile == nil)
+                .disabled(presentation.selectedProfile == nil)
 
                 Button {
-                    refreshSelectedProfiles()
+                    refreshProfiles(presentation.selectedProfiles)
                 } label: {
                     Label("刷新", systemImage: "arrow.clockwise")
                 }
-                .disabled(selectedProfiles.contains(where: \.isRemote) == false)
+                .disabled(presentation.selectedProfiles.contains(where: \.isRemote) == false)
 
                 Button {
                     Task { await store.refreshAllRemoteProfiles() }
@@ -201,7 +168,7 @@ struct ProfilesView: View {
                     Label("从 URL 安装配置...", systemImage: "link.badge.plus")
                 }
 
-                if let selectedProfile {
+                if let selectedProfile = presentation.selectedProfile {
                     ShareLink(item: store.profileStore.profileFile(selectedProfile, settings: store.settings)) {
                         Label("分享", systemImage: "square.and.arrow.up")
                     }
@@ -210,33 +177,17 @@ struct ProfilesView: View {
                 Spacer()
 
                 Button(role: .destructive) {
-                    requestDeleteSelectedProfiles()
+                    requestDeleteProfiles(presentation.selectedProfiles)
                 } label: {
                     Label("删除", systemImage: "trash")
                 }
-                .disabled(selectedProfiles.isEmpty || selectedProfiles.count >= store.profiles.count)
+                .disabled(
+                    presentation.selectedProfiles.isEmpty
+                        || presentation.selectedProfiles.count >= store.profiles.count
+                )
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private var detailPane: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ProfileSummaryPane(
-                profile: selectedProfile,
-                stats: selectedProfile.map { store.profileStats(for: $0) },
-                editProfile: openProfileEditor
-            )
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-
-            ProfileQualityPane(report: store.profileQualityReport(for: selectedProfile))
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private var selectedProfile: ProfileItem? {
-        guard selectedProfileIDs.count == 1, let selectedProfileID = selectedProfileIDs.first else { return nil }
-        return store.profiles.first { $0.id == selectedProfileID }
     }
 
     private var pendingProfileRefreshPreviewBinding: Binding<RemoteProfileRefreshPreview?> {
@@ -250,56 +201,38 @@ struct ProfilesView: View {
         )
     }
 
-    private var selectedProfiles: [ProfileItem] {
-        store.profiles.filter { selectedProfileIDs.contains($0.id) }
+    private func ensureSelection() {
+        let presentation = ProfilesPresentationSnapshot(
+            profiles: store.profiles,
+            selectedIDs: selectedProfileIDs,
+            searchText: searchText,
+            activeProfileID: store.settings.activeProfileID
+        )
+        selectedProfileIDs = TableSelection.reconciled(
+            selectedProfileIDs,
+            visibleIDs: presentation.visibleProfiles.map(\.id),
+            preferredID: store.settings.activeProfileID,
+            selectsFirstWhenEmpty: true
+        )
     }
 
-    private var visibleProfiles: [ProfileItem] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard query.isEmpty == false else { return store.profiles }
-        return store.profiles.filter {
-            $0.name.localizedCaseInsensitiveContains(query)
-                || $0.location.localizedCaseInsensitiveContains(query)
-                || $0.fileName.localizedCaseInsensitiveContains(query)
-        }
+    private func openProfileEditor(_ profile: ProfileItem?) {
+        guard let profile else { return }
+        openWindow(value: profile.id)
     }
 
-    private var profileTableHeight: CGFloat {
-        let visibleRows = max(visibleProfiles.count, 1)
-        let naturalHeight = 30 + CGFloat(visibleRows) * 28
-        return min(max(naturalHeight, 176), 280)
-    }
-
-    private var profileColumns: [AppKitTableColumn<ProfileItem>] {
-        [
-            .init(title: "状态", width: 72) { profile in
-                profile.id == store.settings.activeProfileID ? "启用" : "-"
-            },
-            .init(title: "名称", width: 180) { $0.name },
-            .init(title: "类型", width: 80) { $0.source == .remote ? "远程" : "本地" },
-            .init(title: "来源", width: 220) { profile in
-                profile.source == .remote ? profile.location : profile.fileName
-            },
-            .init(title: "更新", width: 140) { Formatters.shortDate.string(from: $0.updatedAt) }
-        ]
-    }
-
-    private func openProfileEditor() {
-        guard let selectedProfileID = selectedProfile?.id else { return }
-        openWindow(value: selectedProfileID)
-    }
-
-    private func requestDeleteSelectedProfiles() {
-        guard selectedProfiles.isEmpty == false,
-              selectedProfiles.count < store.profiles.count
+    private func requestDeleteProfiles(_ profiles: [ProfileItem]) {
+        guard profiles.isEmpty == false,
+              profiles.count < store.profiles.count
         else { return }
+        selectedProfileIDs = Set(profiles.map(\.id))
         confirmsDeletion = true
     }
 
-    private func refreshSelectedProfiles() {
-        let profiles = selectedProfiles.filter(\.isRemote)
+    private func refreshProfiles(_ profiles: [ProfileItem]) {
+        let remoteProfiles = profiles.filter(\.isRemote)
         Task {
-            for profile in profiles {
+            for profile in remoteProfiles {
                 await store.refreshProfile(profile)
             }
         }
@@ -319,11 +252,11 @@ struct ProfilesView: View {
             .init("编辑", isEnabled: { $0.count == 1 }) { profiles in
                 guard let profile = profiles.first else { return }
                 selectedProfileIDs = [profile.id]
-                openProfileEditor()
+                openProfileEditor(profile)
             },
             .init("刷新", isEnabled: { $0.contains(where: \.isRemote) }) { profiles in
                 selectedProfileIDs = Set(profiles.map(\.id))
-                refreshSelectedProfiles()
+                refreshProfiles(profiles)
             },
             .init("快速查看") { profiles in
                 previewProfiles(profiles)
@@ -337,51 +270,40 @@ struct ProfilesView: View {
                 isDestructive: true,
                 isEnabled: { $0.isEmpty == false && $0.count < store.profiles.count }
             ) { profiles in
-                selectedProfileIDs = Set(profiles.map(\.id))
-                requestDeleteSelectedProfiles()
+                requestDeleteProfiles(profiles)
             }
         ]
     }
 
-    private var commandContext: WorkspaceCommandContext {
+    private func commandContext(for presentation: ProfilesPresentationSnapshot) -> WorkspaceCommandContext {
         WorkspaceCommandContext(
             search: {
                 searchIsFocused = true
                 MihomoSearchFocus.request()
             },
             refresh: { Task { await store.refreshAllRemoteProfiles() } },
-            activateSelection: searchIsFocused || selectedProfile == nil ? nil : openProfileEditor,
-            previewSelection: searchIsFocused || selectedProfiles.isEmpty ? nil : { previewProfiles(selectedProfiles) },
-            deleteSelection: searchIsFocused || selectedProfiles.isEmpty || selectedProfiles.count >= store.profiles.count
+            activateSelection: searchIsFocused || presentation.selectedProfile == nil
                 ? nil
-                : requestDeleteSelectedProfiles
+                : { openProfileEditor(presentation.selectedProfile) },
+            previewSelection: searchIsFocused || presentation.selectedProfiles.isEmpty
+                ? nil
+                : { previewProfiles(presentation.selectedProfiles) },
+            deleteSelection: searchIsFocused
+                || presentation.selectedProfiles.isEmpty
+                || presentation.selectedProfiles.count >= store.profiles.count
+                ? nil
+                : { requestDeleteProfiles(presentation.selectedProfiles) }
         )
     }
 
     private func importLocal() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.yaml, .text]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        if panel.runModal() == .OK, let url = panel.url {
-            Task { await store.importLocalProfile(url: url) }
-        }
+        guard let url = ProfileFilePicker.localProfile() else { return }
+        Task { await store.importLocalProfile(url: url) }
     }
 
     private func chooseProfileStorageDirectory() {
-        let panel = NSOpenPanel()
-        panel.title = "选择配置存储路径"
-        panel.message = "选择用于保存配置 YAML 文件的目录。现有配置会复制到新目录。"
-        panel.prompt = "使用此目录"
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.directoryURL = store.profileStorageDirectory
-
-        if panel.runModal() == .OK, let url = panel.url {
-            Task { await store.changeProfileStorageDirectory(to: url) }
-        }
+        guard let url = ProfileFilePicker.storageDirectory(current: store.profileStorageDirectory) else { return }
+        Task { await store.changeProfileStorageDirectory(to: url) }
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -401,20 +323,4 @@ struct ProfilesView: View {
         }
         return accepted
     }
-}
-
-private struct DropTargetOverlay: View {
-    var isTargeted: Bool
-
-    var body: some View {
-        if isTargeted {
-            RoundedRectangle(cornerRadius: 8)
-                .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 3, dash: [8, 5]))
-                .padding(12)
-        }
-    }
-}
-
-private extension UTType {
-    static let yaml = UTType(filenameExtension: "yaml") ?? .text
 }

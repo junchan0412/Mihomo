@@ -84,6 +84,28 @@ struct LogPresentationRow: Identifiable, Hashable {
     }
 }
 
+enum LogPresentationRows {
+    static func make(from entries: [LogEntry]) -> [LogPresentationRow] {
+        entries.reversed().map(LogPresentationRow.init(entry:))
+    }
+
+    static func filter(
+        _ rows: [LogPresentationRow],
+        category: LogCategory,
+        query: String
+    ) -> [LogPresentationRow] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return rows.filter { row in
+            category.matches(row.category)
+                && (query.isEmpty
+                    || row.title.localizedCaseInsensitiveContains(query)
+                    || row.detail.localizedCaseInsensitiveContains(query)
+                    || row.category.title.localizedCaseInsensitiveContains(query)
+                    || row.level.localizedCaseInsensitiveContains(query))
+        }
+    }
+}
+
 struct LogCategorySidebar: View {
     @Binding var selection: LogCategory
 

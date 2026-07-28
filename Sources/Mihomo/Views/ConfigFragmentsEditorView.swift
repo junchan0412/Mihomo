@@ -59,7 +59,7 @@ struct ConfigFragmentEditorWindowView: View {
                 VStack(alignment: .trailing, spacing: 3) {
                     Text(fragment.source.title)
                         .font(.callout.weight(.medium))
-                    Text(fragment.location.isEmpty ? "手动创建" : fragment.location)
+                    Text(sourceText(for: fragment))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -69,6 +69,13 @@ struct ConfigFragmentEditorWindowView: View {
                 .frame(maxWidth: 360, alignment: .trailing)
             }
         }
+    }
+
+    private func sourceText(for fragment: ConfigFragment) -> String {
+        if fragment.location.isEmpty { return fragment.isRemote ? "远程来源" : "手动创建" }
+        return fragment.isRemote
+            ? URLDisplayText.redactingSensitiveComponents(fragment.location)
+            : fragment.location
     }
 
     private var metadataGrid: some View {

@@ -259,7 +259,9 @@ struct ConfigFragmentOverviewPane: View {
         if fragment.location.isEmpty {
             return fragment.source == .remote ? "远程来源" : "手动创建"
         }
-        return fragment.location
+        return fragment.isRemote
+            ? URLDisplayText.redactingSensitiveComponents(fragment.location)
+            : fragment.location
     }
 
     private func statusColor(_ report: ConfigFragmentOverviewReport) -> Color {

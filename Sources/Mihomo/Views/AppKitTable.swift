@@ -1,76 +1,6 @@
 import AppKit
 import SwiftUI
 
-struct AppKitTableColumn<Row> {
-    let title: String
-    let width: CGFloat
-    let value: (Row) -> String
-    let image: ((Row) -> NSImage?)?
-    let textColor: ((Row) -> NSColor?)?
-    let checked: ((Row) -> Bool)?
-    let toggle: ((Row) -> Void)?
-
-    init(
-        title: String,
-        width: CGFloat,
-        textColor: ((Row) -> NSColor?)? = nil,
-        value: @escaping (Row) -> String
-    ) {
-        self.title = title
-        self.width = width
-        self.textColor = textColor
-        self.value = value
-        image = nil
-        checked = nil
-        toggle = nil
-    }
-
-    init(
-        title: String,
-        width: CGFloat,
-        image: @escaping (Row) -> NSImage?,
-        textColor: ((Row) -> NSColor?)? = nil,
-        value: @escaping (Row) -> String
-    ) {
-        self.title = title
-        self.width = width
-        self.image = image
-        self.textColor = textColor
-        self.value = value
-        checked = nil
-        toggle = nil
-    }
-
-    init(title: String, width: CGFloat, checked: @escaping (Row) -> Bool, toggle: @escaping (Row) -> Void) {
-        self.title = title
-        self.width = width
-        value = { checked($0) ? "已启用" : "已禁用" }
-        image = nil
-        textColor = nil
-        self.checked = checked
-        self.toggle = toggle
-    }
-}
-
-struct AppKitTableContextAction<Row> {
-    let title: String
-    let isDestructive: Bool
-    let isEnabled: ([Row]) -> Bool
-    let action: ([Row]) -> Void
-
-    init(
-        _ title: String,
-        isDestructive: Bool = false,
-        isEnabled: @escaping ([Row]) -> Bool = { _ in true },
-        action: @escaping ([Row]) -> Void
-    ) {
-        self.title = title
-        self.isDestructive = isDestructive
-        self.isEnabled = isEnabled
-        self.action = action
-    }
-}
-
 struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.ID: Hashable {
     var rows: [Row]
     @Binding var selection: Set<Row.ID>
@@ -153,68 +83,6 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         self.contextMenuActions = contextMenuActions
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(self)
-    }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let tableView = AppKitAccessibleTableView()
-        tableView.delegate = context.coordinator
-        tableView.dataSource = context.coordinator
-        tableView.target = context.coordinator
-        tableView.action = #selector(Coordinator.clicked(_:))
-        tableView.doubleAction = #selector(Coordinator.doubleClicked(_:))
-        tableView.headerView = NSTableHeaderView()
-        tableView.allowsMultipleSelection = allowsMultipleSelection
-        tableView.allowsEmptySelection = true
-        tableView.usesAlternatingRowBackgroundColors = true
-        tableView.selectionHighlightStyle = .regular
-        tableView.rowHeight = 28
-        tableView.intercellSpacing = NSSize(width: 0, height: 1)
-        tableView.backgroundColor = .textBackgroundColor
-        if contextMenuActions.isEmpty == false {
-            let menu = NSMenu()
-            menu.delegate = context.coordinator
-            tableView.menu = menu
-        }
-        tableView.onActivateSelection = { [weak coordinator = context.coordinator, weak tableView] in
-            guard let coordinator, let tableView else { return }
-            coordinator.activateSelection(on: tableView)
-        }
-        tableView.onPreviewSelection = { [weak coordinator = context.coordinator, weak tableView] in
-            guard let coordinator, let tableView else { return }
-            coordinator.previewSelection(on: tableView)
-        }
-        tableView.onDeleteSelection = { [weak coordinator = context.coordinator, weak tableView] in
-            guard let coordinator, let tableView else { return }
-            coordinator.deleteSelection(on: tableView)
-        }
-
-        let scrollView = AppKitTableScrollView()
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = hasHorizontalScroller
-        scrollView.allowsParentScrollPassthrough = allowsParentScrollPassthrough
-        scrollView.autohidesScrollers = true
-        scrollView.borderType = borderType
-        scrollView.documentView = tableView
-
-        context.coordinator.configureColumns(on: tableView)
-        return scrollView
-    }
-
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let tableView = scrollView.documentView as? NSTableView else { return }
-        context.coordinator.parent = self
-        tableView.allowsMultipleSelection = allowsMultipleSelection
-        scrollView.hasHorizontalScroller = hasHorizontalScroller
-        scrollView.borderType = borderType
-        (scrollView as? AppKitTableScrollView)?.allowsParentScrollPassthrough = allowsParentScrollPassthrough
-        context.coordinator.configureContextMenu(on: tableView)
-        context.coordinator.configureColumns(on: tableView)
-        context.coordinator.reloadDataIfNeeded(on: tableView)
-        context.coordinator.applySelection(on: tableView)
-    }
-
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate, NSMenuDelegate {
         var parent: AppKitTable
         private var columnSignature: [String] = []
@@ -244,12 +112,16 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
                 "MihomoTableCell-\(columnIndex)-\(column.image == nil ? "text" : "image")"
             )
             let cell = tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView
-                ?? makeCell(identifier: identifier, includesImage: column.image != nil)
+                ?? AppKitTableCellFactory.makeCell(identifier: identifier, includesImage: column.image != nil)
             let value = column.value(currentRow)
             if let checked = column.checked {
                 let identifier = NSUserInterfaceItemIdentifier("MihomoCheckboxCell-\(columnIndex)")
                 let button = tableView.makeView(withIdentifier: identifier, owner: self) as? NSButton
-                    ?? makeCheckbox(identifier: identifier)
+                    ?? AppKitTableCellFactory.makeCheckbox(
+                        identifier: identifier,
+                        target: self,
+                        action: #selector(toggleCheckbox(_:))
+                    )
                 button.state = checked(currentRow) ? .on : .off
                 button.tag = row
                 button.setAccessibilityLabel(column.title.isEmpty ? "启用规则" : column.title)
@@ -451,53 +323,5 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             }
         }
 
-        private func makeCell(identifier: NSUserInterfaceItemIdentifier, includesImage: Bool) -> NSTableCellView {
-            let cell = NSTableCellView()
-            cell.identifier = identifier
-
-            let textField = NSTextField(labelWithString: "")
-            textField.lineBreakMode = .byTruncatingTail
-            textField.usesSingleLineMode = true
-            textField.font = .systemFont(ofSize: NSFont.systemFontSize)
-            textField.translatesAutoresizingMaskIntoConstraints = false
-            textField.setAccessibilityElement(false)
-
-            cell.textField = textField
-            cell.addSubview(textField)
-
-            if includesImage {
-                let imageView = NSImageView()
-                imageView.imageScaling = .scaleProportionallyUpOrDown
-                imageView.translatesAutoresizingMaskIntoConstraints = false
-                imageView.setAccessibilityElement(false)
-                cell.imageView = imageView
-                cell.addSubview(imageView)
-
-                NSLayoutConstraint.activate([
-                    imageView.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 7),
-                    imageView.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-                    imageView.widthAnchor.constraint(equalToConstant: 18),
-                    imageView.heightAnchor.constraint(equalToConstant: 18),
-                    textField.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 6),
-                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
-                    textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-                ])
-            } else {
-                NSLayoutConstraint.activate([
-                    textField.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
-                    textField.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
-                    textField.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-                ])
-            }
-
-            return cell
-        }
-
-        private func makeCheckbox(identifier: NSUserInterfaceItemIdentifier) -> NSButton {
-            let button = NSButton(checkboxWithTitle: "", target: self, action: #selector(toggleCheckbox(_:)))
-            button.identifier = identifier
-            button.setButtonType(.switch)
-            return button
-        }
     }
 }

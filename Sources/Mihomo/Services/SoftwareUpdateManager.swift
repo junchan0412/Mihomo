@@ -1,44 +1,5 @@
-import AppKit
 import CryptoKit
 import Foundation
-
-struct AppUpdateManifest: Codable, Hashable {
-    var version: String
-    var build: String?
-    var url: String
-    var sha256: String
-    var notes: String?
-    var minimumSystemVersion: String?
-    var bundleIdentifier: String?
-    var signingIdentifier: String?
-    var helperSigningIdentifier: String?
-    var signingMode: String?
-    var teamIdentifier: String?
-    var appCDHash: String?
-    var helperCDHash: String?
-    var publishedAt: Date?
-    var signature: AppUpdateSignature?
-}
-
-struct AppUpdateSignature: Codable, Hashable {
-    var algorithm: String
-    var publicKey: String
-    var value: String
-}
-
-struct AppUpdateCheckResult: Hashable {
-    var manifest: AppUpdateManifest
-    var manifestURL: URL
-    var isNewer: Bool
-    var currentVersion: String
-    var currentBuild: String
-}
-
-struct PreparedUpdatePackage {
-    var candidate: URL
-    var installScript: URL
-    var tempRoot: URL
-}
 
 final class SoftwareUpdateManager {
     static let githubLatestManifestURL = URL(string: "https://github.com/junchan0412/Mihomo/releases/latest/download/mihomo-update.json")!
@@ -160,7 +121,7 @@ final class SoftwareUpdateManager {
             throw updateError("manifest build 必须是一至三段数字。")
         }
         if let minimum = manifest.minimumSystemVersion,
-           compareVersions(systemVersionString(), minimum) == .orderedAscending {
+           SoftwareVersionComparator.compare(systemVersionString(), minimum) == .orderedAscending {
             throw updateError("当前 macOS 版本低于 \(minimum)。")
         }
         guard manifest.signature != nil else {
@@ -324,59 +285,7 @@ final class SoftwareUpdateManager {
     }
 
     func writeInstallScript(tempRoot: URL) throws -> URL {
-        let script = tempRoot.appendingPathComponent("install-update.sh")
-        let body = """
-        #!/bin/sh
-        set -eu
-        current="$1"
-        candidate="$2"
-        temp="$3"
-        backup="${current}.previous-update"
-
-        restore_backup() {
-          /bin/rm -rf "$current"
-          if [ -e "$backup" ]; then
-            /bin/mv "$backup" "$current"
-          fi
-        }
-
-        is_current_app_running() {
-          executable="$current/Contents/MacOS/Mihomo"
-          for pid in $(/usr/bin/pgrep -x "Mihomo" 2>/dev/null || true); do
-            command=$(/bin/ps -p "$pid" -o command= 2>/dev/null || true)
-            case "$command" in
-              "$executable"|"$executable "*) return 0 ;;
-            esac
-          done
-          return 1
-        }
-
-        while is_current_app_running; do
-          /bin/sleep 0.2
-        done
-
-        /bin/rm -rf "$backup"
-        if [ -e "$current" ]; then
-          /bin/mv "$current" "$backup"
-        fi
-
-        if ! /usr/bin/ditto "$candidate" "$current"; then
-          restore_backup
-          exit 1
-        fi
-        /usr/bin/xattr -dr com.apple.quarantine "$current" >/dev/null 2>&1 || true
-
-        if ! /usr/bin/codesign --verify --deep --strict "$current" >/dev/null 2>&1; then
-          restore_backup
-          exit 1
-        fi
-
-        /usr/bin/open -n "$current"
-        /bin/rm -rf "$backup" "$temp"
-        """
-        try body.write(to: script, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
-        return script
+        try SoftwareUpdateInstallScript.write(to: tempRoot)
     }
 
     private func launchInstallScript(script: URL, candidate: URL, tempRoot: URL) throws {
@@ -398,24 +307,12 @@ final class SoftwareUpdateManager {
         }
     }
 
-    private func compareVersions(_ lhs: String, _ rhs: String) -> ComparisonResult {
-        let left = versionNumbers(lhs)
-        let right = versionNumbers(rhs)
-        for index in 0..<max(left.count, right.count) {
-            let l = index < left.count ? left[index] : 0
-            let r = index < right.count ? right[index] : 0
-            if l > r { return .orderedDescending }
-            if l < r { return .orderedAscending }
-        }
-        return .orderedSame
-    }
-
     func isManifestNewer(
         _ manifest: AppUpdateManifest,
         currentVersion: String? = nil,
         currentBuild: String? = nil
     ) -> Bool {
-        let versionComparison = compareVersions(manifest.version, currentVersion ?? self.currentVersion)
+        let versionComparison = SoftwareVersionComparator.compare(manifest.version, currentVersion ?? self.currentVersion)
         if versionComparison == .orderedDescending {
             return true
         }
@@ -427,11 +324,6 @@ final class SoftwareUpdateManager {
         }
         let current = (currentBuild ?? self.currentBuild).trimmingCharacters(in: .whitespacesAndNewlines)
         return current.isEmpty || current != manifestBuild
-    }
-
-    private func versionNumbers(_ value: String) -> [Int] {
-        value.components(separatedBy: CharacterSet.decimalDigits.inverted)
-            .compactMap { $0.isEmpty ? nil : Int($0) }
     }
 
     private func systemVersionString() -> String {

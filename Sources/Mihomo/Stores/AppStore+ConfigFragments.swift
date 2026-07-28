@@ -162,4 +162,122 @@ extension AppStore {
         next.swapAt(index, destination)
         commitConfigFragments(next, actionName: offset < 0 ? "上移覆写" : "下移覆写", undoManager: undoManager)
     }
+
+    func addConfigFragment(name: String, kind: ConfigFragmentKind, content: String, undoManager: UndoManager? = nil) {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedContent = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmedContent.isEmpty == false else { return }
+        var fragment = ConfigFragment(
+            name: trimmedName.isEmpty ? (kind == .yaml ? "YAML 片段" : "JS 片段") : trimmedName,
+            kind: kind,
+            enabled: true,
+            content: content
+        )
+        fragment.updatedAt = Date()
+        addConfigFragment(fragment, undoManager: undoManager)
+    }
+
+    func addConfigFragment(_ fragment: ConfigFragment, undoManager: UndoManager? = nil) {
+        var updated = fragment
+        updated.updatedAt = Date()
+        commitConfigFragments(
+            configFragments + [updated],
+            actionName: "添加覆写",
+            undoManager: undoManager
+        )
+    }
+
+    func updateConfigFragment(_ fragment: ConfigFragment, undoManager: UndoManager? = nil) {
+        guard let index = configFragments.firstIndex(where: { $0.id == fragment.id }) else { return }
+        var updated = fragment
+        updated.updatedAt = Date()
+        var next = configFragments
+        next[index] = updated
+        commitConfigFragments(next, actionName: "编辑覆写", undoManager: undoManager)
+    }
+
+    func deleteConfigFragment(_ fragment: ConfigFragment, undoManager: UndoManager? = nil) {
+        deleteConfigFragments([fragment], undoManager: undoManager)
+    }
+
+    func deleteConfigFragments(_ fragments: [ConfigFragment], undoManager: UndoManager? = nil) {
+        let identifiers = Set(fragments.map(\.id))
+        guard identifiers.isEmpty == false else { return }
+        let next = configFragments.filter { identifiers.contains($0.id) == false }
+        commitConfigFragments(
+            next,
+            actionName: identifiers.count == 1 ? "删除覆写" : "删除多个覆写",
+            undoManager: undoManager
+        )
+    }
+
+    @discardableResult
+    func commitConfigFragments(
+        _ next: [ConfigFragment],
+        actionName: String,
+        undoManager: UndoManager?
+    ) -> Bool {
+        let previous = configFragments
+        if previous != next {
+            captureConfigFragmentsRevision(previous, actionName: actionName)
+        }
+        configFragments = next
+        do {
+            try configFragmentStore.saveFragments(configFragments)
+            refreshConfigArtifacts()
+            appendLog("info", "覆写片段已保存")
+            if let undoManager {
+                registerConfigFragmentsUndo(
+                    snapshot: previous,
+                    inverse: next,
+                    actionName: actionName,
+                    undoManager: undoManager
+                )
+            }
+            return true
+        } catch {
+            configFragments = previous
+            appendLog("error", "覆写片段保存失败：\(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func registerConfigFragmentsUndo(
+        snapshot: [ConfigFragment],
+        inverse: [ConfigFragment],
+        actionName: String,
+        undoManager: UndoManager
+    ) {
+        undoManager.registerUndo(withTarget: self) { target in
+            target.applyConfigFragmentsSnapshot(
+                snapshot,
+                inverse: inverse,
+                actionName: actionName,
+                undoManager: undoManager
+            )
+        }
+        undoManager.setActionName(actionName)
+    }
+
+    private func applyConfigFragmentsSnapshot(
+        _ snapshot: [ConfigFragment],
+        inverse: [ConfigFragment],
+        actionName: String,
+        undoManager: UndoManager
+    ) {
+        do {
+            configFragments = snapshot
+            try configFragmentStore.saveFragments(configFragments)
+            refreshConfigArtifacts()
+            registerConfigFragmentsUndo(
+                snapshot: inverse,
+                inverse: snapshot,
+                actionName: actionName,
+                undoManager: undoManager
+            )
+            appendLog("info", "已执行撤销/重做：\(actionName)")
+        } catch {
+            appendLog("error", "覆写撤销/重做失败：\(error.localizedDescription)")
+        }
+    }
 }

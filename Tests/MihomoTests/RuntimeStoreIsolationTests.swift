@@ -66,6 +66,52 @@ final class RuntimeStoreIsolationTests: XCTestCase {
         withExtendedLifetime([appCancellable, logCancellable]) {}
     }
 
+    func testDerivedProfileAndNetworkStateUsesCurrentStoreValues() {
+        let store = AppStore()
+        let first = ProfileItem(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+            name: "First",
+            source: .local,
+            location: "/tmp/first",
+            fileName: "first.yaml",
+            updatedAt: Date(timeIntervalSince1970: 1)
+        )
+        let second = ProfileItem(
+            id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+            name: "Second",
+            source: .local,
+            location: "/tmp/second",
+            fileName: "second.yaml",
+            updatedAt: Date(timeIntervalSince1970: 2)
+        )
+        store.profiles = [first, second]
+        store.settings.activeProfileID = second.id
+
+        XCTAssertEqual(store.activeProfile?.id, second.id)
+
+        store.settings.tunEnabled = true
+        store.settings.autoSetSystemDNS = true
+        XCTAssertTrue(store.networkModeAdvisory?.contains("DNS Hijacking") == true)
+
+        store.settings.tunEnabled = false
+        store.systemProxyEnabled = true
+        XCTAssertTrue(store.networkModeAdvisory?.contains("系统代理") == true)
+    }
+
+    func testPublishIfChangedSkipsEqualValues() {
+        let store = AppStore()
+        var appChanges = 0
+        let cancellable = store.objectWillChange.sink { appChanges += 1 }
+
+        store.publishIfChanged(\.coreStatus, store.coreStatus)
+        XCTAssertEqual(appChanges, 0)
+
+        store.publishIfChanged(\.coreStatus, "运行中")
+        XCTAssertEqual(appChanges, 1)
+        XCTAssertEqual(store.coreStatus, "运行中")
+        withExtendedLifetime(cancellable) {}
+    }
+
     func testRuleHitCountingIsStableAcrossRefreshAndReset() {
         let store = AppStore()
         store.rules = [RuleItem(index: 0, content: "DOMAIN,example.com,DIRECT", disabled: false)]

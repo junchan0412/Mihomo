@@ -1,9 +1,14 @@
 # Mihomo macOS 开发文档
 
-更新日期：2026-07-23
-对应版本：`v1.17.0`
+更新日期：2026-07-28
+对应版本：`v1.23.0 (77)`
 
 本文档描述当前架构、关键数据流、页面职责、开发约束和发布流程。历史版本流水账不再作为主体；需要追溯时使用 Git history 和各版本 Release Notes。
+
+## 当前状态与目标
+
+- 当前状态：基于 `v1.23.0 (77)`，`swift test` 覆盖 211 个 XCTest；连接、DNS、流量统计、概览时间轴以及配置、覆写、规则、日志、资源的无数据/无匹配结果统一使用明确空状态，不初始化空 AppKit 表格；筛选变化通过可测试的 selection reconciliation 清理隐藏选区；Profile、覆写与 Provider 的远程来源统一隐藏 URL 凭据、参数、fragment 与高熵 path token；命令面板与系统代理使用互不冲突的快捷键；高频连接表刷新由 store revision 驱动，避免重复拼接行 fingerprint；日志 presentation 行只在日志批次、分类或搜索变化时重建；Activity 流量统计单次遍历 24 小时策略样本即可累加全部时间窗，概览时间轴通过二分定位可见窗口并单次聚合策略样本；配置资源、规则、策略、Profile 与覆写列表每轮渲染共用单个 presentation snapshot；规则、覆写与资源列表职责集中在独立 pane；`AppSettings`、Profile 刷新、Controller polling、AppKit 表格组件与配置质量页面均已按职责拆分；`AppStore.swift` 仅保留共享低频状态、service 和 task ownership，bootstrap、派生状态、运行时 store proxy 与策略图标预加载位于独立 extension。最新维护性审计覆盖 221 个 Swift 文件，warning 与 over-max 均为 0，当前最大文件为 `MenuBarView.swift`（347 行）。
+- 近期目标：保持高频界面只更新必要范围，并以 350 行 warning、500 行 over-max、211 个 XCTest 和逐页实机回归作为持续门禁；新增职责同步拆分、补齐测试与文档，根据真实使用反馈继续改善策略历史、路由解释和版本恢复的可发现性。
 
 ## 1. 产品原则
 
@@ -51,20 +56,24 @@ App 图标的矢量源位于 `Assets/`，构建前生成的 light/dark PNG、菜
 
 设置是主窗口侧栏中的稳定目的地。`Command-,`、菜单栏和侧栏统一选择 `.settings` 并显示主窗口，不再创建与主导航状态分离的独立设置窗口。
 
-主窗口使用原生 Source List 与可自定义 Toolbar。导航、搜索、刷新和常用控制通过菜单命令与 `FocusedValues` 路由到当前工作区。Profile 编辑器和覆写快速查看使用 value-based `WindowGroup`；覆写列表仍以 Space 触发预览，但 YAML/JavaScript 不再交给系统 Quick Look。
+主窗口使用原生 Source List 与可自定义 Toolbar。导航、搜索、刷新和常用控制通过菜单命令与 `FocusedValues` 路由到当前工作区。Profile 编辑器和覆写快速查看使用 value-based `WindowGroup`；覆写列表仍以 Space 触发预览，但 YAML/JavaScript 不再交给系统 Quick Look。覆写列表由单个 `ConfigFragmentListPresentation` 派生可见项、选区、表高和 columns；`ConfigFragmentListPane` 只接收显式 actions，不持有 `AppStore`。
 
 ### 2.2 AppStore
 
 `AppStore.swift` 保存共享低频状态和 service 实例。领域行为按 extension 拆分，例如：
 
 - `AppStore+CoreLifecycle`
+- `AppStore+Bootstrap`
+- `AppStore+DerivedState`
 - `AppStore+ControllerStreams`
+- `AppStore+ControllerPolling`
 - `AppStore+Profiles`
 - `AppStore+ConfigEditing`
 - `AppStore+Resources`
 - `AppStore+NetworkTakeover`
 - `AppStore+Backup`
-- `AppStore+SoftwareUpdate`
+- `AppStore+SoftwareUpdates`
+- `AppStore+PolicyIcons`
 
 高频连接、流量和日志不直接堆在 AppStore：
 
@@ -195,7 +204,7 @@ Profile 自动刷新和外部资源批量更新使用独立并发设置。`profi
 
 Proxy Provider 本地缓存可能是 Mihomo YAML、完整配置、Base64 订阅或分享链接列表。缓存展示层只提取节点名称，不承担协议转换；更新历史至少保留 500 条，以覆盖大规模 Rule Provider 批量刷新后的状态展示。
 
-规则启用列由 `AppKitTable` 的 checkbox column bridge 提供。SwiftUI 保持 `disabledRules` 为唯一状态源，AppKit 仅通过窄回调触发 `toggleRuleDisabled`。资源行右键菜单同样由表格 bridge 提供单一 action 回调。
+规则启用列由 `AppKitTable` 的 checkbox column bridge 提供。SwiftUI 保持 `disabledRules` 为唯一状态源，AppKit 仅通过窄回调触发 `toggleRuleDisabled`。分类条、表格 columns、bottom bar 与 context menu 由 `RuleTablePane` 统一展示，`RulesView` 只负责页面状态、命令路由与 store 写入。资源行右键菜单同样由表格 bridge 提供单一 action 回调。
 
 资源统一建模为 `ProviderItem`，通过 `ExternalResourceRow` 形成展示状态。
 
@@ -205,7 +214,7 @@ Proxy Provider 本地缓存可能是 Mihomo YAML、完整配置、Base64 订阅�
 - 无 `remoteURL` 但有 path：执行本地重新载入/校验。
 - 全部更新：按并发限制处理所有 Provider，最后更新 Geo 数据。
 
-本地校验包括：路径约束、文件存在、非空和 mapped read 可读性。详情中不能展示 URL query/fragment，避免泄露 token。
+本地校验包括：路径约束、文件存在、非空和 mapped read 可读性。Profile、覆写与 Provider 的远程来源只能展示移除 user/password、query、fragment 与高熵 path token 的 URL，避免在界面、截图或 accessibility tree 中泄露凭据；描述性仓库路径与常见配置文件名保留，实际下载仍使用原始 URL。
 
 ## 6. GUI 结构编辑
 
@@ -232,6 +241,10 @@ Proxy Provider 本地缓存可能是 Mihomo YAML、完整配置、Base64 订阅�
 - WebSocket 有 heartbeat、指数退避上限和 polling fallback。
 - 高频事件只更新 focused store，避免整个窗口重新计算。
 - 日志批量落盘；长列表使用 AppKit table/text bridge 和增量数据。
+- 概览流量时间轴先二分定位可见策略样本，再按相邻流量采样中点单次分桶；禁止在每个柱形中重复 filter 全部历史样本。
+- 配置资源的行模型、就绪计数、筛选和选区从同一 presentation snapshot 派生；文件存在状态每轮只读取一次。
+- 规则解析、分类计数、命中总数、筛选和选区从同一 presentation snapshot 派生；禁止为 Header、Table、Bottom bar 分别解析全量规则。
+- Activity 流量统计在一次样本遍历中同时累加今天、5/15/60 分钟、6/12 小时窗口，并将同一行数组传给计数与表格。
 - 批量 Provider/测速任务必须使用并发上限，不能无界创建 Task。
 
 ## 8. 安全约定
@@ -250,7 +263,7 @@ Proxy Provider 本地缓存可能是 Mihomo YAML、完整配置、Base64 订阅�
 DEVELOPER_DIR='/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer' swift test
 git diff --check
 ./script/maintainability_audit.sh
-APP_VERSION=1.11.2 ./script/build_and_run.sh --verify
+APP_VERSION=1.23.0 APP_BUILD=77 ./script/build_and_run.sh --verify
 ```
 
 高风险改动补充验证：
@@ -287,5 +300,5 @@ APP_VERSION=1.11.2 ./script/build_and_run.sh --verify
 
 - 当前维护者没有 Apple Developer 账户；发布物采用明确标注的 ad-hoc 模式，用户需自行移除 quarantine。Ed25519 manifest 同时固定 zip SHA-256 与主 App/Helper CDHash；特权能力使用需管理员授权且绑定 App CDHash 的传统 Helper。未来取得 Developer ID 后仍应切换到 notarized 发布路径。
 - AppKit bridge 仍需定期做真实 VoiceOver/keyboard QA。
-- 350 行以上文件应在后续触碰时继续拆分，500 行为强优先级阈值。
+- 维护性审计继续以 350 行为 warning、500 行为 over-max 阈值，避免职责在后续迭代中重新聚合。
 - 网络接管真实异常路径需要持续沉淀 before/after smoke 证据。

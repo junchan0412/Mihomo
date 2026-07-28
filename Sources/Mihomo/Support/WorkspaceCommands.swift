@@ -185,7 +185,7 @@ struct MihomoCommands: Commands {
             Button(store.systemProxyEnabled ? "关闭系统代理" : "开启系统代理") {
                 Task { await store.toggleSystemProxy() }
             }
-            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .keyboardShortcut("p", modifiers: [.command, .option])
             .disabled(!store.isCoreRunning && !store.systemProxyEnabled)
 
             Button(store.settings.tunEnabled ? "关闭 TUN" : "开启 TUN") {

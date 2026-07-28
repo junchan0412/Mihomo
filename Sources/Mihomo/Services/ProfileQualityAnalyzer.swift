@@ -63,7 +63,7 @@ struct ProfileQualityAnalyzer {
                 detail: error.localizedDescription,
                 source: .profile
             ))
-            return makeReport(
+            return ProfileQualityReportBuilder.make(
                 issues: issues,
                 runtimeItems: [],
                 sourceItems: [],
@@ -103,7 +103,7 @@ struct ProfileQualityAnalyzer {
                 title: "运行时配置生成失败",
                 detail: error.localizedDescription
             ))
-            return makeReport(
+            return ProfileQualityReportBuilder.make(
                 issues: issues,
                 runtimeItems: [],
                 sourceItems: [],
@@ -124,7 +124,7 @@ struct ProfileQualityAnalyzer {
             issues.append(contentsOf: validateRuntimeSchema(root: root, providers: providers, settings: settings))
         }
 
-        return makeReport(
+        return ProfileQualityReportBuilder.make(
             issues: issues,
             runtimeItems: runtimeItems(from: generatedConfig, transformedContent: transformedContent),
             sourceItems: runtimeSourceItems(
@@ -313,64 +313,4 @@ struct ProfileQualityAnalyzer {
         ]
     }
 
-    private func makeReport(
-        issues: [ProfileQualityIssue],
-        runtimeItems: [RuntimeInspectorItem],
-        sourceItems: [RuntimeConfigSourceItem],
-        diffLayers: [ConfigDiffLayer],
-        migrationLog: [String],
-        generatedConfig: String
-    ) -> ProfileQualityReport {
-        var seenIssues = Set<String>()
-        let uniqueIssues = issues.filter { issue in
-            let key = "\(issue.severity.rawValue)\u{1f}\(issue.source.rawValue)\u{1f}\(issue.title)\u{1f}\(issue.detail)"
-            return seenIssues.insert(key).inserted
-        }
-        .sorted { lhs, rhs in
-            severityRank(lhs.severity) > severityRank(rhs.severity)
-        }
-
-        let errorCount = uniqueIssues.filter { $0.severity == .error }.count
-        let warningCount = uniqueIssues.filter { $0.severity == .warning }.count
-        let rawScore = max(0, 100 - min(80, errorCount * 22) - min(36, warningCount * 6))
-        let score: Int
-        if errorCount > 0 {
-            score = min(59, rawScore)
-        } else {
-            score = rawScore
-        }
-
-        let headline: String
-        if errorCount > 0 {
-            headline = "需要修复后再启用"
-        } else if warningCount == 0 {
-            headline = "配置质量良好"
-        } else if score >= 80 {
-            headline = "有少量可优化项"
-        } else {
-            headline = "建议先检查配置"
-        }
-
-        return ProfileQualityReport(
-            score: score,
-            headline: headline,
-            issues: uniqueIssues,
-            runtimeItems: runtimeItems,
-            sourceItems: sourceItems,
-            diffLayers: diffLayers,
-            migrationLog: migrationLog,
-            generatedConfig: generatedConfig
-        )
-    }
-
-    private func severityRank(_ severity: ProfileQualitySeverity) -> Int {
-        switch severity {
-        case .error:
-            return 3
-        case .warning:
-            return 2
-        case .info:
-            return 1
-        }
-    }
 }

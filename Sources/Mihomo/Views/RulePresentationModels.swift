@@ -16,6 +16,57 @@ enum RuleEditorPresentation: Identifiable {
         if case .edit = self { return true }
         return false
     }
+
+    var originalIndex: Int? {
+        if case let .edit(index) = self { return index }
+        return nil
+    }
+}
+
+struct RuleEditorDraft: Equatable {
+    var type: String
+    var value: String
+    var policy: String
+    var optionsText: String
+
+    init(
+        type: String = "MATCH",
+        value: String = "",
+        policy: String = "DIRECT",
+        optionsText: String = ""
+    ) {
+        self.type = type
+        self.value = value
+        self.policy = policy
+        self.optionsText = optionsText
+    }
+
+    init(entry: RuleTableEntry) {
+        self.init(
+            type: entry.type,
+            value: entry.value,
+            policy: entry.policy,
+            optionsText: entry.optionsText
+        )
+    }
+
+    func makeRule(index: Int) -> EditableProfileRule? {
+        let normalizedPolicy = policy.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedPolicy.isEmpty == false else { return nil }
+        return EditableProfileRule(
+            index: index,
+            type: type,
+            payload: type == "MATCH" ? "" : value.trimmingCharacters(in: .whitespacesAndNewlines),
+            target: normalizedPolicy,
+            options: parsedOptions
+        )
+    }
+
+    private var parsedOptions: [String] {
+        optionsText.components(separatedBy: CharacterSet(charactersIn: ",\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { $0.isEmpty == false }
+    }
 }
 
 struct RuleTableEntry: Identifiable, Hashable {
@@ -57,6 +108,58 @@ struct RuleTableEntry: Identifiable, Hashable {
             policy = "DIRECT"
             options = []
         }
+    }
+}
+
+struct RuleTablePresentation {
+    var entries: [RuleTableEntry]
+    var filteredEntries: [RuleTableEntry]
+    var categoryCounts: [(RuleTypeCategory, Int)]
+    var hitTotal: Int
+
+    static func make(
+        rules: [RuleItem],
+        selectedCategory: RuleTypeCategory?,
+        searchText: String
+    ) -> RuleTablePresentation {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        var entries: [RuleTableEntry] = []
+        var filteredEntries: [RuleTableEntry] = []
+        var counts: [RuleTypeCategory: Int] = [:]
+        var hitTotal = 0
+        entries.reserveCapacity(rules.count)
+        filteredEntries.reserveCapacity(rules.count)
+
+        for rule in rules {
+            let entry = RuleTableEntry(rule: rule)
+            entries.append(entry)
+            counts[entry.typeCategory, default: 0] += 1
+            hitTotal += rule.hitCount
+
+            guard selectedCategory == nil || entry.typeCategory == selectedCategory else { continue }
+            guard query.isEmpty || entry.searchText.localizedCaseInsensitiveContains(query) else { continue }
+            filteredEntries.append(entry)
+        }
+
+        let categoryCounts: [(RuleTypeCategory, Int)] = RuleTypeCategory.allCases.compactMap { category in
+            guard let count = counts[category], count > 0 else { return nil }
+            return (category, count)
+        }
+        return RuleTablePresentation(
+            entries: entries,
+            filteredEntries: filteredEntries,
+            categoryCounts: categoryCounts,
+            hitTotal: hitTotal
+        )
+    }
+
+    func selectedEntries(for identifiers: Set<String>) -> [RuleTableEntry] {
+        entries.filter { identifiers.contains($0.id) }
+    }
+
+    func selectedEntry(for identifiers: Set<String>) -> RuleTableEntry? {
+        guard identifiers.count == 1, let identifier = identifiers.first else { return nil }
+        return entries.first { $0.id == identifier }
     }
 }
 

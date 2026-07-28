@@ -58,11 +58,7 @@ struct NetworkSecurityView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Label(overallHealthTitle, systemImage: overallHealthIcon)
-                    .foregroundStyle(overallHealthColor)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(overallHealthColor.opacity(0.12), in: Capsule())
+                NetworkHealthBadge(health: store.networkSecurityOverallHealth)
             }
 
             HStack {
@@ -204,14 +200,14 @@ struct NetworkSecurityView: View {
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: snapshot.kind.systemImage)
-                                .foregroundStyle(healthColor(snapshot.health))
+                                .foregroundStyle(NetworkHealthPresentation.color(for: snapshot.health))
                                 .frame(width: 22)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(snapshot.kind.title).foregroundStyle(.primary)
                                 Text(snapshot.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             }
                             Spacer()
-                            Text(snapshot.status).foregroundStyle(healthColor(snapshot.health))
+                            Text(snapshot.status).foregroundStyle(NetworkHealthPresentation.color(for: snapshot.health))
                             Image(systemName: "chevron.right").foregroundStyle(.tertiary)
                         }
                         .padding(.horizontal, 16)
@@ -224,7 +220,7 @@ struct NetworkSecurityView: View {
 
             if let selected = snapshots.first(where: { $0.kind == selectedSnapshotKind }) ?? snapshots.first {
                 SettingsSection(title: selected.kind.title, subtitle: selected.detail, systemImage: selected.kind.systemImage) {
-                    SettingsRow("状态") { Text(selected.status).foregroundStyle(healthColor(selected.health)) }
+                    SettingsRow("状态") { Text(selected.status).foregroundStyle(NetworkHealthPresentation.color(for: selected.health)) }
                     SettingsRow("创建时间") { Text(selected.createdAt.map { Formatters.shortDate.string(from: $0) } ?? "-").foregroundStyle(.secondary) }
                     SettingsRow("文件") { Text(selected.path).foregroundStyle(.secondary).textSelection(.enabled) }
                 }
@@ -262,7 +258,7 @@ struct NetworkSecurityView: View {
         return HStack(alignment: .center, spacing: 14) {
             Image(systemName: icon)
                 .font(.title3)
-                .foregroundStyle(healthColor(item.health))
+                .foregroundStyle(NetworkHealthPresentation.color(for: item.health))
                 .frame(width: 28)
             VStack(alignment: .leading, spacing: 3) {
                 Text(title).font(.headline)
@@ -272,7 +268,7 @@ struct NetworkSecurityView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Text(item.actualState)
                     .font(.caption)
-                    .foregroundStyle(healthColor(item.health))
+                    .foregroundStyle(NetworkHealthPresentation.color(for: item.health))
                     .lineLimit(1)
             }
             Spacer(minLength: 20)
@@ -326,32 +322,4 @@ struct NetworkSecurityView: View {
         )
     }
 
-    private var overallHealthTitle: String {
-        switch store.networkSecurityOverallHealth {
-        case .ok: return "接管正常"
-        case .warning: return "需要关注"
-        case .failed: return "存在故障"
-        case .inactive: return "未接管"
-        }
-    }
-
-    private var overallHealthIcon: String {
-        switch store.networkSecurityOverallHealth {
-        case .ok: return "checkmark.shield.fill"
-        case .warning: return "exclamationmark.triangle.fill"
-        case .failed: return "xmark.octagon.fill"
-        case .inactive: return "shield"
-        }
-    }
-
-    private var overallHealthColor: Color { healthColor(store.networkSecurityOverallHealth) }
-}
-
-private func healthColor(_ health: NetworkTakeoverHealth) -> Color {
-    switch health {
-    case .ok: return .green
-    case .warning: return .orange
-    case .failed: return .red
-    case .inactive: return .secondary
-    }
 }

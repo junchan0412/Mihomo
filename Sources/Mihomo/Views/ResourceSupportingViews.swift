@@ -3,6 +3,20 @@ import SwiftUI
 struct ExternalResourceRow: Identifiable, Hashable {
     var provider: ProviderItem
     var latestRecord: ProviderUpdateRecord?
+    private var fileExists: Bool
+
+    init(
+        provider: ProviderItem,
+        latestRecord: ProviderUpdateRecord?,
+        fileExists: Bool? = nil
+    ) {
+        self.provider = provider
+        self.latestRecord = latestRecord
+        self.fileExists = false
+        self.fileExists = fileExists ?? resolvedPath.map {
+            FileManager.default.fileExists(atPath: $0)
+        } ?? false
+    }
 
     var id: String { provider.id }
     var nameText: String { provider.name }
@@ -74,7 +88,10 @@ struct ExternalResourceRow: Identifiable, Hashable {
         guard let remote = provider.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines),
               remote.isEmpty == false
         else { return detail }
-        return detail.replacingOccurrences(of: remote, with: Self.redactedURL(remote))
+        return detail.replacingOccurrences(
+            of: remote,
+            with: URLDisplayText.redactingSensitiveComponents(remote)
+        )
     }
 
     private var hasRemoteURL: Bool {
@@ -99,11 +116,6 @@ struct ExternalResourceRow: Identifiable, Hashable {
         return AppPaths.runtimeDirectory.appendingPathComponent(configuredPath).path
     }
 
-    private var fileExists: Bool {
-        guard let resolvedPath else { return false }
-        return FileManager.default.fileExists(atPath: resolvedPath)
-    }
-
     private static func safeFileName(_ value: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_."))
         let sanitized = value.unicodeScalars
@@ -112,12 +124,84 @@ struct ExternalResourceRow: Identifiable, Hashable {
         let name = sanitized.trimmingCharacters(in: CharacterSet(charactersIn: "-."))
         return name.isEmpty ? "provider" : name
     }
+}
 
-    private static func redactedURL(_ value: String) -> String {
-        guard var components = URLComponents(string: value) else { return "远程 URL（已隐藏参数）" }
-        components.query = nil
-        components.fragment = nil
-        return components.string ?? "远程 URL（已隐藏参数）"
+struct ResourceTablePresentation {
+    var allRows: [ExternalResourceRow]
+    var visibleRows: [ExternalResourceRow]
+    var proxyCount: Int
+    var ruleCount: Int
+    var unreadyCount: Int
+    var refreshableCount: Int
+
+    static func make(
+        providers: [ProviderItem],
+        latestRecords: [String: ProviderUpdateRecord],
+        historyKey: (ProviderItem) -> String,
+        searchText: String,
+        showsOnlyUnready: Bool
+    ) -> ResourceTablePresentation {
+        let rows = providers.map { provider in
+            ExternalResourceRow(
+                provider: provider,
+                latestRecord: latestRecords[historyKey(provider)]
+            )
+        }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        var proxyCount = 0
+        var ruleCount = 0
+        var unreadyCount = 0
+        var refreshableCount = 0
+        var visibleRows: [ExternalResourceRow] = []
+        visibleRows.reserveCapacity(rows.count)
+
+        for row in rows {
+            let isReady = row.isReady
+            if row.provider.kind == "Proxy" { proxyCount += 1 }
+            if row.provider.kind == "Rule" { ruleCount += 1 }
+            if isReady == false { unreadyCount += 1 }
+            if row.canRefresh { refreshableCount += 1 }
+
+            guard showsOnlyUnready == false || isReady == false else { continue }
+            guard query.isEmpty
+                || row.nameText.localizedCaseInsensitiveContains(query)
+                || row.typeText.localizedCaseInsensitiveContains(query)
+                || row.pathText.localizedCaseInsensitiveContains(query)
+            else { continue }
+            visibleRows.append(row)
+        }
+
+        return ResourceTablePresentation(
+            allRows: rows,
+            visibleRows: visibleRows,
+            proxyCount: proxyCount,
+            ruleCount: ruleCount,
+            unreadyCount: unreadyCount,
+            refreshableCount: refreshableCount
+        )
+    }
+
+    func selectedRows(for identifiers: Set<String>) -> [ExternalResourceRow] {
+        allRows.filter { identifiers.contains($0.id) }
+    }
+
+    func selectedRow(for identifiers: Set<String>) -> ExternalResourceRow? {
+        guard identifiers.count == 1, let identifier = identifiers.first else { return nil }
+        return allRows.first { $0.id == identifier }
+    }
+}
+
+enum ResourceWorkspace: String, CaseIterable, Identifiable {
+    case nodeProviders
+    case configResources
+
+    var id: String { rawValue }
+    var title: String { self == .nodeProviders ? "节点提供商" : "配置资源" }
+    var systemImage: String { self == .nodeProviders ? "point.3.connected.trianglepath.dotted" : "shippingbox" }
+    var subtitle: String {
+        self == .nodeProviders
+            ? "独立保存节点订阅，并按 Profile 复选注入运行时配置。"
+            : "查看当前配置声明的 Proxy Provider、Rule Provider、本地规则集与 Geo 数据。"
     }
 }
 

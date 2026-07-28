@@ -2,7 +2,20 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.22.1`
+当前版本：`v1.23.0 (77)`
+
+## v1.23.0 更新重点
+
+- 连接、DNS、流量、日志、概览时间轴及主要管理列表统一空状态与筛选后的 selection reconciliation，避免显示已被筛掉的详情或创建空 AppKit 表格。
+- Profile、覆写与 Provider 的远程来源统一隐藏 URL 凭据、query、fragment 与高熵 path token，降低界面、截图和 accessibility tree 泄露风险。
+- Activity 连接刷新改由 revision 驱动；日志展示按批次缓存；流量窗口单次遍历聚合；概览时间轴使用二分定位与单次分桶。
+- 策略、资源、规则、Profile 与覆写页面从单个 presentation snapshot 派生列表、计数、选区和表格配置，减少同轮渲染中的重复扫描。
+- 覆写刷新和添加收进紧凑菜单，窄窗口下保留导出与删除入口；命令面板快捷键冲突已修正。
+- `AppStore`、AppKit table、Controller polling、Profile 刷新、配置质量、资源、规则与 Activity 等大型实现按职责拆分，并删除迁移后遗留代码。
+- 当前 221 个 Swift 文件全部不超过 350 行；维护性审计为 0 个 warning、0 个 over-max 文件，最大文件为 347 行。
+- 211 个 XCTest 覆盖新增的展示快照、空状态、选区、脱敏、性能派生状态与职责拆分回归。
+
+完整变更见 [v1.23.0 Release Notes](docs/releases/v1.23.0.md)。
 
 ## v1.22.1 更新重点
 
@@ -140,7 +153,7 @@ git diff --check
 ./script/build_and_run.sh --verify
 ```
 
-当前测试集包含 172 个 XCTest，覆盖 Activity/日志展示、两色流量语义、Profile↔App 设置同步、覆写 YAML/JavaScript 分析、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量来源、DIRECT/代理测速设置、节点提供商与 Profile 双向同步、Provider 更新与回滚、网络请求超时、核心实时状态恢复、Helper 超时、签名部署选择、传统安装路径与 ad-hoc 更新 CDHash 固定、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
+当前测试集包含 211 个 XCTest，覆盖 Activity/日志展示与缓存筛选、多窗口流量聚合、筛选结果 selection reconciliation、远程来源 URL 参数与 path token 脱敏、概览时间轴空状态、分桶与两色流量语义、资源、规则、策略、Profile 与覆写列表 presentation snapshot、规则编辑 draft 规范化、覆写筛选/选区/表高边界、资源搜索/未就绪/无数据空状态、Profile↔App 设置同步、AppStore 派生状态与相同值发布抑制、覆写 YAML/JavaScript 分析、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量来源、DIRECT/代理测速设置、节点提供商与 Profile 双向同步、Provider 更新与回滚、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、网络请求超时、核心实时状态恢复、Helper 超时、签名部署选择、传统安装路径与 ad-hoc 更新 CDHash 固定、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
 
 网络恢复与辅助功能人工检查：
 

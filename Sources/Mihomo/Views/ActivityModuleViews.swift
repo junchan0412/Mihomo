@@ -81,7 +81,7 @@ struct ActivityDNSView: View {
     var filter: ActivityDNSFilter
     var searchText: String
 
-    private var rows: [ActivityDNSRow] {
+    private func makeRows() -> [ActivityDNSRow] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let hostedConnections = connections.filter { !$0.host.isEmpty }
         let groupedConnections = Dictionary(grouping: hostedConnections, by: \.host)
@@ -113,28 +113,30 @@ struct ActivityDNSView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            AppKitTable(
-                rows: rows,
-                selection: .constant(nil),
-                columns: [
-                    .init(title: "类型", width: 82) { $0.kind.title },
-                    .init(title: "域名", width: 300) { $0.host },
-                    .init(title: "值", width: 460) { $0.addresses.isEmpty ? "-" : $0.addresses.joined(separator: ", ") },
-                    .init(title: "DNS 服务器", width: 180) { $0.server },
-                    .init(title: "注释", width: 160) { _ in "连接观测" }
-                ],
-                hasHorizontalScroller: true,
-                borderType: .noBorder
-            )
-            .overlay {
-                if rows.isEmpty {
-                    ContentUnavailableView(
-                        "暂无 DNS 记录",
-                        systemImage: "network",
-                        description: Text(dnsEmptyDescription)
-                    )
-                }
+        let rows = makeRows()
+
+        return VStack(spacing: 0) {
+            if rows.isEmpty {
+                ContentUnavailableView(
+                    "暂无 DNS 记录",
+                    systemImage: "network",
+                    description: Text(dnsEmptyDescription)
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                AppKitTable(
+                    rows: rows,
+                    selection: .constant(nil),
+                    columns: [
+                        .init(title: "类型", width: 82) { $0.kind.title },
+                        .init(title: "域名", width: 300) { $0.host },
+                        .init(title: "值", width: 460) { $0.addresses.isEmpty ? "-" : $0.addresses.joined(separator: ", ") },
+                        .init(title: "DNS 服务器", width: 180) { $0.server },
+                        .init(title: "注释", width: 160) { _ in "连接观测" }
+                    ],
+                    hasHorizontalScroller: true,
+                    borderType: .noBorder
+                )
             }
 
             HStack(spacing: 8) {
@@ -170,62 +172,34 @@ struct ActivityDNSView: View {
 }
 
 struct ActivityTrafficStatisticsView: View {
-    @EnvironmentObject private var activityStore: RuntimeActivityStore
     var grouping: ActivityTrafficGrouping
-    var searchText: String
-
-    private var rows: [ActivityTrafficRow] {
-        let now = Date()
-        let calendar = Calendar.current
-        let windows = ActivityTrafficWindow.allCases.map { window in
-            let start = window == .today
-                ? calendar.startOfDay(for: now)
-                : now.addingTimeInterval(-window.interval)
-            return (window, totalsByName(since: start))
-        }
-        let names = Set(windows.flatMap { $0.1.keys })
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        return names
-            .filter { query.isEmpty || $0.localizedCaseInsensitiveContains(query) }
-            .map { name in
-                ActivityTrafficRow(
-                    name: name,
-                    values: Dictionary(uniqueKeysWithValues: windows.map { window, totals in
-                        (window, totals[name] ?? ActivityTrafficValue())
-                    })
-                )
-            }
-            .sorted {
-                $0.value(for: .today).total > $1.value(for: .today).total
-            }
-    }
+    var rows: [ActivityTrafficRow]
 
     var body: some View {
         VStack(spacing: 0) {
-            AppKitTable(
-                rows: rows,
-                selection: .constant(nil),
-                columns: [
-                    .init(title: "名称", width: 108) { $0.name },
-                    .init(title: "今天", width: 176) { $0.text(for: .today) },
-                    .init(title: "5 分钟", width: 176) { $0.text(for: .fiveMinutes) },
-                    .init(title: "15 分钟", width: 176) { $0.text(for: .fifteenMinutes) },
-                    .init(title: "60 分钟", width: 176) { $0.text(for: .sixtyMinutes) },
-                    .init(title: "6 小时", width: 176) { $0.text(for: .sixHours) },
-                    .init(title: "12 小时", width: 176) { $0.text(for: .twelveHours) }
-                ],
-                hasHorizontalScroller: true,
-                borderType: .noBorder
-            )
-            .overlay {
-                if rows.isEmpty {
-                    ContentUnavailableView(
-                        "暂无流量统计",
-                        systemImage: "chart.bar",
-                        description: Text("流量会按\(grouping.title)聚合，并随连接数据自动刷新。")
-                    )
-                }
+            if rows.isEmpty {
+                ContentUnavailableView(
+                    "暂无流量统计",
+                    systemImage: "chart.bar",
+                    description: Text("流量会按\(grouping.title)聚合，并随连接数据自动刷新。")
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                AppKitTable(
+                    rows: rows,
+                    selection: .constant(nil),
+                    columns: [
+                        .init(title: "名称", width: 108) { $0.name },
+                        .init(title: "今天", width: 176) { $0.text(for: .today) },
+                        .init(title: "5 分钟", width: 176) { $0.text(for: .fiveMinutes) },
+                        .init(title: "15 分钟", width: 176) { $0.text(for: .fifteenMinutes) },
+                        .init(title: "60 分钟", width: 176) { $0.text(for: .sixtyMinutes) },
+                        .init(title: "6 小时", width: 176) { $0.text(for: .sixHours) },
+                        .init(title: "12 小时", width: 176) { $0.text(for: .twelveHours) }
+                    ],
+                    hasHorizontalScroller: true,
+                    borderType: .noBorder
+                )
             }
 
             HStack(spacing: 8) {
@@ -245,13 +219,6 @@ struct ActivityTrafficStatisticsView: View {
         }
     }
 
-    private func totalsByName(since date: Date) -> [String: ActivityTrafficValue] {
-        Dictionary(uniqueKeysWithValues: activityStore
-            .trafficTotals(since: date, key: grouping.sampleKeyPath)
-            .map { total in
-                (total.policy, ActivityTrafficValue(upload: total.uploadBytes, download: total.downloadBytes))
-            })
-    }
 }
 
 private struct ActivityTypeSidebar<Item: Identifiable & Hashable>: View {
@@ -299,45 +266,4 @@ private struct ActivityDNSRow: Identifiable, Hashable {
     var addresses: [String]
     var server: String
     var id: String { host }
-}
-
-private enum ActivityTrafficWindow: CaseIterable, Hashable {
-    case today
-    case fiveMinutes
-    case fifteenMinutes
-    case sixtyMinutes
-    case sixHours
-    case twelveHours
-
-    var interval: TimeInterval {
-        switch self {
-        case .today: return 0
-        case .fiveMinutes: return 5 * 60
-        case .fifteenMinutes: return 15 * 60
-        case .sixtyMinutes: return 60 * 60
-        case .sixHours: return 6 * 60 * 60
-        case .twelveHours: return 12 * 60 * 60
-        }
-    }
-}
-
-private struct ActivityTrafficValue: Hashable {
-    var upload: Int64 = 0
-    var download: Int64 = 0
-    var total: Int64 { upload + download }
-}
-
-private struct ActivityTrafficRow: Identifiable, Hashable {
-    var name: String
-    var values: [ActivityTrafficWindow: ActivityTrafficValue]
-    var id: String { name }
-
-    func value(for window: ActivityTrafficWindow) -> ActivityTrafficValue {
-        values[window] ?? ActivityTrafficValue()
-    }
-
-    func text(for window: ActivityTrafficWindow) -> String {
-        let value = value(for: window)
-        return "↑ \(Formatters.bytes(value.upload))  ↓ \(Formatters.bytes(value.download))"
-    }
 }

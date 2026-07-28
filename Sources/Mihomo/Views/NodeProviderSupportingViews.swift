@@ -1,5 +1,11 @@
 import SwiftUI
 
+enum NodeProviderPresentation {
+    static func displayURL(for provider: NodeProvider) -> String {
+        URLDisplayText.redactingSensitiveComponents(provider.url)
+    }
+}
+
 struct NodeProviderEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     private let original: NodeProvider?
@@ -137,7 +143,7 @@ struct NodeProviderRow: View {
                         .padding(.vertical, 2)
                         .background(.quaternary, in: Capsule())
                 }
-                Text(provider.url)
+                Text(NodeProviderPresentation.displayURL(for: provider))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

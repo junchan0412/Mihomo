@@ -177,7 +177,11 @@ private struct PolicyStartupFact: View {
 
 struct PolicySearchEmptyState: View {
     var query: String
-    var resetSearch: () -> Void
+    var resetFilters: () -> Void
+
+    private var hasQuery: Bool {
+        query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
 
     var body: some View {
         VStack(spacing: 14) {
@@ -188,18 +192,18 @@ struct PolicySearchEmptyState: View {
                 .foregroundStyle(.secondary)
 
             VStack(spacing: 5) {
-                Text("没有匹配的策略")
+                Text(hasQuery ? "没有匹配的策略" : "当前筛选没有结果")
                     .font(MihomoUI.Fonts.pageTitle)
-                Text("未找到包含“\(query)”的策略组或节点。")
+                Text(hasQuery ? "未找到包含“\(query)”的策略组或节点。" : "没有策略组或节点符合当前延迟与可用性条件。")
                     .font(MihomoUI.Fonts.body)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
 
             Button {
-                resetSearch()
+                resetFilters()
             } label: {
-                Label("清除搜索", systemImage: "xmark.circle")
+                Label(hasQuery ? "清除搜索与筛选" : "重置筛选", systemImage: "arrow.counterclockwise")
             }
 
             Spacer(minLength: 0)

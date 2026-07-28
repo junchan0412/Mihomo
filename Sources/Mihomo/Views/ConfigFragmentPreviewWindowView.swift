@@ -71,7 +71,7 @@ struct ConfigFragmentPreviewWindowView: View {
                         .padding(.vertical, 3)
                         .background(.quaternary, in: Capsule())
                 }
-                Text(fragment.location.isEmpty ? (fragment.source == .remote ? "远程来源" : "手动创建") : fragment.location)
+                Text(sourceText(for: fragment))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -84,6 +84,13 @@ struct ConfigFragmentPreviewWindowView: View {
             PreviewFact(title: "大小", value: Formatters.bytes(Int64(report.byteCount)))
         }
         .padding(16)
+    }
+
+    private func sourceText(for fragment: ConfigFragment) -> String {
+        if fragment.location.isEmpty { return fragment.isRemote ? "远程来源" : "手动创建" }
+        return fragment.isRemote
+            ? URLDisplayText.redactingSensitiveComponents(fragment.location)
+            : fragment.location
     }
 
     private func issueSidebar(_ report: ConfigFragmentOverviewReport) -> some View {

@@ -4,10 +4,10 @@ import MihomoShared
 final class HelperService: NSObject, MihomoHelperXPCProtocol {
     private let networkTool = HelperSystemNetworkTool()
     private lazy var tunTool = HelperTunRecoveryTool(networkTool: networkTool)
-    private let coreRuntime: HelperCoreRuntime
-    private let coreLaunchDaemonTool = HelperCoreLaunchDaemonTool()
-    private let appBundleURL: URL?
-    private let userHomeDirectory: URL
+    let coreRuntime: HelperCoreRuntime
+    let coreLaunchDaemonTool = HelperCoreLaunchDaemonTool()
+    let appBundleURL: URL?
+    let userHomeDirectory: URL
 
     init(
         appBundleURL: URL? = nil,
@@ -17,18 +17,6 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
         self.appBundleURL = appBundleURL
         self.userHomeDirectory = userHomeDirectory
         self.coreRuntime = coreRuntime
-    }
-
-    func helperVersion(withReply reply: @escaping (NSDictionary) -> Void) {
-        let appInfo = appBundleInfo()
-        reply(HelperReply.ok("MihomoHelper 0.6.0", payload: [
-            "machService": MihomoHelperConstants.machServiceName,
-            "effectiveUID": Int(geteuid()),
-            "authorizedUserHome": userHomeDirectory.path,
-            "authorizedAppBundle": appBundleURL?.path ?? "",
-            "authorizedAppVersion": appInfo.version,
-            "authorizedAppBuild": appInfo.build
-        ]))
     }
 
     func validateConfig(
@@ -53,16 +41,6 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
         } catch {
             reply(HelperReply.error(error))
         }
-    }
-
-    private func appBundleInfo() -> (version: String, build: String) {
-        guard let appBundleURL else { return ("", "") }
-        let infoURL = appBundleURL.appendingPathComponent("Contents/Info.plist")
-        let info = NSDictionary(contentsOf: infoURL) as? [String: Any]
-        return (
-            info?["CFBundleShortVersionString"] as? String ?? "",
-            info?["CFBundleVersion"] as? String ?? ""
-        )
     }
 
     func prepareAndStartCore(
@@ -164,64 +142,6 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
             reply(HelperReply.transactionOK(details.isEmpty ? "核心已由 Helper 停止" : details.joined(separator: "\n"), steps: steps, rollbackSuggestion: "若停止后仍无法联网，请在诊断页执行恢复代理、恢复 DNS、恢复 TUN 路由。"))
         } catch {
             reply(HelperReply.error(error, steps: steps, rollbackSuggestion: "停止事务部分失败。请在诊断页按需执行恢复代理、恢复 DNS、恢复 TUN 路由。"))
-        }
-    }
-
-    func installCoreLaunchDaemon(
-        corePath: NSString,
-        configPath: NSString,
-        workDirectory: NSString,
-        logPath: NSString,
-        withReply reply: @escaping (NSDictionary) -> Void
-    ) {
-        do {
-            let paths = try validatedCorePaths(
-                mihomoPath: corePath as String,
-                configPath: configPath as String,
-                workDirectory: workDirectory as String,
-                logPath: logPath as String
-            )
-            _ = try coreRuntime.validate(
-                mihomoPath: paths.mihomoPath,
-                configPath: paths.configPath,
-                workDirectory: paths.workDirectory
-            )
-            let path = try coreLaunchDaemonTool.install(
-                corePath: paths.mihomoPath,
-                configPath: paths.configPath,
-                workDirectory: paths.workDirectory,
-                logPath: try requiredLogPath(paths)
-            )
-            reply(HelperReply.ok("Core LaunchDaemon 已安装并加载", payload: ["path": path]))
-        } catch {
-            reply(HelperReply.error(error))
-        }
-    }
-
-    func uninstallCoreLaunchDaemon(withReply reply: @escaping (NSDictionary) -> Void) {
-        do {
-            try coreLaunchDaemonTool.uninstall()
-            reply(HelperReply.ok("Core LaunchDaemon 已卸载"))
-        } catch {
-            reply(HelperReply.error(error))
-        }
-    }
-
-    func startCoreLaunchDaemon(withReply reply: @escaping (NSDictionary) -> Void) {
-        do {
-            try coreLaunchDaemonTool.start()
-            reply(HelperReply.ok("Core LaunchDaemon 已启动"))
-        } catch {
-            reply(HelperReply.error(error))
-        }
-    }
-
-    func stopCoreLaunchDaemon(withReply reply: @escaping (NSDictionary) -> Void) {
-        do {
-            try coreLaunchDaemonTool.stop()
-            reply(HelperReply.ok("Core LaunchDaemon 已停止"))
-        } catch {
-            reply(HelperReply.error(error))
         }
     }
 
@@ -342,15 +262,7 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
         }
     }
 
-    func verifyPrivileges(withReply reply: @escaping (NSDictionary) -> Void) {
-        if geteuid() == 0 {
-            reply(HelperReply.ok("Helper 正以 root 权限运行", payload: ["effectiveUID": 0]))
-        } else {
-            reply(HelperReply.error("Helper 未以 root 权限运行，当前 euid=\(geteuid())"))
-        }
-    }
-
-    private func validatedCorePaths(
+    func validatedCorePaths(
         mihomoPath: String,
         configPath: String,
         workDirectory: String,
@@ -378,7 +290,7 @@ final class HelperService: NSObject, MihomoHelperXPCProtocol {
         try HelperPathPolicy.validateTunSnapshotPath(path, userHomeDirectory: userHomeDirectory)
     }
 
-    private func requiredLogPath(_ paths: HelperCorePathSet) throws -> String {
+    func requiredLogPath(_ paths: HelperCorePathSet) throws -> String {
         guard let logPath = paths.logPath else {
             throw HelperPathPolicyError("logPath 不能为空")
         }
