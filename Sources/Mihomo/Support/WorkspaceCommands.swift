@@ -239,13 +239,13 @@ struct MihomoCommands: Commands {
 
             Button("检查更新...") {
                 openWindow(id: "software-update")
-                Task { await store.checkForSoftwareUpdate() }
+                store.startSoftwareUpdateCheck()
             }
             .keyboardShortcut("u", modifiers: [.command, .option])
 
             if let update = store.availableUpdate {
                 Button("安装更新 \(update.version)") {
-                    Task { await store.installSoftwareUpdate() }
+                    store.performSoftwareUpdateAction()
                 }
             }
         }

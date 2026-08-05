@@ -152,25 +152,28 @@ struct SettingsSoftwareUpdatePane: View {
                 HStack {
                     Button {
                         openSoftwareUpdate()
-                        Task { await store.checkForSoftwareUpdate() }
+                        store.startSoftwareUpdateCheck()
                     } label: {
                         Label("检查更新", systemImage: "arrow.clockwise")
                     }
                     Button {
                         openSoftwareUpdate()
-                        Task { await store.installSoftwareUpdate() }
+                        store.performSoftwareUpdateAction()
                     } label: {
                         Label(installTitle, systemImage: "square.and.arrow.down")
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(store.availableUpdate == nil)
+                    .disabled(store.availableUpdate == nil || store.softwareUpdatePhase.isInProgress)
                 }
             }
         }
     }
 
     private var installTitle: String {
-        store.availableUpdate.map { "安装 \($0.version)" } ?? "安装更新"
+        if store.softwareUpdatePhase == .readyToRestart {
+            return "重启安装"
+        }
+        return store.availableUpdate.map { "下载 \($0.version)" } ?? "下载更新"
     }
 }
 

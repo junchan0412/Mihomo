@@ -226,7 +226,7 @@ struct MenuBarView: View {
 
                 Button("检查更新...") {
                     openWindow(id: "software-update")
-                    Task { await store.checkForSoftwareUpdate() }
+                    store.startSoftwareUpdateCheck()
                 }
 
                 Button("退出 Mihomo") {

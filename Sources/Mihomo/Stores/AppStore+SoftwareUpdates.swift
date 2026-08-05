@@ -18,7 +18,22 @@ extension AppStore {
         softwareUpdateManager.currentBuild
     }
 
+    func startSoftwareUpdateCheck() {
+        guard softwareUpdatePhase.isInProgress == false, preparedSoftwareUpdate == nil else { return }
+        softwareUpdateTask = Task { [weak self] in
+            await self?.checkForSoftwareUpdate()
+            self?.softwareUpdateTask = nil
+        }
+    }
+
     func checkForSoftwareUpdate() async {
+        guard softwareUpdatePhase.isInProgress == false, preparedSoftwareUpdate == nil else { return }
+        softwareUpdatePhase = .checking
+        defer {
+            if softwareUpdatePhase == .checking {
+                softwareUpdatePhase = .idle
+            }
+        }
         do {
             softwareUpdateStatus = "正在检查 GitHub Releases..."
             let result = try await softwareUpdateManager.checkForUpdate()
@@ -34,13 +49,87 @@ extension AppStore {
             }
             appendLog("info", softwareUpdateStatus)
         } catch {
-            softwareUpdateStatus = "更新检查失败：\(error.localizedDescription)"
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+                softwareUpdatePhase = .cancelled
+                softwareUpdateStatus = "已取消检查更新"
+                appendLog("info", softwareUpdateStatus)
+            } else {
+                softwareUpdatePhase = .failed
+                softwareUpdateStatus = "更新检查失败：\(error.localizedDescription)"
+                appendLog("error", softwareUpdateStatus)
+            }
+        }
+    }
+
+    func startSoftwareUpdateDownload() {
+        guard softwareUpdatePhase.isInProgress == false, preparedSoftwareUpdate == nil else { return }
+        softwareUpdateTask = Task { [weak self] in
+            await self?.downloadSoftwareUpdate()
+        }
+    }
+
+    func performSoftwareUpdateAction() {
+        if softwareUpdatePhase == .readyToRestart {
+            Task { await restartForPreparedSoftwareUpdate() }
+        } else {
+            startSoftwareUpdateDownload()
+        }
+    }
+
+    func cancelSoftwareUpdate() {
+        guard softwareUpdatePhase.isCancellable else { return }
+        softwareUpdateTask?.cancel()
+    }
+
+    func discardPreparedSoftwareUpdate() {
+        guard let preparedSoftwareUpdate else { return }
+        softwareUpdateManager.discardPreparedUpdate(preparedSoftwareUpdate)
+        self.preparedSoftwareUpdate = nil
+        softwareUpdatePhase = .cancelled
+        softwareUpdateStatus = "已取消已下载的更新"
+    }
+
+    func restartForPreparedSoftwareUpdate() async {
+        var helperWasPrepared = false
+        do {
+            guard softwareUpdatePhase == .readyToRestart,
+                  let preparedSoftwareUpdate,
+                  let update = availableUpdate else { return }
+            softwareUpdatePhase = .preparingNetwork
+            if isCoreRunning
+                || systemProxyEnabled
+                || systemProxy.loadSnapshot() != nil
+                || systemProxy.loadDNSSnapshot() != nil
+                || tunRecovery.loadSnapshot() != nil {
+                softwareUpdateStatus = "正在安全停止核心并恢复网络"
+                try await prepareNetworkForSoftwareUpdate()
+            }
+            softwareUpdatePhase = .preparingHelper
+            softwareUpdateStatus = "正在切换 Helper 到更新模式"
+            helperWasPrepared = try await prepareHelperForSoftwareUpdate(targetVersion: update.version)
+            softwareUpdatePhase = .installing
+            let message = try softwareUpdateManager.launchPreparedUpdate(preparedSoftwareUpdate, version: update.version)
+            self.preparedSoftwareUpdate = nil
+            softwareUpdateStatus = "\(message) 正在重启..."
+            appendLog("info", message)
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            NSApp.terminate(nil)
+        } catch {
+            if helperWasPrepared {
+                await restoreHelperAfterFailedSoftwareUpdate()
+            }
+            if let preparedSoftwareUpdate {
+                softwareUpdateManager.discardPreparedUpdate(preparedSoftwareUpdate)
+                self.preparedSoftwareUpdate = nil
+            }
+            softwareUpdatePhase = .failed
+            softwareUpdateStatus = "更新安装失败：\(error.localizedDescription)"
             appendLog("error", softwareUpdateStatus)
         }
     }
 
-    func installSoftwareUpdate() async {
-        var helperWasPrepared = false
+    private func downloadSoftwareUpdate() async {
+        defer { softwareUpdateTask = nil }
         var preparedPackage: PreparedUpdatePackage?
         do {
             let manifest: AppUpdateManifest
@@ -50,13 +139,16 @@ extension AppStore {
                 if let availableUpdateManifestURL {
                     manifestURL = availableUpdateManifestURL
                 } else {
+                    softwareUpdatePhase = .checking
                     let result = try await softwareUpdateManager.checkForUpdate()
                     manifestURL = result.manifestURL
                 }
             } else {
+                softwareUpdatePhase = .checking
                 let result = try await softwareUpdateManager.checkForUpdate()
                 guard result.isNewer else {
                     softwareUpdateStatus = "已是最新：\(result.currentVersion) (\(result.currentBuild))"
+                    softwareUpdatePhase = .idle
                     return
                 }
                 manifest = result.manifest
@@ -65,34 +157,44 @@ extension AppStore {
                 availableUpdateManifestURL = manifestURL
             }
 
+            softwareUpdatePhase = .downloading(.init(bytesReceived: 0, totalBytes: nil, bytesPerSecond: 0))
             softwareUpdateStatus = "正在下载 \(manifest.version)"
-            let prepared = try await softwareUpdateManager.prepareUpdate(manifest, manifestURL: manifestURL)
+            let prepared = try await softwareUpdateManager.prepareUpdate(
+                manifest,
+                manifestURL: manifestURL,
+                onDownloadProgress: { [weak self] progress in
+                    Task { @MainActor [weak self] in
+                        guard case .downloading = self?.softwareUpdatePhase else { return }
+                        self?.softwareUpdatePhase = .downloading(progress)
+                    }
+                },
+                onVerificationStarted: { [weak self] in
+                    Task { @MainActor [weak self] in
+                        guard case .downloading = self?.softwareUpdatePhase else { return }
+                        self?.softwareUpdatePhase = .verifying
+                        self?.softwareUpdateStatus = "正在验证 \(manifest.version)"
+                    }
+                }
+            )
+            try Task.checkCancellation()
             preparedPackage = prepared
-            if isCoreRunning
-                || systemProxyEnabled
-                || systemProxy.loadSnapshot() != nil
-                || systemProxy.loadDNSSnapshot() != nil
-                || tunRecovery.loadSnapshot() != nil {
-                softwareUpdateStatus = "正在安全停止核心并恢复网络"
-                try await prepareNetworkForSoftwareUpdate()
-            }
-            softwareUpdateStatus = "正在切换 Helper 到更新模式"
-            helperWasPrepared = try await prepareHelperForSoftwareUpdate(targetVersion: manifest.version)
-            let message = try softwareUpdateManager.launchPreparedUpdate(prepared, version: manifest.version)
-            preparedPackage = nil
-            softwareUpdateStatus = "\(message) 正在重启..."
-            appendLog("info", message)
-            try? await Task.sleep(nanoseconds: 500_000_000)
-            NSApp.terminate(nil)
+            preparedSoftwareUpdate = prepared
+            softwareUpdatePhase = .readyToRestart
+            softwareUpdateStatus = "\(manifest.version) 已下载并验证，可重新启动以完成安装"
+            appendLog("info", softwareUpdateStatus)
         } catch {
             if let preparedPackage {
                 softwareUpdateManager.discardPreparedUpdate(preparedPackage)
             }
-            if helperWasPrepared {
-                await restoreHelperAfterFailedSoftwareUpdate()
+            if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+                softwareUpdatePhase = .cancelled
+                softwareUpdateStatus = "已取消下载更新"
+                appendLog("info", softwareUpdateStatus)
+            } else {
+                softwareUpdatePhase = .failed
+                softwareUpdateStatus = "更新下载失败：\(error.localizedDescription)"
+                appendLog("error", softwareUpdateStatus)
             }
-            softwareUpdateStatus = "更新安装失败：\(error.localizedDescription)"
-            appendLog("error", softwareUpdateStatus)
         }
     }
 
