@@ -67,6 +67,7 @@ struct ResourcesView: View {
                     selectedRows: selectedRows,
                     rollbackableRows: rollbackableRows,
                     selectedURLs: resourceURLs(for: selectedRows),
+                    isResourceUpdateInProgress: store.isResourceBatchOperationInProgress,
                     contextMenuActions: resourceContextMenuActions,
                     updateAll: { Task { await store.updateAllExternalResources() } },
                     refresh: refreshResources,
@@ -179,7 +180,7 @@ struct ResourcesView: View {
                         } label: {
                             Label("回滚", systemImage: "arrow.uturn.backward.circle")
                         }
-                        .disabled(rollbackRecord == nil)
+                        .disabled(rollbackRecord == nil || store.isResourceBatchOperationInProgress)
                         .help(rollbackRecord?.backupPath ?? "没有可用备份")
 
                         Button {
@@ -187,7 +188,7 @@ struct ResourcesView: View {
                         } label: {
                             Label(selectedRow.updateActionTitle, systemImage: selectedRow.canDownload ? "arrow.down.circle" : "arrow.clockwise")
                         }
-                        .disabled(selectedRow.canRefresh == false)
+                        .disabled(selectedRow.canRefresh == false || store.isResourceBatchOperationInProgress)
                     }
 
                     ProviderHistoryPane(records: Array(history.prefix(6)))
@@ -219,9 +220,7 @@ struct ResourcesView: View {
     private func refreshResources(_ rows: [ExternalResourceRow]) {
         let providers = rows.filter(\.canRefresh).map(\.provider)
         Task {
-            for provider in providers {
-                await store.refreshProviderResource(provider)
-            }
+            await store.refreshProviderResources(providers)
         }
     }
 
@@ -246,15 +245,13 @@ struct ResourcesView: View {
     private func rollbackSelectedResources(_ rows: [ExternalResourceRow]) {
         let providers = rows.map(\.provider)
         Task {
-            for provider in providers {
-                await store.rollbackProviderResource(provider)
-            }
+            await store.rollbackProviderResources(providers)
         }
     }
 
     private var resourceContextMenuActions: [AppKitTableContextAction<ExternalResourceRow>] {
         [
-            .init("更新") { rows in
+            .init("更新", isEnabled: { _ in store.isResourceBatchOperationInProgress == false }) { rows in
                 refreshResources(rows)
             },
             .init(

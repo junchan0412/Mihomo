@@ -25,7 +25,7 @@ struct RuleItem: Identifiable, Hashable {
     var hitCount: Int = 0
 }
 
-struct ProviderItem: Identifiable, Hashable {
+struct ProviderItem: Identifiable, Hashable, Sendable {
     var id: String { "\(kind)-\(name)" }
     var kind: String
     var name: String
@@ -38,6 +38,13 @@ struct ProviderItem: Identifiable, Hashable {
     var ruleCount: Int = 0
     var hitCount: Int = 0
     var memberNames: [String] = []
+}
+
+extension ProviderItem {
+    var canRefreshResource: Bool {
+        remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            || path?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+    }
 }
 
 struct ProviderUpdateRecord: Identifiable, Codable, Hashable {

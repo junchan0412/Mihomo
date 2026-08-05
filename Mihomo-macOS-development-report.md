@@ -1,14 +1,14 @@
 # Mihomo macOS 开发文档
 
-更新日期：2026-07-28
-对应版本：`v1.23.0 (77)`
+更新日期：2026-08-05
+对应版本：`v1.24.0 (78)`
 
 本文档描述当前架构、关键数据流、页面职责、开发约束和发布流程。历史版本流水账不再作为主体；需要追溯时使用 Git history 和各版本 Release Notes。
 
 ## 当前状态与目标
 
-- 当前状态：基于 `v1.23.0 (77)`，`swift test` 覆盖 211 个 XCTest；连接、DNS、流量统计、概览时间轴以及配置、覆写、规则、日志、资源的无数据/无匹配结果统一使用明确空状态，不初始化空 AppKit 表格；筛选变化通过可测试的 selection reconciliation 清理隐藏选区；Profile、覆写与 Provider 的远程来源统一隐藏 URL 凭据、参数、fragment 与高熵 path token；命令面板与系统代理使用互不冲突的快捷键；高频连接表刷新由 store revision 驱动，避免重复拼接行 fingerprint；日志 presentation 行只在日志批次、分类或搜索变化时重建；Activity 流量统计单次遍历 24 小时策略样本即可累加全部时间窗，概览时间轴通过二分定位可见窗口并单次聚合策略样本；配置资源、规则、策略、Profile 与覆写列表每轮渲染共用单个 presentation snapshot；规则、覆写与资源列表职责集中在独立 pane；`AppSettings`、Profile 刷新、Controller polling、AppKit 表格组件与配置质量页面均已按职责拆分；`AppStore.swift` 仅保留共享低频状态、service 和 task ownership，bootstrap、派生状态、运行时 store proxy 与策略图标预加载位于独立 extension。最新维护性审计覆盖 221 个 Swift 文件，warning 与 over-max 均为 0，当前最大文件为 `MenuBarView.swift`（347 行）。
-- 近期目标：保持高频界面只更新必要范围，并以 350 行 warning、500 行 over-max、211 个 XCTest 和逐页实机回归作为持续门禁；新增职责同步拆分、补齐测试与文档，根据真实使用反馈继续改善策略历史、路由解释和版本恢复的可发现性。
+- 当前状态：已发布基线为 `v1.24.0 (78)`；配置资源的“全部更新”“更新所选”和“回滚所选”共用 Store 层有界并发队列，受 `resourceUpdateMaxConcurrent` 的 1-12 上限约束，worker 结果按输入顺序归并，避免 113 项资源的所选操作退化为串行等待；不可更新资源不会进入队列，运行中会禁用重复批量动作。远程覆写的所选/全部刷新复用订阅刷新并发设置，下载结果稳定归并后只写入一次覆写存储，同样阻止重复请求。`swift test` 覆盖 214 个 XCTest。连接、DNS、流量统计、概览时间轴以及配置、覆写、规则、日志、资源的无数据/无匹配结果统一使用明确空状态，不初始化空 AppKit 表格；筛选变化通过可测试的 selection reconciliation 清理隐藏选区；高频连接表、日志、流量和列表 presentation 均使用窄状态或单一 snapshot，减少重复计算与无关刷新。最新维护性审计覆盖 225 个 Swift 文件，warning 与 over-max 均为 0，当前最大文件为 `MenuBarView.swift`（347 行）。
+- 近期目标：保持高频界面只更新必要范围，并以 350 行 warning、500 行 over-max、214 个 XCTest、可复现的并发上限测试和逐页实机回归作为持续门禁；继续审计批量任务取消、策略历史、路由解释和版本恢复的可发现性，根据真实使用反馈确定 `v1.24.0` 发布范围。
 
 ## 1. 产品原则
 
@@ -200,7 +200,7 @@ Activity 的 DNS 是连接工作区内的只读观测视图，数据来自最近
 
 ## 5. 资源更新模型
 
-Profile 自动刷新和外部资源批量更新使用独立并发设置。`profileRefreshMaxConcurrent` 只控制远程 Profile；`resourceUpdateMaxConcurrent` 控制 Provider 批量更新，范围固定为 1–12。资源页允许即时调整，持久化仍统一经过 `saveSettings`。
+远程订阅与外部资源批量更新使用独立并发设置。`profileRefreshMaxConcurrent` 共同控制远程 Profile 与远程覆写刷新；`resourceUpdateMaxConcurrent` 控制 Provider 批量更新，范围固定为 1–12。覆写刷新结果在同一轮下载完成后一次提交，资源页允许即时调整，持久化仍统一经过 `saveSettings`。
 
 Proxy Provider 本地缓存可能是 Mihomo YAML、完整配置、Base64 订阅或分享链接列表。缓存展示层只提取节点名称，不承担协议转换；更新历史至少保留 500 条，以覆盖大规模 Rule Provider 批量刷新后的状态展示。
 
@@ -212,7 +212,7 @@ Proxy Provider 本地缓存可能是 Mihomo YAML、完整配置、Base64 订阅�
 
 - 有 `remoteURL`：下载到受限 runtime path，校验后备份并替换。
 - 无 `remoteURL` 但有 path：执行本地重新载入/校验。
-- 全部更新：按并发限制处理所有 Provider，最后更新 Geo 数据。
+- 全部更新、更新所选与回滚所选：通过同一 Store 层有界并发队列处理 Provider，最多同时执行 `resourceUpdateMaxConcurrent`（1-12）项，结果和历史按输入顺序归并；全部更新最后更新 Geo 数据。
 
 本地校验包括：路径约束、文件存在、非空和 mapped read 可读性。Profile、覆写与 Provider 的远程来源只能展示移除 user/password、query、fragment 与高熵 path token 的 URL，避免在界面、截图或 accessibility tree 中泄露凭据；描述性仓库路径与常见配置文件名保留，实际下载仍使用原始 URL。
 

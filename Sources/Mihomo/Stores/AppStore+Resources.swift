@@ -149,97 +149,6 @@ extension AppStore {
         }
     }
 
-    func updateAllExternalResources() async {
-        refreshConfigArtifacts()
-        let providerItems = providers + nodeProviders.map(\.providerItem)
-        let maxConcurrent = max(1, min(settings.resourceUpdateMaxConcurrent, 12))
-        var succeeded = 0
-        var failed = 0
-        var completed = 0
-
-        resourceUpdateStatus = "正在更新 \(providerItems.count) 个本地与远程资源（并发 \(maxConcurrent)）及 Geo 数据..."
-        for batchStart in stride(from: 0, to: providerItems.count, by: maxConcurrent) {
-            let batchEnd = min(batchStart + maxConcurrent, providerItems.count)
-            let batch = Array(providerItems[batchStart..<batchEnd])
-
-            await withTaskGroup(of: ProviderResourceUpdateResult.self) { group in
-                for provider in batch {
-                    group.addTask {
-                        do {
-                            if provider.remoteURL?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
-                                let result = try await ProviderResourceManager().download(provider)
-                                return ProviderResourceUpdateResult(
-                                    provider: provider,
-                                    action: "批量下载",
-                                    targetPath: result.target.path,
-                                    backupPath: result.backup?.path,
-                                    errorMessage: nil
-                                )
-                            }
-                            let result = try ProviderResourceManager().refreshLocal(provider)
-                            return ProviderResourceUpdateResult(
-                                provider: provider,
-                                action: "本地刷新",
-                                targetPath: result.target.path,
-                                backupPath: nil,
-                                errorMessage: nil
-                            )
-                        } catch {
-                            return ProviderResourceUpdateResult(
-                                provider: provider,
-                                action: provider.remoteURL == nil ? "本地刷新" : "批量下载",
-                                targetPath: provider.path ?? "-",
-                                backupPath: nil,
-                                errorMessage: error.localizedDescription
-                            )
-                        }
-                    }
-                }
-
-                for await result in group {
-                    completed += 1
-                    if result.errorMessage == nil {
-                        succeeded += 1
-                        recordProviderUpdate(
-                            result.provider,
-                            action: result.action,
-                            succeeded: true,
-                            targetPath: result.targetPath,
-                            message: result.backupPath == nil ? "资源刷新成功" : "资源更新成功；已备份上一版：\(result.backupPath ?? "")",
-                            backupPath: result.backupPath
-                        )
-                    } else {
-                        failed += 1
-                        let message = result.errorMessage ?? "未知错误"
-                        appendLog("error", "\(result.provider.name) 更新失败：\(message)")
-                        recordProviderUpdate(
-                            result.provider,
-                            action: "批量下载",
-                            succeeded: false,
-                            targetPath: result.provider.path ?? "-",
-                            message: message
-                        )
-                    }
-                    resourceUpdateStatus = "Provider 更新 \(completed)/\(providerItems.count)，成功 \(succeeded)，失败 \(failed)..."
-                }
-            }
-        }
-
-        if providerItems.isEmpty {
-            resourceUpdateStatus = "当前配置没有 Provider，正在更新 Geo 数据..."
-        }
-
-        do {
-            let geoStatus = try await updateGeoDataInternal()
-            resourceUpdateStatus = "Provider 成功 \(succeeded)，失败 \(failed)；\(geoStatus)"
-        } catch {
-            resourceUpdateStatus = "Provider 成功 \(succeeded)，失败 \(failed)；Geo 更新失败：\(error.localizedDescription)"
-            appendLog("error", resourceUpdateStatus)
-        }
-        refreshConfigArtifacts()
-        appendLog(failed == 0 ? "info" : "warning", resourceUpdateStatus)
-    }
-
     func updateGeoDataInternal() async throws -> String {
         let status = try await geoUpdateManager.update(
             geoIPURL: settings.geoIPURL,
@@ -301,7 +210,7 @@ extension AppStore {
         backupPath: String? = nil,
         restoredFromPath: String? = nil
     ) {
-        providerUpdateHistory.insert(.init(
+        recordProviderUpdates([.init(
             providerName: provider.name,
             providerKind: provider.kind,
             action: action,
@@ -310,7 +219,12 @@ extension AppStore {
             message: message,
             backupPath: backupPath,
             restoredFromPath: restoredFromPath
-        ), at: 0)
+        )])
+    }
+
+    func recordProviderUpdates(_ records: [ProviderUpdateRecord]) {
+        guard records.isEmpty == false else { return }
+        providerUpdateHistory.insert(contentsOf: records.reversed(), at: 0)
         if providerUpdateHistory.count > 500 {
             providerUpdateHistory.removeLast(providerUpdateHistory.count - 500)
         }
@@ -329,12 +243,5 @@ extension AppStore {
             appendLog("warning", "Provider 更新历史保存失败：\(error.localizedDescription)")
         }
     }
-}
 
-private struct ProviderResourceUpdateResult {
-    var provider: ProviderItem
-    var action: String
-    var targetPath: String
-    var backupPath: String?
-    var errorMessage: String?
 }

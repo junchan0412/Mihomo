@@ -33,6 +33,7 @@ struct ResourceTablePane: View {
     var selectedRows: [ExternalResourceRow]
     var rollbackableRows: [ExternalResourceRow]
     var selectedURLs: [URL]
+    var isResourceUpdateInProgress: Bool
     var contextMenuActions: [AppKitTableContextAction<ExternalResourceRow>]
     var updateAll: () -> Void
     var refresh: ([ExternalResourceRow]) -> Void
@@ -55,10 +56,13 @@ struct ResourceTablePane: View {
                     columns: columns,
                     allowsMultipleSelection: true,
                     onDoubleClick: { row in
-                        guard row.canRefresh else { return }
+                        guard row.canRefresh, isResourceUpdateInProgress == false else { return }
                         refresh([row])
                     },
-                    onActivate: refresh,
+                    onActivate: { rows in
+                        guard isResourceUpdateInProgress == false else { return }
+                        refresh(rows)
+                    },
                     onPreview: preview,
                     hasHorizontalScroller: true,
                     contextMenuActions: contextMenuActions
@@ -99,14 +103,14 @@ struct ResourceTablePane: View {
                 Label("全部更新", systemImage: "arrow.down.circle")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(presentation.refreshableCount == 0)
+            .disabled(presentation.refreshableCount == 0 || isResourceUpdateInProgress)
 
             Button {
                 refresh(selectedRows)
             } label: {
                 Label("更新所选", systemImage: "arrow.clockwise")
             }
-            .disabled(selectedRows.contains(where: \.canRefresh) == false)
+            .disabled(selectedRows.contains(where: \.canRefresh) == false || isResourceUpdateInProgress)
 
             if selectedURLs.isEmpty == false {
                 ShareLink(items: selectedURLs) {
@@ -119,7 +123,7 @@ struct ResourceTablePane: View {
                 Image(systemName: "arrow.uturn.backward.circle")
             }
             .help("回滚所选资源")
-            .disabled(rollbackableRows.isEmpty)
+            .disabled(rollbackableRows.isEmpty || isResourceUpdateInProgress)
         }
         .font(.callout)
         .padding(.horizontal, 12)

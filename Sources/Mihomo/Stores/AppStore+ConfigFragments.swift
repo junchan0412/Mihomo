@@ -82,60 +82,6 @@ extension AppStore {
         }
     }
 
-    func refreshConfigFragment(_ fragment: ConfigFragment) async {
-        guard fragment.isRemote else { return }
-        do {
-            let updated = try await configFragmentStore.refreshRemoteFragment(fragment)
-            guard let index = configFragments.firstIndex(where: { $0.id == fragment.id }) else { return }
-            var next = configFragments
-            next[index] = updated
-            if commitConfigFragments(next, actionName: "刷新覆写", undoManager: nil) {
-                configFragmentRefreshStatus = "上次刷新：\(Formatters.shortDate.string(from: Date()))，成功 1/1"
-                configFragmentRefreshFailureCount = 0
-                appendLog("info", "已刷新覆写 \(fragment.name)")
-            }
-        } catch {
-            configFragmentRefreshFailureCount += 1
-            configFragmentRefreshStatus = "刷新失败：\(fragment.name)"
-            appendLog("error", "覆写刷新失败 \(fragment.name)：\(error.localizedDescription)")
-        }
-    }
-
-    func refreshAllRemoteConfigFragments() async {
-        let remoteFragments = configFragments.filter(\.isRemote)
-        guard remoteFragments.isEmpty == false else {
-            configFragmentRefreshStatus = "没有远程覆写"
-            configFragmentRefreshFailureCount = 0
-            return
-        }
-
-        var next = configFragments
-        var succeeded = 0
-        var failed = 0
-        configFragmentRefreshFailureCount = 0
-        configFragmentRefreshStatus = "正在刷新 0/\(remoteFragments.count)"
-
-        for (offset, fragment) in remoteFragments.enumerated() {
-            do {
-                let updated = try await configFragmentStore.refreshRemoteFragment(fragment)
-                if let index = next.firstIndex(where: { $0.id == fragment.id }) {
-                    next[index] = updated
-                }
-                succeeded += 1
-            } catch {
-                failed += 1
-                appendLog("error", "覆写刷新失败 \(fragment.name)：\(error.localizedDescription)")
-            }
-            configFragmentRefreshStatus = "正在刷新 \(offset + 1)/\(remoteFragments.count)，成功 \(succeeded)，失败 \(failed)"
-        }
-
-        if succeeded > 0 {
-            _ = commitConfigFragments(next, actionName: "刷新远程覆写", undoManager: nil)
-        }
-        configFragmentRefreshFailureCount = failed
-        configFragmentRefreshStatus = "上次刷新：\(Formatters.shortDate.string(from: Date()))，成功 \(succeeded)/\(remoteFragments.count)，失败 \(failed)"
-    }
-
     func setConfigFragments(_ fragments: [ConfigFragment], enabled: Bool, undoManager: UndoManager? = nil) {
         let identifiers = Set(fragments.map(\.id))
         guard identifiers.isEmpty == false else { return }

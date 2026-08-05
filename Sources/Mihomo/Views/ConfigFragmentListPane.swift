@@ -6,6 +6,7 @@ struct ConfigFragmentListActions {
     var edit: (ConfigFragment) -> Void
     var refresh: ([ConfigFragment]) -> Void
     var refreshAll: () -> Void
+    var isRefreshing: Bool
     var preview: ([ConfigFragment]) -> Void
     var move: (ConfigFragment, Int) -> Void
     var create: () -> Void
@@ -92,9 +93,10 @@ struct ConfigFragmentListPane: View {
                 Button("刷新所选", systemImage: "arrow.clockwise") {
                     actions.refresh(presentation.selectedFragments)
                 }
-                .disabled(presentation.selectedFragments.contains(where: \.isRemote) == false)
+                .disabled(presentation.selectedFragments.contains(where: \.isRemote) == false || actions.isRefreshing)
 
                 Button("刷新所有远程订阅", systemImage: "arrow.triangle.2.circlepath", action: actions.refreshAll)
+                    .disabled(actions.isRefreshing)
             } label: {
                 Label("刷新", systemImage: "arrow.clockwise")
             }

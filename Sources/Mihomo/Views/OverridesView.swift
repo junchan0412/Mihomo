@@ -153,11 +153,8 @@ struct OverridesView: View {
     }
 
     private func refreshFragments(_ fragments: [ConfigFragment]) {
-        let fragments = fragments.filter(\.isRemote)
         Task {
-            for fragment in fragments {
-                await store.refreshConfigFragment(fragment)
-            }
+            await store.refreshConfigFragments(fragments)
         }
     }
 
@@ -229,6 +226,7 @@ struct OverridesView: View {
             edit: openFragmentEditor,
             refresh: refreshFragments,
             refreshAll: { Task { await store.refreshAllRemoteConfigFragments() } },
+            isRefreshing: store.isConfigFragmentRefreshInProgress,
             preview: previewFragments,
             move: { fragment, offset in
                 store.moveConfigFragment(fragment, offset: offset, undoManager: undoManager)

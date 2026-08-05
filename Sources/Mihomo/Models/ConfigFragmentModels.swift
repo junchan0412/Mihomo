@@ -1,6 +1,6 @@
 import Foundation
 
-enum ConfigFragmentKind: String, Codable, CaseIterable, Hashable {
+enum ConfigFragmentKind: String, Codable, CaseIterable, Hashable, Sendable {
     case yaml
     case javascript
 
@@ -12,7 +12,7 @@ enum ConfigFragmentKind: String, Codable, CaseIterable, Hashable {
     }
 }
 
-enum ConfigFragmentSource: String, Codable, CaseIterable, Hashable {
+enum ConfigFragmentSource: String, Codable, CaseIterable, Hashable, Sendable {
     case local
     case remote
 
@@ -24,7 +24,7 @@ enum ConfigFragmentSource: String, Codable, CaseIterable, Hashable {
     }
 }
 
-struct ConfigFragment: Identifiable, Codable, Hashable {
+struct ConfigFragment: Identifiable, Codable, Hashable, Sendable {
     var id = UUID()
     var name: String
     var kind: ConfigFragmentKind

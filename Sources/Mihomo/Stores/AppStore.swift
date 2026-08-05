@@ -37,6 +37,7 @@ final class AppStore: ObservableObject {
     @Published var configRevisions: [ConfigRevision] = []
     @Published var configFragmentRefreshStatus = "没有远程覆写"
     @Published var configFragmentRefreshFailureCount = 0
+    @Published var isConfigFragmentRefreshInProgress = false
     @Published var configFragmentImportStatus = ""
     @Published var disabledRules: Set<String> = []
     @Published var rules: [RuleItem] = []
@@ -49,6 +50,7 @@ final class AppStore: ObservableObject {
     @Published var advancedStatus = "高级功能待命"
     @Published var managedCoreStatus = "未托管"
     @Published var resourceUpdateStatus = "资源未更新"
+    @Published var isResourceBatchOperationInProgress = false
     @Published var geoUpdateStatus = "未更新"
     @Published var backupStatus = "未备份"
     @Published var ageStatus = "Profile 加密未启用"

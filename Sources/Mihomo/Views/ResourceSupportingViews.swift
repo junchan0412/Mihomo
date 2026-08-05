@@ -71,7 +71,7 @@ struct ExternalResourceRow: Identifiable, Hashable {
     }
 
     var canDownload: Bool { hasRemoteURL }
-    var canRefresh: Bool { hasRemoteURL || configuredPath != nil }
+    var canRefresh: Bool { provider.canRefreshResource }
     var updateActionTitle: String { hasRemoteURL ? "下载更新" : "重新载入" }
 
     var detailText: String {
