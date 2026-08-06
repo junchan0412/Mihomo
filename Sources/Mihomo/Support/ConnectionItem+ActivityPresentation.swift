@@ -2,6 +2,24 @@ import AppKit
 import Foundation
 
 extension ConnectionItem {
+    var activitySearchText: String {
+        [
+            id,
+            host,
+            process,
+            processPath,
+            network,
+            metadataType,
+            rule,
+            chain,
+            sourceIP,
+            destinationIP,
+            remoteDestination
+        ]
+        .filter { !$0.isEmpty }
+        .joined(separator: " ")
+    }
+
     var processName: String {
         if process.isEmpty || process == "-" {
             return processPathDisplay == "-" ? "未知客户端" : URL(fileURLWithPath: processPathDisplay).lastPathComponent

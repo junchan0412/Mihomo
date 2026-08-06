@@ -17,6 +17,7 @@ struct NetworkHealthBadge: View {
         case .warning: return "需要关注"
         case .failed: return "存在故障"
         case .inactive: return "未接管"
+        case .unknown: return "状态未知"
         }
     }
 
@@ -26,6 +27,7 @@ struct NetworkHealthBadge: View {
         case .warning: return "exclamationmark.triangle.fill"
         case .failed: return "xmark.octagon.fill"
         case .inactive: return "shield"
+        case .unknown: return "questionmark.diamond"
         }
     }
 }
@@ -37,6 +39,7 @@ enum NetworkHealthPresentation {
         case .warning: return .orange
         case .failed: return .red
         case .inactive: return .secondary
+        case .unknown: return .gray
         }
     }
 }

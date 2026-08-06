@@ -57,6 +57,11 @@ extension AppStore {
             resourceUpdateStatus = "当前配置没有 Provider，正在更新 Geo 数据..."
         }
 
+        guard resourceBatchCancellationRequested == false else {
+            resourceUpdateStatus = summary.status(prefix: "资源更新")
+            appendLog("warning", resourceUpdateStatus)
+            return
+        }
         do {
             let geoStatus = try await updateGeoDataInternal()
             resourceUpdateStatus = "Provider 成功 \(summary.succeeded)，失败 \(summary.failed)；\(geoStatus)"
@@ -73,12 +78,26 @@ extension AppStore {
     }
 
     private func beginResourceBatchOperation() -> Bool {
+        guard profileRefreshQueueRunning == false else {
+            appendLog("warning", "订阅刷新队列正在运行，暂不启动资源批量操作")
+            return false
+        }
         guard isResourceBatchOperationInProgress == false else {
             appendLog("warning", "资源批量操作正在进行，已忽略重复请求")
             return false
         }
         isResourceBatchOperationInProgress = true
+        resourceBatchCancellationRequested = false
+        resourceBatchCancellationToken = WorkCancellationToken()
         return true
+    }
+
+    func cancelResourceBatchOperation() {
+        guard isResourceBatchOperationInProgress else { return }
+        resourceBatchCancellationRequested = true
+        resourceBatchCancellationToken?.cancel()
+        resourceUpdateStatus = "正在取消资源批量操作，等待已开始的请求结束…"
+        appendLog("warning", resourceUpdateStatus)
     }
 
     private func refreshProviderResources(
@@ -99,10 +118,26 @@ extension AppStore {
         let maxConcurrent = resourceUpdateConcurrency
         let geoSuffix = appendsGeoData ? "及 Geo 数据" : ""
         resourceUpdateStatus = "\(statusPrefix) \(refreshableProviders.count) 个资源（并发 \(maxConcurrent)）\(geoSuffix)..."
-        let results = await BoundedConcurrentWork.map(refreshableProviders, maxConcurrent: maxConcurrent) { provider in
-            await Self.refreshResult(for: provider, remoteAction: remoteAction)
+        let cancellationToken = resourceBatchCancellationToken
+        let results = await BoundedConcurrentWork.map(
+            refreshableProviders,
+            maxConcurrent: maxConcurrent,
+            shouldScheduleNext: { cancellationToken?.isCancelled != true }
+        ) { provider in
+            guard Task.isCancelled == false else {
+                return ProviderResourceUpdateResult(
+                    provider: provider,
+                    action: remoteAction,
+                    targetPath: provider.path ?? "-",
+                    errorMessage: "已取消"
+                )
+            }
+            return await Self.refreshResult(for: provider, remoteAction: remoteAction)
         }
-        let summary = recordResourceBatchResults(results)
+        let summary = recordResourceBatchResults(
+            results,
+            requestedCount: refreshableProviders.count
+        )
         if refreshesArtifactsAfterCompletion {
             refreshConfigArtifacts()
         }
@@ -110,17 +145,24 @@ extension AppStore {
     }
 
     private func recordResourceBatchResults(
-        _ results: [ProviderResourceUpdateResult]
+        _ results: [ProviderResourceUpdateResult],
+        requestedCount: Int? = nil
     ) -> ProviderResourceBatchSummary {
         var succeeded = 0
         var failed = 0
+        var cancelled = 0
         var records: [ProviderUpdateRecord] = []
         records.reserveCapacity(results.count)
 
         for result in results {
             if let errorMessage = result.errorMessage {
-                failed += 1
-                appendLog("error", "\(result.provider.name) \(result.action)失败：\(errorMessage)")
+                if errorMessage == "已取消" {
+                    cancelled += 1
+                    appendLog("warning", "\(result.provider.name) \(result.action)已取消")
+                } else {
+                    failed += 1
+                    appendLog("error", "\(result.provider.name) \(result.action)失败：\(errorMessage)")
+                }
                 records.append(.init(
                     providerName: result.provider.name,
                     providerKind: result.provider.kind,
@@ -141,7 +183,7 @@ extension AppStore {
                     action: result.action,
                     succeeded: true,
                     targetPath: result.targetPath,
-                    message: message,
+                    message: result.validationSummary.isEmpty ? message : "\(message)；\(result.validationSummary)",
                     backupPath: result.backupPath,
                     restoredFromPath: result.restoredFromPath
                 ))
@@ -149,7 +191,14 @@ extension AppStore {
         }
         recordProviderUpdates(records)
 
-        return ProviderResourceBatchSummary(total: results.count, succeeded: succeeded, failed: failed)
+        let total = requestedCount ?? results.count
+        cancelled += max(0, total - results.count)
+        return ProviderResourceBatchSummary(
+            total: total,
+            succeeded: succeeded,
+            failed: failed,
+            cancelled: cancelled
+        )
     }
 
     nonisolated private static func refreshResult(
@@ -165,7 +214,8 @@ extension AppStore {
                     provider: provider,
                     action: action,
                     targetPath: result.target.path,
-                    backupPath: result.backup?.path
+                    backupPath: result.backup?.path,
+                    validationSummary: result.validationSummary
                 )
             }
             let result = try ProviderResourceManager().refreshLocal(provider)
@@ -214,6 +264,7 @@ private struct ProviderResourceUpdateResult: Sendable {
     var backupPath: String? = nil
     var errorMessage: String? = nil
     var restoredFromPath: String? = nil
+    var validationSummary: String = ""
 }
 
 private struct ProviderResourceRollbackRequest: Sendable {
@@ -222,13 +273,14 @@ private struct ProviderResourceRollbackRequest: Sendable {
 }
 
 private struct ProviderResourceBatchSummary {
-    static let empty = Self(total: 0, succeeded: 0, failed: 0)
+    static let empty = Self(total: 0, succeeded: 0, failed: 0, cancelled: 0)
 
     var total: Int
     var succeeded: Int
     var failed: Int
+    var cancelled: Int
 
     func status(prefix: String) -> String {
-        "\(prefix)完成：\(total)/\(total)，成功 \(succeeded)，失败 \(failed)。"
+        "\(prefix)完成：\(total)/\(total)，成功 \(succeeded)，失败 \(failed)，取消 \(cancelled)。"
     }
 }

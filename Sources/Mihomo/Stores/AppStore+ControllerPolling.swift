@@ -80,6 +80,38 @@ extension AppStore {
         }
     }
 
+    func closeConnections(_ ids: [String]) async {
+        let uniqueIDs = Array(Set(ids))
+        guard uniqueIDs.isEmpty == false else { return }
+
+        let client = controllerClient()
+        let results = await BoundedConcurrentWork.map(uniqueIDs, maxConcurrent: 4) { id in
+            do {
+                try await client.closeConnection(id: id)
+                return (id, nil as String?)
+            } catch {
+                return (id, error.localizedDescription)
+            }
+        }
+
+        let succeededIDs = results.compactMap { id, errorMessage in
+            errorMessage == nil ? id : nil
+        }
+        let failures = results.compactMap { id, errorMessage in
+            errorMessage.map { "\(id)：\($0)" }
+        }
+        connections.removeAll { succeededIDs.contains($0.id) }
+
+        if failures.isEmpty {
+            appendLog("info", "已关闭 \(succeededIDs.count) 个连接")
+        } else {
+            appendLog(
+                "error",
+                "批量关闭连接完成：成功 \(succeededIDs.count)，失败 \(failures.count)；\(failures.joined(separator: "；"))"
+            )
+        }
+    }
+
     func startPolling() {
         guard pollingTask == nil else { return }
         pollingTask = Task { [weak self] in

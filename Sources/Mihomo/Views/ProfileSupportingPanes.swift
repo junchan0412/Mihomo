@@ -71,6 +71,15 @@ struct ProfileRefreshQueueStrip: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
+
+            if store.profileRefreshQueueRunning {
+                Button {
+                    store.cancelAllRemoteProfilesRefresh()
+                } label: {
+                    Label("取消刷新", systemImage: "xmark.circle")
+                }
+                .buttonStyle(.bordered)
+            }
         }
         .font(.callout)
         .padding(.horizontal, 12)

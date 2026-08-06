@@ -311,6 +311,7 @@ enum ProfileRefreshJobState: String, Hashable {
     case running
     case succeeded
     case failed
+    case cancelled
 
     var title: String {
         switch self {
@@ -318,6 +319,7 @@ enum ProfileRefreshJobState: String, Hashable {
         case .running: return "运行中"
         case .succeeded: return "成功"
         case .failed: return "失败"
+        case .cancelled: return "已取消"
         }
     }
 }

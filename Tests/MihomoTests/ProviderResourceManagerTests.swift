@@ -16,6 +16,44 @@ final class ProviderResourceManagerTests: XCTestCase {
 
         XCTAssertEqual(result.target.standardizedFileURL, file.standardizedFileURL)
         XCTAssertGreaterThan(result.size, 0)
+        XCTAssertTrue(result.validationSummary.contains("校验通过"))
+    }
+
+    func testRefreshLocalRejectsHTMLErrorPageAndEmptyMapping() throws {
+        let root = temporaryDirectory()
+        let runtime = root.appendingPathComponent("Runtime", isDirectory: true)
+        let directory = runtime.appendingPathComponent("rules", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("local.yaml")
+        let manager = ProviderResourceManager(runtimeDirectory: runtime, backupsDirectory: root.appendingPathComponent("Backups"))
+        let provider = ProviderItem(kind: "Rule", name: "Local", detail: "", providerType: "file", path: "rules/local.yaml")
+
+        try "<html><body>bad gateway</body></html>".write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try manager.refreshLocal(provider)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("HTML"))
+        }
+
+        try "{}".write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try manager.refreshLocal(provider)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("顶层映射为空"))
+        }
+    }
+
+    func testRefreshLocalAcceptsBase64EncodedProxyProvider() throws {
+        let root = temporaryDirectory()
+        let runtime = root.appendingPathComponent("Runtime", isDirectory: true)
+        let directory = runtime.appendingPathComponent("proxy_providers", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("remote.yaml")
+        let content = "proxies:\n  - name: demo\n    type: socks5\n    server: 127.0.0.1\n    port: 1080\n"
+        let encoded = Data(content.utf8).base64EncodedString()
+        try encoded.write(to: file, atomically: true, encoding: .utf8)
+        let manager = ProviderResourceManager(runtimeDirectory: runtime, backupsDirectory: root.appendingPathComponent("Backups"))
+        let provider = ProviderItem(kind: "Proxy", name: "Remote", detail: "", providerType: "file", path: "proxy_providers/remote.yaml")
+
+        let result = try manager.refreshLocal(provider)
+
+        XCTAssertTrue(result.validationSummary.contains("1 项"))
     }
 
     func testTargetURLRejectsParentTraversal() throws {

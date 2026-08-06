@@ -2,15 +2,19 @@ import Foundation
 
 extension AppStore {
     func toggleSystemProxy() async {
+        guard beginNetworkOperation(.systemProxy) else { return }
+        defer { endNetworkOperation(.systemProxy) }
         do {
             if systemProxyEnabled {
                 let result = try await helperClient.restoreSystemProxy()
                 systemProxyEnabled = false
                 lastSystemProxySnapshot = systemProxy.loadSnapshot()
                 recordNetworkOperation(.systemProxy, result: result)
+                networkOperationMessages[.systemProxy] = result.message
                 appendLog("info", result.message)
             } else {
                 guard isCoreRunning else {
+                    networkOperationMessages[.systemProxy] = "核心未运行，无法开启系统代理；请先启动核心。"
                     appendLog("warning", "核心未运行，无法开启系统代理；请先启动核心。")
                     return
                 }
@@ -18,15 +22,19 @@ extension AppStore {
                 systemProxyEnabled = true
                 lastSystemProxySnapshot = systemProxy.loadSnapshot()
                 recordNetworkOperation(.systemProxy, result: result)
+                networkOperationMessages[.systemProxy] = result.message
                 appendLog("info", result.message)
             }
         } catch {
+            networkOperationMessages[.systemProxy] = "系统代理操作失败：\(error.localizedDescription)"
             appendLog("error", "Helper 系统代理操作失败：\(error.localizedDescription)")
         }
         refreshNetworkTakeoverStates(force: true)
     }
 
-    func setTunEnabled(_ enabled: Bool) async {
+    func setTunEnabled(_ enabled: Bool, force: Bool = false) async {
+        guard beginNetworkOperation(.tun) else { return }
+        defer { endNetworkOperation(.tun) }
         guard settings.tunEnabled != enabled else { return }
         let shouldRestoreTunBeforeDisable = settings.tunEnabled && enabled == false && isCoreRunning && settings.restoreTunOnStop
         if shouldRestoreTunBeforeDisable {
@@ -34,11 +42,22 @@ extension AppStore {
                 let result = try await helperClient.restoreTunSnapshot()
                 tunRecoveryStatus = result.message
                 recordNetworkOperation(.tun, result: result)
+                networkOperationMessages[.tun] = result.message
                 appendLog("info", "关闭 TUN 前已恢复路由快照：\(result.message)")
             } catch {
-                appendLog("warning", "关闭 TUN 前恢复路由快照失败，将继续重启核心：\(error.localizedDescription)")
+                let message = "关闭 TUN 前恢复路由快照失败：\(error.localizedDescription)"
+                pendingTunDisableRecoveryError = force ? nil : message
+                networkOperationMessages[.tun] = force
+                    ? "\(message)；用户已确认强制继续"
+                    : "\(message)；已停止后续操作，请重试恢复或确认强制继续"
+                appendLog(force ? "warning" : "error", networkOperationMessages[.tun] ?? message)
+                if force == false {
+                    refreshNetworkTakeoverStates(force: true)
+                    return
+                }
             }
         }
+        pendingTunDisableRecoveryError = nil
         var updated = settings
         updated.tunEnabled = enabled
         await saveSettings(updated)
@@ -52,38 +71,50 @@ extension AppStore {
     }
 
     func repairSystemProxy() async {
+        guard beginNetworkOperation(.systemProxy) else { return }
+        defer { endNetworkOperation(.systemProxy) }
         do {
             let result = try await helperClient.restoreSystemProxy()
             systemProxyEnabled = false
             lastSystemProxySnapshot = systemProxy.loadSnapshot()
             recordNetworkOperation(.systemProxy, result: result)
+            networkOperationMessages[.systemProxy] = result.message
             appendLog("info", result.message)
         } catch {
+            networkOperationMessages[.systemProxy] = "系统代理修复失败：\(error.localizedDescription)"
             appendLog("error", "Helper 系统代理修复失败：\(error.localizedDescription)")
         }
         refreshNetworkTakeoverStates(force: true)
     }
 
     func restoreSystemDNS() async {
+        guard beginNetworkOperation(.systemDNS) else { return }
+        defer { endNetworkOperation(.systemDNS) }
         do {
             let result = try await helperClient.restoreSystemDNS()
             recordNetworkOperation(.systemDNS, result: result)
+            networkOperationMessages[.systemDNS] = result.message
             appendLog("info", result.message)
         } catch {
+            networkOperationMessages[.systemDNS] = "系统 DNS 恢复失败：\(error.localizedDescription)"
             appendLog("error", "Helper 系统 DNS 恢复失败：\(error.localizedDescription)")
         }
         refreshNetworkTakeoverStates(force: true)
     }
 
     func restoreTunRecovery() async {
+        guard beginNetworkOperation(.tun) else { return }
+        defer { endNetworkOperation(.tun) }
         do {
             let result = try await helperClient.restoreTunSnapshot()
             lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
             tunRecoveryStatus = result.message
             recordNetworkOperation(.tun, result: result)
+            networkOperationMessages[.tun] = result.message
             appendLog("info", result.message)
         } catch {
             tunRecoveryStatus = "TUN 回滚失败：\(error.localizedDescription)"
+            networkOperationMessages[.tun] = tunRecoveryStatus
             appendLog("error", tunRecoveryStatus)
         }
         refreshNetworkTakeoverStates(force: true)
@@ -119,189 +150,24 @@ extension AppStore {
         }
     }
 
-    func networkTakeoverState(for kind: NetworkTakeoverKind) -> NetworkTakeoverState {
-        networkTakeoverStates.first { $0.kind == kind } ?? NetworkTakeoverState(
-            kind: kind,
-            desiredState: "尚未检查",
-            actualState: "尚未检查",
-            lastOperation: "无记录",
-            recoveryAction: "运行诊断",
-            health: .inactive
-        )
+    func isNetworkOperationRunning(_ kind: NetworkTakeoverKind) -> Bool {
+        networkOperationInProgress.contains(kind)
     }
 
-    var networkSecuritySnapshotItems: [NetworkSecuritySnapshotItem] {
-        NetworkSecurityCenter.snapshotItems(
-            proxySnapshot: lastSystemProxySnapshot,
-            dnsSnapshot: lastSystemDNSSnapshot,
-            tunSnapshot: lastTunRecoverySnapshot,
-            paths: .init(
-                systemProxy: AppPaths.systemProxySnapshotFile.path,
-                systemDNS: AppPaths.systemDNSSnapshotFile.path,
-                tunRecovery: AppPaths.tunRecoverySnapshotFile.path
-            )
-        )
+    private func beginNetworkOperation(_ kind: NetworkTakeoverKind) -> Bool {
+        guard networkOperationInProgress.contains(kind) == false else {
+            networkOperationMessages[kind] = "操作正在进行，请等待当前操作完成。"
+            return false
+        }
+        networkOperationInProgress.insert(kind)
+        networkOperationMessages[kind] = "正在执行，请稍候…"
+        return true
     }
 
-    var networkSecurityOverallHealth: NetworkTakeoverHealth {
-        NetworkSecurityCenter.overallHealth(for: networkTakeoverStates)
-    }
-
-    func refreshNetworkTakeoverStates(force: Bool = false) {
-        let now = Date()
-        if force == false,
-           networkTakeoverStates.isEmpty == false,
-           now.timeIntervalSince(lastNetworkTakeoverRefreshAt) < 20 {
-            return
+    private func endNetworkOperation(_ kind: NetworkTakeoverKind) {
+        networkOperationInProgress.remove(kind)
+        if networkOperationMessages[kind] == "正在执行，请稍候…" {
+            networkOperationMessages[kind] = nil
         }
-        lastNetworkTakeoverRefreshAt = now
-
-        let current = try? systemProxy.captureSnapshot()
-        publishIfChanged(\.lastSystemProxySnapshot, systemProxy.loadSnapshot())
-        publishIfChanged(\.lastSystemDNSSnapshot, systemProxy.loadDNSSnapshot())
-        publishIfChanged(\.lastTunRecoverySnapshot, tunRecovery.loadSnapshot())
-
-        publishIfChanged(\.networkTakeoverStates, [
-            systemProxyTakeoverState(current: current),
-            systemDNSTakeoverState(current: current),
-            tunTakeoverState()
-        ])
-    }
-
-    func reconcileSystemProxyGuard() async {
-        guard settings.systemProxyGuardEnabled,
-              systemProxyEnabled,
-              isCoreRunning,
-              systemProxyGuardTask == nil,
-              Date().timeIntervalSince(lastSystemProxyGuardAttemptAt) >= 15
-        else { return }
-
-        guard let current = try? systemProxy.captureSnapshot(),
-              SystemProxyManager.matchReport(snapshot: current, mixedPort: settings.mixedPort, socksPort: settings.socksPort).isFullyMatched == false
-        else { return }
-
-        lastSystemProxyGuardAttemptAt = Date()
-        systemProxyGuardTask = Task { [weak self] in
-            guard let self else { return }
-            defer { systemProxyGuardTask = nil }
-            do {
-                let result = try await helperClient.setSystemProxy(host: "127.0.0.1", mixedPort: settings.mixedPort, socksPort: settings.socksPort)
-                recordNetworkOperation(.systemProxy, result: result)
-                appendLog("warning", "检测到系统代理被外部修改，已按守护策略恢复 Mihomo 代理。")
-                refreshNetworkTakeoverStates(force: true)
-            } catch {
-                appendLog("error", "系统代理守护恢复失败：\(error.localizedDescription)")
-            }
-        }
-    }
-
-    func recordNetworkOperation(_ kind: NetworkTakeoverKind, result: HelperOperationResult) {
-        let steps = result.payload["transactionSteps"]?.replacingOccurrences(of: "\n", with: " / ") ?? ""
-        let suggestion = result.payload["rollbackSuggestion"].map { "；建议：\($0)" } ?? ""
-        let detail = steps.isEmpty ? result.message : "\(result.message)（\(steps)）"
-        lastNetworkOperations[kind] = detail + suggestion
-    }
-
-    private func systemProxyTakeoverState(current: SystemProxySnapshot?) -> NetworkTakeoverState {
-        let services = current?.services ?? []
-        let report = current.map { SystemProxyManager.matchReport(snapshot: $0, mixedPort: settings.mixedPort, socksPort: settings.socksPort) }
-        let desired = systemProxyEnabled ? "期望开启：127.0.0.1:\(settings.mixedPort)" : "期望关闭"
-        let actual: String
-        if services.isEmpty {
-            actual = "未能读取网络服务"
-        } else if report?.matchedServices == 0 {
-            actual = "未检测到 Mihomo 系统代理"
-        } else {
-            actual = "\(report?.matchedServices ?? 0)/\(services.count) 个服务指向 Mihomo"
-        }
-        let health: NetworkTakeoverHealth
-        if systemProxyEnabled {
-            health = report?.isFullyMatched == true ? .ok : .warning
-        } else {
-            health = report?.matchedServices == 0 ? .inactive : .warning
-        }
-        return NetworkTakeoverState(
-            kind: .systemProxy,
-            desiredState: desired,
-            actualState: actual,
-            lastOperation: lastNetworkOperations[.systemProxy] ?? "无 Helper 操作记录",
-            recoveryAction: lastSystemProxySnapshot == nil ? "关闭残留代理" : "恢复代理快照",
-            health: services.isEmpty ? .failed : health
-        )
-    }
-
-    private func systemDNSTakeoverState(current: SystemProxySnapshot?) -> NetworkTakeoverState {
-        let services = current?.services ?? []
-        let desiredServers = settings.systemDNSServers
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let desired: String
-        if settings.autoSetSystemDNS {
-            desired = isCoreRunning ? "期望随核心启用：\(desiredServers.joined(separator: ", "))" : "期望下次核心启动时启用"
-        } else {
-            desired = "期望关闭 App 管理 DNS"
-        }
-        let matched = services.filter { service in
-            guard desiredServers.isEmpty == false else { return false }
-            return Set(desiredServers).isSubset(of: Set(service.dnsServers))
-        }
-        let dnsSnapshot = systemProxy.loadDNSSnapshot()
-        let actual: String
-        if services.isEmpty {
-            actual = "未能读取网络服务"
-        } else if settings.autoSetSystemDNS && isCoreRunning {
-            actual = matched.isEmpty ? "未检测到 App 临时 DNS" : "\(matched.count)/\(services.count) 个服务使用 App DNS"
-        } else if dnsSnapshot != nil {
-            actual = "存在待恢复 DNS 快照"
-        } else {
-            actual = "系统 DNS 由用户或系统管理"
-        }
-        let health: NetworkTakeoverHealth
-        if settings.autoSetSystemDNS && isCoreRunning {
-            health = matched.isEmpty ? .warning : .ok
-        } else {
-            health = dnsSnapshot == nil ? .inactive : .warning
-        }
-        return NetworkTakeoverState(
-            kind: .systemDNS,
-            desiredState: desired,
-            actualState: actual,
-            lastOperation: lastNetworkOperations[.systemDNS] ?? "无 Helper 操作记录",
-            recoveryAction: dnsSnapshot == nil ? "无 DNS 快照" : "恢复 DNS 快照",
-            health: services.isEmpty ? .failed : health
-        )
-    }
-
-    private func tunTakeoverState() -> NetworkTakeoverState {
-        let snapshot = lastTunRecoverySnapshot
-        let routeCount = tunRecovery.currentAddedTunRouteCount()
-        let desired: String
-        if settings.tunEnabled {
-            desired = isCoreRunning ? "期望运行中，并可回滚 DNS/路由" : "期望下次核心启动时启用"
-        } else {
-            desired = "期望关闭"
-        }
-        let actual: String
-        if let snapshot {
-            actual = "已有快照：IPv4 \(snapshot.ipv4Routes.count)，IPv6 \(snapshot.ipv6Routes.count)，新增 utun 路由 \(routeCount)"
-        } else if settings.tunEnabled && isCoreRunning {
-            actual = "核心运行中，但未发现 TUN 回滚快照"
-        } else {
-            actual = "未检测到 App TUN 快照"
-        }
-        let health: NetworkTakeoverHealth
-        if settings.tunEnabled && isCoreRunning {
-            health = snapshot == nil ? .warning : .ok
-        } else {
-            health = snapshot == nil ? .inactive : .warning
-        }
-        return NetworkTakeoverState(
-            kind: .tun,
-            desiredState: desired,
-            actualState: actual,
-            lastOperation: lastNetworkOperations[.tun] ?? "无 Helper 操作记录",
-            recoveryAction: snapshot == nil ? "无 TUN 快照" : "恢复 TUN 路由与 DNS",
-            health: health
-        )
     }
 }

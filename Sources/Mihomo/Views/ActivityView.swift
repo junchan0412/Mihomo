@@ -6,6 +6,8 @@ struct ActivityView: View {
     @EnvironmentObject private var activityStore: RuntimeActivityStore
     @State private var selectedRowIDs: Set<String> = []
     @State private var filterText = ""
+    @State private var appliedFilterText = ""
+    @State private var filterDebounceGeneration = 0
     @FocusState private var searchIsFocused: Bool
     @State private var grouping: ConnectionSidebarGrouping = .client
     @State private var selectedFilterID = ActivityConnectionFilter.allID
@@ -41,23 +43,10 @@ struct ActivityView: View {
     }
 
     private var filteredConnections: [ConnectionItem] {
-        let query = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query = appliedFilterText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard query.isEmpty == false else { return scopedConnections }
         return scopedConnections.filter { connection in
-            [
-                connection.id,
-                connection.host,
-                connection.process,
-                connection.processPath,
-                connection.network,
-                connection.metadataType,
-                connection.rule,
-                connection.chain,
-                connection.sourceIP,
-                connection.destinationIP,
-                connection.remoteDestination
-            ]
-            .contains { $0.localizedCaseInsensitiveContains(query) }
+            connection.activitySearchText.localizedCaseInsensitiveContains(query)
         }
     }
 
@@ -71,7 +60,7 @@ struct ActivityView: View {
             : activityStore.connectionsRevision
         let nextInput = ActivityConnectionTableRowsInput(
             sourceRevision: sourceRevision,
-            filterText: filterText,
+            filterText: appliedFilterText,
             selectedFilterID: selectedFilterID,
             moduleTab: moduleTab,
             grouping: grouping
@@ -150,10 +139,24 @@ struct ActivityView: View {
         .onAppear { rebuildTableRowsIfNeeded() }
         .onChange(of: activityStore.connectionsRevision) { rebuildTableRowsIfNeeded() }
         .onChange(of: activityStore.recentConnectionsRevision) { rebuildTableRowsIfNeeded() }
-        .onChange(of: filterText) { rebuildTableRowsIfNeeded() }
-        .onChange(of: selectedFilterID) { rebuildTableRowsIfNeeded() }
+        .onChange(of: filterText) { scheduleFilterApply() }
+        .onChange(of: appliedFilterText) {
+            rebuildTableRowsIfNeeded()
+            reconcileSelectionAfterFilterChange()
+        }
+        .onChange(of: selectedFilterID) {
+            selectedRowIDs.removeAll()
+            rebuildTableRowsIfNeeded()
+        }
         .onChange(of: moduleTab) { rebuildTableRowsIfNeeded() }
-        .onChange(of: grouping) { rebuildTableRowsIfNeeded() }
+        .onChange(of: grouping) {
+            selectedFilterID = ActivityConnectionFilter.allID
+            selectedRowIDs.removeAll()
+            rebuildTableRowsIfNeeded()
+        }
+        .onDisappear {
+            filterDebounceGeneration &+= 1
+        }
         .focusedSceneValue(\.workspaceCommands, commandContext)
         .confirmationDialog("清空最近请求？", isPresented: $confirmsClearingRecent, titleVisibility: .visible) {
             Button("清空记录", role: .destructive) {
@@ -187,21 +190,6 @@ struct ActivityView: View {
                 showsConnectionDetail = true
             }
         }
-        .onChange(of: grouping) {
-            selectedFilterID = ActivityConnectionFilter.allID
-            selectedRowIDs.removeAll()
-        }
-        .onChange(of: selectedFilterID) {
-            selectedRowIDs.removeAll()
-        }
-        .onChange(of: filterText) {
-            if selectedConnection == nil {
-                selectedRowIDs = TableSelection.reconciled(
-                    selectedRowIDs,
-                    visibleIDs: tableRows.map(\.id)
-                )
-            }
-        }
     }
 
     @ViewBuilder
@@ -224,6 +212,26 @@ struct ActivityView: View {
         moduleTab = tab
         selectedRowIDs.removeAll()
         filterText = ""
+        appliedFilterText = ""
+    }
+
+    private func scheduleFilterApply() {
+        filterDebounceGeneration &+= 1
+        let generation = filterDebounceGeneration
+        let nextFilterText = filterText
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled, generation == filterDebounceGeneration else { return }
+            appliedFilterText = nextFilterText
+        }
+    }
+
+    private func reconcileSelectionAfterFilterChange() {
+        guard selectedConnection == nil else { return }
+        selectedRowIDs = TableSelection.reconciled(
+            selectedRowIDs,
+            visibleIDs: tableRows.map(\.id)
+        )
     }
 
     @ViewBuilder
@@ -328,9 +336,7 @@ struct ActivityView: View {
         let ids = selectedActiveConnections.map(\.id)
         selectedRowIDs.subtract(ids)
         Task {
-            for id in ids {
-                await store.closeConnection(id)
-            }
+            await store.closeConnections(ids)
         }
     }
 }

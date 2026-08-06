@@ -177,18 +177,21 @@ struct NetworkRepairCenterView: View {
                 } label: {
                     Label("恢复代理", systemImage: "network.badge.shield.half.filled")
                 }
+                .disabled(store.isNetworkOperationRunning(.systemProxy))
 
                 Button {
                     Task { await store.restoreSystemDNS() }
                 } label: {
                     Label("恢复 DNS", systemImage: "globe.badge.chevron.backward")
                 }
+                .disabled(store.isNetworkOperationRunning(.systemDNS))
 
                 Button {
                     Task { await store.restoreTunRecovery() }
                 } label: {
                     Label("恢复 TUN 路由", systemImage: "arrow.triangle.2.circlepath")
                 }
+                .disabled(store.isNetworkOperationRunning(.tun))
 
                 Button(role: .destructive) {
                     confirmsSnapshotClear = true
@@ -241,6 +244,11 @@ struct NetworkRepairStateCard: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+            if let lastCheckedAt = state.lastCheckedAt {
+                Text("最近检查 \(Formatters.shortDate.string(from: lastCheckedAt))")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(10)
         .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
@@ -253,6 +261,7 @@ struct NetworkRepairStateCard: View {
         case .warning: return .orange
         case .failed: return .red
         case .inactive: return .secondary
+        case .unknown: return .gray
         }
     }
 }

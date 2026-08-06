@@ -205,6 +205,8 @@ extension AppStore {
             return .warning
         case .failed:
             return .failed
+        case .unknown:
+            return .warning
         }
     }
 

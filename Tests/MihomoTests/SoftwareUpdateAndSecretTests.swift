@@ -23,6 +23,19 @@ final class SoftwareUpdateAndSecretTests: XCTestCase {
         ))
     }
 
+    func testManifestCandidatesPreferHTTPSMirrorAndAlwaysKeepGitHubFallback() {
+        let candidates = SoftwareUpdateManager.manifestCandidates(
+            customURLString: "https://updates.example.com/mihomo-update.json"
+        )
+
+        XCTAssertEqual(candidates.first?.absoluteString, "https://updates.example.com/mihomo-update.json")
+        XCTAssertEqual(candidates.last, SoftwareUpdateManager.githubLatestManifestURL)
+        XCTAssertEqual(
+            SoftwareUpdateManager.manifestCandidates(customURLString: "http://insecure.example.com/manifest.json"),
+            [SoftwareUpdateManager.githubLatestManifestURL]
+        )
+    }
+
     func testUpdateManifestRequiresNumericBuildAndDeclaredSigningIdentity() throws {
         let manager = SoftwareUpdateManager(expectedBundleIdentifier: "dev.codex.Mihomo")
         let valid = AppUpdateManifest(

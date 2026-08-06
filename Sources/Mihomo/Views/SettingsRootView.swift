@@ -88,7 +88,7 @@ struct SettingsRootView: View {
                 }
                 SettingsToggleRow("打开后自动启动核心", isOn: $draft.autoStartCore)
                 SettingsToggleRow("异常退出后自动恢复", isOn: $draft.restartCoreOnCrash)
-                SettingsRow("恢复次数上限") {
+                SettingsRow("恢复次数上限", validationMessage: validationMessage(.maxCrashRestarts)) {
                     TextField("3", value: $draft.maxCrashRestarts, format: .number).frame(width: 140)
                 }
             }
@@ -99,13 +99,13 @@ struct SettingsRootView: View {
                 Text("仅在你主动启用此选项时请求系统通知权限；通知只用于后台刷新失败。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                SettingsRow("刷新间隔（小时）") {
+                SettingsRow("刷新间隔（小时）", validationMessage: validationMessage(.profileRefreshIntervalHours)) {
                     TextField("24", value: $draft.profileRefreshIntervalHours, format: .number).frame(width: 140)
                 }
-                SettingsRow("刷新并发数") {
+                SettingsRow("刷新并发数", validationMessage: validationMessage(.profileRefreshMaxConcurrent)) {
                     TextField("2", value: $draft.profileRefreshMaxConcurrent, format: .number).frame(width: 140)
                 }
-                SettingsRow("资源更新并发数") {
+                SettingsRow("资源更新并发数", validationMessage: validationMessage(.resourceUpdateMaxConcurrent)) {
                     Stepper(value: $draft.resourceUpdateMaxConcurrent, in: 1...12) {
                         Text("\(draft.resourceUpdateMaxConcurrent)").monospacedDigit().frame(width: 32)
                     }
@@ -121,17 +121,17 @@ struct SettingsRootView: View {
                 subtitle: "代理节点通过核心测试；DIRECT 使用系统直连请求，二者可以选择不同目标。",
                 systemImage: "speedometer"
             ) {
-                SettingsRow("代理节点测试 URL") {
+                SettingsRow("代理节点测试 URL", validationMessage: validationMessage(.delayTestURL)) {
                     TextField("https://cp.cloudflare.com/generate_204", text: $draft.delayTestURL)
                 }
-                SettingsRow("DIRECT 测试 URL") {
+                SettingsRow("DIRECT 测试 URL", validationMessage: validationMessage(.directDelayTestURL)) {
                     TextField("https://www.gstatic.com/generate_204", text: $draft.directDelayTestURL)
                 }
-                SettingsRow("超时（ms）") {
+                SettingsRow("超时（ms）", validationMessage: validationMessage(.delayTestTimeoutMS)) {
                     TextField("8000", value: $draft.delayTestTimeoutMS, format: .number)
                         .frame(width: 140)
                 }
-                SettingsRow("并发数") {
+                SettingsRow("并发数", validationMessage: validationMessage(.delayTestConcurrency)) {
                     TextField("6", value: $draft.delayTestConcurrency, format: .number)
                         .frame(width: 140)
                 }
@@ -148,10 +148,10 @@ struct SettingsRootView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 300)
                 }
-                SettingsRow("保留天数") {
+                SettingsRow("保留天数", validationMessage: validationMessage(.logRetentionDays)) {
                     TextField("7", value: $draft.logRetentionDays, format: .number).frame(width: 140)
                 }
-                SettingsRow("单文件大小（MB）") {
+                SettingsRow("单文件大小（MB）", validationMessage: validationMessage(.logMaxFileSizeMB)) {
                     TextField("8", value: $draft.logMaxFileSizeMB, format: .number).frame(width: 140)
                 }
             }
@@ -162,8 +162,15 @@ struct SettingsRootView: View {
 
     private var footer: some View {
         HStack {
-            Text(draft == store.settings ? "所有更改已应用" : "有尚未应用的更改")
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(draft == store.settings ? "所有更改已应用" : "有尚未应用的更改")
+                    .foregroundStyle(.secondary)
+                if let firstIssue = validationIssues.first {
+                    Text("请先修正：\(firstIssue.message)")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
             Spacer()
             Button("取消") { draft = store.settings }
                 .keyboardShortcut(.cancelAction)
@@ -171,7 +178,7 @@ struct SettingsRootView: View {
             Button(applyButtonTitle) { Task { await applySettings() } }
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
-                .disabled(draft == store.settings)
+                .disabled(draft == store.settings || validationIssues.isEmpty == false)
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 12)
@@ -213,6 +220,14 @@ struct SettingsRootView: View {
 
     private var applyButtonTitle: String {
         requiresControlChannelRestart && store.isCoreRunning ? "应用并重启核心" : "应用"
+    }
+
+    private var validationIssues: [AppSettingsValidation.Issue] {
+        AppSettingsValidation.validate(draft)
+    }
+
+    private func validationMessage(_ field: AppSettingsValidation.Field) -> String? {
+        AppSettingsValidation.issue(for: field, in: draft)
     }
 
     private var requiresControlChannelRestart: Bool {

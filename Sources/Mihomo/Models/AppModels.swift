@@ -113,6 +113,7 @@ enum NetworkTakeoverHealth: String, Hashable {
     case warning
     case inactive
     case failed
+    case unknown
 }
 
 struct NetworkTakeoverState: Identifiable, Hashable {
@@ -123,6 +124,7 @@ struct NetworkTakeoverState: Identifiable, Hashable {
     var lastOperation: String
     var recoveryAction: String
     var health: NetworkTakeoverHealth
+    var lastCheckedAt: Date? = nil
 }
 
 enum NetworkSecuritySnapshotKind: String, Hashable {

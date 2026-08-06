@@ -36,6 +36,22 @@ final class BoundedConcurrentWorkTests: XCTestCase {
         XCTAssertTrue(remote.canRefreshResource)
         XCTAssertTrue(local.canRefreshResource)
     }
+
+    func testCancellationStopsSchedulingAdditionalWork() async {
+        let token = WorkCancellationToken()
+        let results = await BoundedConcurrentWork.map(
+            Array(0..<6),
+            maxConcurrent: 1,
+            shouldScheduleNext: { token.isCancelled == false }
+        ) { value in
+            if value == 1 {
+                token.cancel()
+            }
+            return value
+        }
+
+        XCTAssertEqual(results, [0, 1])
+    }
 }
 
 private actor WorkTracker {
