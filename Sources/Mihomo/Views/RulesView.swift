@@ -46,7 +46,6 @@ struct RulesView: View {
                 refresh: store.refreshConfigArtifacts,
                 apply: { Task { await store.restartCore() } }
             )
-            Divider()
 
             RuleTablePane(
                 presentation: presentation,

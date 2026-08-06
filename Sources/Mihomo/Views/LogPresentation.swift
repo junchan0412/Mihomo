@@ -112,13 +112,18 @@ struct LogCategorySidebar: View {
     var body: some View {
         List(selection: $selection) {
             Section("类型") {
-            ForEach(LogCategory.allCases) { category in
+                ForEach(LogCategory.allCases) { category in
                     Label(category.title, systemImage: category.systemImage)
                         .tag(category)
+                        .listRowSeparator(.hidden, edges: .all)
                 }
             }
         }
-        .listStyle(.sidebar)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .listRowBackground(MihomoUI.sidebarBackground)
+        .listRowSeparator(.hidden, edges: .all)
+        .background(MihomoUI.sidebarBackground)
     }
 }
 

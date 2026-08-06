@@ -139,10 +139,15 @@ struct ResourceTablePresentation {
         latestRecords: [String: ProviderUpdateRecord],
         historyKey: (ProviderItem) -> String,
         searchText: String,
-        showsOnlyUnready: Bool
+        showsOnlyUnready: Bool,
+        kindFilter: String? = nil
     ) -> ResourceTablePresentation {
-        let rows = providers.map { provider in
-            ExternalResourceRow(
+        let rows = providers.compactMap { provider -> ExternalResourceRow? in
+            if let kindFilter,
+               provider.kind.caseInsensitiveCompare(kindFilter) != .orderedSame {
+                return nil
+            }
+            return ExternalResourceRow(
                 provider: provider,
                 latestRecord: latestRecords[historyKey(provider)]
             )
@@ -192,16 +197,41 @@ struct ResourceTablePresentation {
 }
 
 enum ResourceWorkspace: String, CaseIterable, Identifiable {
-    case nodeProviders
     case configResources
+    case nodeProviders
+    case rules
 
     var id: String { rawValue }
-    var title: String { self == .nodeProviders ? "节点提供商" : "配置资源" }
-    var systemImage: String { self == .nodeProviders ? "point.3.connected.trianglepath.dotted" : "shippingbox" }
+
+    var title: String {
+        switch self {
+        case .configResources: return "配置资源"
+        case .nodeProviders: return "节点提供商"
+        case .rules: return "规则"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .configResources: return "shippingbox"
+        case .nodeProviders: return "point.3.connected.trianglepath.dotted"
+        case .rules: return "list.bullet.clipboard"
+        }
+    }
+
+    var providerKind: String? {
+        self == .rules ? "Rule" : nil
+    }
+
     var subtitle: String {
-        self == .nodeProviders
-            ? "独立保存节点订阅，并按 Profile 复选注入运行时配置。"
-            : "查看当前配置声明的 Proxy Provider、Rule Provider、本地规则集与 Geo 数据。"
+        switch self {
+        case .configResources:
+            return "查看当前配置声明的 Proxy Provider、Rule Provider 与本地规则集。"
+        case .nodeProviders:
+            return "独立保存节点订阅，并按 Profile 复选注入运行时配置。"
+        case .rules:
+            return "集中查看当前配置引用的 Rule Provider 与本地规则集。"
+        }
     }
 }
 

@@ -51,7 +51,7 @@ struct AppKitLogView: NSViewRepresentable {
         textView.isSelectable = true
         textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         textView.textColor = .labelColor
-        textView.backgroundColor = .textBackgroundColor
+        textView.backgroundColor = .windowBackgroundColor
         textView.drawsBackground = true
         textView.textContainerInset = NSSize(width: 10, height: 8)
         textView.isVerticallyResizable = true

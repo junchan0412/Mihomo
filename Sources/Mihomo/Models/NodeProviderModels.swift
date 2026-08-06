@@ -156,12 +156,14 @@ struct NodeProviderDefinition: Hashable {
 enum NodeProviderProfileChangeKind: String, Hashable {
     case add
     case update
+    case remove
     case preserve
 
     var title: String {
         switch self {
         case .add: return "新增"
         case .update: return "更新"
+        case .remove: return "删除"
         case .preserve: return "保留"
         }
     }

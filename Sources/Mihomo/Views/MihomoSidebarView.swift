@@ -2,7 +2,6 @@ import SwiftUI
 
 struct MihomoSidebarView: View {
     @Environment(\.openWindow) private var openWindow
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: AppStore
     @EnvironmentObject private var activityStore: RuntimeActivityStore
     @Binding var selection: AppSection
@@ -40,11 +39,11 @@ struct MihomoSidebarView: View {
                 Text("应用")
             }
         }
-        .listStyle(.sidebar)
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .listRowBackground(MihomoUI.sidebarBackground)
+        .listRowSeparator(.hidden, edges: .all)
         .background(MihomoUI.sidebarBackground)
-        .animation(reduceMotion ? nil : MihomoUI.Motion.soft, value: selection)
         .safeAreaInset(edge: .top, spacing: 0) {
             brandHeader
         }
@@ -58,6 +57,7 @@ struct MihomoSidebarView: View {
         ForEach(sections) { section in
             Label(section.sidebarTitle, systemImage: section.systemImage)
                 .tag(section)
+                .listRowSeparator(.hidden, edges: .all)
                 .help(section.title)
                 .contextMenu {
                     Button(favoriteSections.contains(section) ? "从收藏移除" : "添加到收藏") {
@@ -135,8 +135,6 @@ struct MihomoSidebarView: View {
             }
             .help("在独立窗口中显示连接")
             .accessibilityIdentifier("sidebar.connections")
-
-            Divider()
 
             VStack(alignment: .leading, spacing: 5) {
                 sidebarStatus("系统代理", isOn: store.systemProxyEnabled, activeColor: .green)

@@ -120,8 +120,6 @@ struct ActivityView: View {
             moduleSidebar
                 .frame(width: 248)
 
-            Divider()
-
             VStack(spacing: 0) {
                 ActivityWorkspaceHeader(
                     selection: moduleTab,

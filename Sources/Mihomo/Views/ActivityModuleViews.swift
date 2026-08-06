@@ -152,10 +152,7 @@ struct ActivityDNSView: View {
             .controlSize(.small)
             .padding(.horizontal, 16)
             .padding(.vertical, 7)
-            .background(.bar)
-            .overlay(alignment: .top) {
-                Rectangle().fill(MihomoUI.cardStroke).frame(height: 1)
-            }
+            .background(MihomoUI.pageBackground)
         }
     }
 
@@ -212,10 +209,7 @@ struct ActivityTrafficStatisticsView: View {
             .foregroundStyle(.secondary)
             .padding(.horizontal, 16)
             .padding(.vertical, 9)
-            .background(.bar)
-            .overlay(alignment: .top) {
-                Rectangle().fill(MihomoUI.cardStroke).frame(height: 1)
-            }
+            .background(MihomoUI.pageBackground)
         }
     }
 
@@ -256,7 +250,7 @@ private struct ActivityTypeSidebar<Item: Identifiable & Hashable>: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.bar)
+        .background(MihomoUI.pageBackground)
     }
 }
 

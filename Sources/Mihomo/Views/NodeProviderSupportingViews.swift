@@ -168,25 +168,29 @@ struct NodeProviderRow: View {
             }
             .frame(width: 116, alignment: .trailing)
 
-            Button(action: refresh) {
-                Image(systemName: "arrow.clockwise")
-                    .frame(width: 18, height: 18)
-            }
-            .buttonStyle(.borderless)
-            .help("更新 \(provider.name)")
+            HStack(spacing: 10) {
+                Button(action: refresh) {
+                    Image(systemName: "arrow.clockwise")
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.borderless)
+                .help("更新 \(provider.name)")
 
-            Menu {
-                Button("编辑", action: edit)
-                Button("删除", role: .destructive, action: delete)
-            } label: {
-                Image(systemName: "ellipsis")
-                    .frame(width: 18, height: 18)
+                Menu {
+                    Button("编辑", action: edit)
+                    Button("删除", role: .destructive, action: delete)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(width: 18, height: 18)
+                }
+                .menuStyle(.borderlessButton)
+                .help("更多操作")
             }
-            .menuStyle(.borderlessButton)
-            .help("更多操作")
+            .frame(width: 58, alignment: .trailing)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
 }

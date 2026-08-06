@@ -65,7 +65,7 @@ struct ActivityModuleTabs: View {
             }
         }
         .padding(4)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(MihomoUI.mutedFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(MihomoUI.cardStroke, lineWidth: 1)
@@ -214,7 +214,7 @@ struct ActivityConnectionSidebar: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(MihomoUI.cardFill)
+        .background(MihomoUI.pageBackground)
         .onChange(of: items) {
             guard selectedFilter == nil else { return }
             selectedFilterID = ActivityConnectionFilter.allID

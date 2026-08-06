@@ -17,8 +17,6 @@ struct LogsView: View {
             LogCategorySidebar(selection: $selectedCategory)
                 .frame(width: 210)
 
-            Divider()
-
             VStack(spacing: 0) {
                 logHeader
                 logTable
@@ -69,10 +67,7 @@ struct LogsView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.bar)
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(MihomoUI.cardStroke).frame(height: 1)
-        }
+        .background(MihomoUI.pageBackground)
     }
 
     private var logTable: some View {
@@ -139,10 +134,7 @@ struct LogsView: View {
         .controlSize(.small)
         .padding(.horizontal, 16)
         .padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .top) {
-            Rectangle().fill(MihomoUI.cardStroke).frame(height: 1)
-        }
+        .background(MihomoUI.pageBackground)
     }
 
     private var logStatusText: String {
