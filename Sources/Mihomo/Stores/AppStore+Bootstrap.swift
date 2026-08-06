@@ -112,6 +112,8 @@ extension AppStore {
 
     private func startProfileAutoRefreshIfNeeded() {
         profileRefreshTask?.cancel()
+        profileRefreshGeneration = UUID()
+        let generation = profileRefreshGeneration
         guard settings.autoRefreshProfiles, settings.profileRefreshIntervalHours > 0 else {
             profileAutoRefreshStatus = "未启用"
             return
@@ -121,8 +123,19 @@ extension AppStore {
         let interval = UInt64(settings.profileRefreshIntervalHours) * 60 * 60 * 1_000_000_000
         profileRefreshTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: interval)
-                await self?.refreshAllRemoteSubscriptions()
+                do {
+                    try await Task.sleep(nanoseconds: interval)
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled,
+                      let self,
+                      self.profileRefreshGeneration == generation,
+                      self.settings.autoRefreshProfiles
+                else {
+                    return
+                }
+                await self.refreshAllRemoteSubscriptions()
             }
         }
     }

@@ -2,6 +2,14 @@ import Foundation
 
 extension AppStore {
     func refreshProfile(_ profile: ProfileItem) async {
+        guard profileRefreshQueueRunning == false,
+              isResourceBatchOperationInProgress == false,
+              profileRefreshIDsInFlight.insert(profile.id).inserted
+        else {
+            appendLog("warning", "配置刷新已在运行，已忽略重复请求：\(profile.name)")
+            return
+        }
+        defer { profileRefreshIDsInFlight.remove(profile.id) }
         do {
             let preview = try await profileStore.prepareRemoteProfileRefresh(profile, settings: settings)
             if preview.requiresProviderConfirmation {
@@ -34,7 +42,8 @@ extension AppStore {
     }
 
     func refreshAllRemoteProfiles() async {
-        guard profileRefreshQueueRunning == false else {
+        guard profileRefreshQueueRunning == false,
+              isResourceBatchOperationInProgress == false else {
             appendLog("warning", "订阅刷新队列已在运行")
             return
         }
@@ -46,7 +55,12 @@ extension AppStore {
         }
 
         profileRefreshQueueRunning = true
-        defer { profileRefreshQueueRunning = false }
+        profileRefreshCancellationRequested = false
+        profileRefreshCancellationToken = WorkCancellationToken()
+        defer {
+            profileRefreshQueueRunning = false
+            profileRefreshCancellationToken = nil
+        }
 
         profileRefreshFailureCount = 0
         profileRefreshQueue = remoteProfiles.map { profile in
@@ -68,12 +82,19 @@ extension AppStore {
         var completed = 0
         var succeeded = 0
         var failed = 0
+        var cancelled = 0
+        let cancellationToken = profileRefreshCancellationToken
 
         while pendingProfiles.isEmpty == false || runningTasks.isEmpty == false {
-            while runningTasks.count < maxConcurrent, pendingProfiles.isEmpty == false {
+            while runningTasks.count < maxConcurrent,
+                  pendingProfiles.isEmpty == false,
+                  cancellationToken?.isCancelled != true {
                 let profile = pendingProfiles.removeFirst()
                 markRefreshJob(profileID: profile.id, state: .running, message: "正在刷新", startedAt: Date(), finishedAt: nil)
                 runningTasks.append(Task {
+                    guard cancellationToken?.isCancelled != true else {
+                        return ProfileRefreshResult(profileID: profile.id, preview: nil, errorMessage: "已取消")
+                    }
                     let store = ProfileStore()
                     do {
                         let preview = try await store.prepareRemoteProfileRefresh(profile, settings: refreshSettings)
@@ -87,6 +108,12 @@ extension AppStore {
             guard runningTasks.isEmpty == false else { break }
             let result = await runningTasks.removeFirst().value
             completed += 1
+
+            if result.errorMessage == "已取消" {
+                cancelled += 1
+                markRefreshJob(profileID: result.profileID, state: .cancelled, message: "已取消", finishedAt: Date())
+                continue
+            }
 
             if let preview = result.preview {
                 if preview.requiresProviderConfirmation {
@@ -116,10 +143,25 @@ extension AppStore {
                 }
                 appendLog("error", "订阅刷新失败 \(profileName)：\(message)")
             }
-            profileAutoRefreshStatus = "队列运行中：\(completed)/\(remoteProfiles.count)，成功 \(succeeded)，失败 \(failed)"
+            profileAutoRefreshStatus = "队列运行中：\(completed)/\(remoteProfiles.count)，成功 \(succeeded)，失败 \(failed)，取消 \(cancelled)"
         }
 
-        profileAutoRefreshStatus = "上次刷新：\(Formatters.shortDate.string(from: Date()))，成功 \(succeeded)/\(remoteProfiles.count)，失败 \(failed)"
+        if cancellationToken?.isCancelled == true {
+            for profile in pendingProfiles {
+                cancelled += 1
+                markRefreshJob(profileID: profile.id, state: .cancelled, message: "已取消", finishedAt: Date())
+            }
+        }
+        profileRefreshCancellationRequested = cancellationToken?.isCancelled == true
+        profileAutoRefreshStatus = "上次刷新：\(Formatters.shortDate.string(from: Date()))，成功 \(succeeded)/\(remoteProfiles.count)，失败 \(failed)，取消 \(cancelled)"
+    }
+
+    func cancelAllRemoteProfilesRefresh() {
+        guard profileRefreshQueueRunning else { return }
+        profileRefreshCancellationRequested = true
+        profileRefreshCancellationToken?.cancel()
+        profileAutoRefreshStatus = "正在取消订阅刷新，等待已开始的请求结束…"
+        appendLog("warning", profileAutoRefreshStatus)
     }
 
     private func applyRemoteProfileRefreshPreview(_ preview: RemoteProfileRefreshPreview) throws {

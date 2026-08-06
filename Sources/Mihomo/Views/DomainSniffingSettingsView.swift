@@ -73,10 +73,10 @@ struct DomainSniffingSettingsView: View {
                 SettingsRow("强制嗅探的域名") {
                     TextField("可留空", text: $draft.snifferForceDomains)
                 }
-                SettingsRow("不嗅探的目标地址") {
+                SettingsRow("不嗅探的目标地址", validationMessage: AppSettingsValidation.issue(for: .snifferSkipDestinationAddresses, in: draft)) {
                     TextField("例如 1.1.1.1/32", text: $draft.snifferSkipDestinationAddresses)
                 }
-                SettingsRow("不嗅探的来源地址") {
+                SettingsRow("不嗅探的来源地址", validationMessage: AppSettingsValidation.issue(for: .snifferSkipSourceAddresses, in: draft)) {
                     TextField("例如 192.168.1.0/24", text: $draft.snifferSkipSourceAddresses)
                 }
             }
@@ -111,7 +111,13 @@ struct DomainSniffingSettingsView: View {
             }
             .keyboardShortcut(.defaultAction)
             .buttonStyle(.borderedProminent)
-            .disabled(draft == store.settings)
+            .disabled(draft == store.settings || validationIssues.isEmpty == false)
+        }
+    }
+
+    private var validationIssues: [AppSettingsValidation.Issue] {
+        AppSettingsValidation.validate(draft).filter {
+            [.snifferSkipDestinationAddresses, .snifferSkipSourceAddresses].contains($0.field)
         }
     }
 

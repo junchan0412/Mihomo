@@ -7,20 +7,33 @@ on:
       - main
       - "codex/**"
 
+concurrency:
+  group: mihomo-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: SwiftPM Tests
     runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Select Xcode toolchain
+      - name: Install pinned Xcode toolchain
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          # GitHub's current macos-latest image provides 26.6.0; local release
+          # verification continues to use the explicitly selected Xcode 27.0 beta.
+          xcode-version: "26.6.0"
+
+      - name: Verify pinned Xcode toolchain
         run: |
-          if [[ -d "/Applications/Xcode.app/Contents/Developer" ]]; then
-            sudo xcode-select -s "/Applications/Xcode.app/Contents/Developer"
-          fi
+          xcodebuild -version
           swift --version
+          test "$(xcodebuild -version | awk '/Xcode/{print $2}')" = "26.6"
 
       - name: Check whitespace
         run: git diff --check

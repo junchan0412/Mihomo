@@ -1,8 +1,12 @@
+import CryptoKit
+import Darwin
 import Foundation
+import Yams
 
 struct ProviderResourceDownloadResult: Hashable {
     var target: URL
     var backup: URL?
+    var validationSummary: String = ""
 }
 
 struct ProviderResourceRollbackResult: Hashable {
@@ -14,6 +18,16 @@ struct ProviderResourceRollbackResult: Hashable {
 struct ProviderResourceRefreshResult: Hashable {
     var target: URL
     var size: Int64
+    var validationSummary: String = ""
+}
+
+private struct ProviderResourceValidation {
+    var entryCount: Int
+    var sha256: String
+
+    var summary: String {
+        "校验通过：\(entryCount) 项，SHA-256 \(sha256.prefix(12))…"
+    }
 }
 
 struct ProviderResourceManager {
@@ -42,13 +56,19 @@ struct ProviderResourceManager {
             throw providerResourceError(HTTPURLResponse.localizedString(forStatusCode: http.statusCode), code: http.statusCode)
         }
         let attributes = try FileManager.default.attributesOfItem(atPath: downloaded.path)
-        if (attributes[.size] as? NSNumber)?.int64Value == 0 {
+        let size = (attributes[.size] as? NSNumber)?.int64Value ?? 0
+        if size == 0 {
             throw providerResourceError("下载结果为空，已保留当前 Provider 文件。")
         }
 
+        let validation = try validateResource(at: downloaded, provider: provider)
         let backup = try backupExistingResource(at: target, provider: provider)
         try replaceTarget(at: target, with: downloaded, rollbackBackup: backup)
-        return ProviderResourceDownloadResult(target: target, backup: backup)
+        return ProviderResourceDownloadResult(
+            target: target,
+            backup: backup,
+            validationSummary: "\(validation.summary)，大小 \(Formatters.bytes(size))"
+        )
     }
 
     func rollback(_ provider: ProviderItem, from backup: URL) throws -> ProviderResourceRollbackResult {
@@ -73,8 +93,12 @@ struct ProviderResourceManager {
         guard size > 0 else {
             throw providerResourceError("本地 Provider 文件为空：\(target.path)")
         }
-        _ = try Data(contentsOf: target, options: [.mappedIfSafe])
-        return ProviderResourceRefreshResult(target: target, size: size)
+        let validation = try validateResource(at: target, provider: provider)
+        return ProviderResourceRefreshResult(
+            target: target,
+            size: size,
+            validationSummary: validation.summary
+        )
     }
 
     func targetURL(for provider: ProviderItem) throws -> URL {
@@ -124,18 +148,146 @@ struct ProviderResourceManager {
     }
 
     private func replaceTarget(at target: URL, with source: URL, rollbackBackup: URL?) throws {
+        let staging = target.deletingLastPathComponent()
+            .appendingPathComponent(".\(target.lastPathComponent).\(UUID().uuidString).staging")
+        defer { try? FileManager.default.removeItem(at: staging) }
+
         do {
+            try FileManager.default.copyItem(at: source, to: staging)
+            try syncFile(at: staging)
             if FileManager.default.fileExists(atPath: target.path) {
-                try FileManager.default.removeItem(at: target)
+                _ = try FileManager.default.replaceItemAt(
+                    target,
+                    withItemAt: staging,
+                    backupItemName: nil,
+                    options: [.usingNewMetadataOnly]
+                )
+            } else {
+                try FileManager.default.moveItem(at: staging, to: target)
             }
-            try FileManager.default.copyItem(at: source, to: target)
         } catch {
             if let rollbackBackup, FileManager.default.fileExists(atPath: rollbackBackup.path) {
-                try? FileManager.default.removeItem(at: target)
-                try? FileManager.default.copyItem(at: rollbackBackup, to: target)
+                try? restoreBackup(rollbackBackup, to: target)
             }
             throw error
         }
+    }
+
+    private func restoreBackup(_ backup: URL, to target: URL) throws {
+        let staging = target.deletingLastPathComponent()
+            .appendingPathComponent(".\(target.lastPathComponent).\(UUID().uuidString).rollback")
+        defer { try? FileManager.default.removeItem(at: staging) }
+        try FileManager.default.copyItem(at: backup, to: staging)
+        try syncFile(at: staging)
+        if FileManager.default.fileExists(atPath: target.path) {
+            _ = try FileManager.default.replaceItemAt(
+                target,
+                withItemAt: staging,
+                backupItemName: nil,
+                options: [.usingNewMetadataOnly]
+            )
+        } else {
+            try FileManager.default.moveItem(at: staging, to: target)
+        }
+    }
+
+    private func syncFile(at url: URL) throws {
+        let descriptor = open(url.path, O_RDONLY)
+        guard descriptor >= 0 else {
+            throw providerResourceError("无法打开临时 Provider 文件进行落盘：\(url.path)")
+        }
+        defer { close(descriptor) }
+        guard fsync(descriptor) == 0 else {
+            throw providerResourceError("无法将临时 Provider 文件落盘。")
+        }
+    }
+
+    private func validateResource(at url: URL, provider: ProviderItem) throws -> ProviderResourceValidation {
+        let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+        guard data.isEmpty == false else {
+            throw providerResourceError("Provider 内容为空，已保留当前文件。")
+        }
+        guard data.count <= 100 * 1024 * 1024 else {
+            throw providerResourceError("Provider 文件超过 100 MiB，已拒绝替换。")
+        }
+
+        let preview = String(data: data.prefix(512), encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        if preview.hasPrefix("<!doctype") || preview.hasPrefix("<html") || preview.contains("<body") {
+            throw providerResourceError("下载结果看起来是 HTML 错误页，不是 Provider 内容。")
+        }
+
+        guard let root = parseProviderMap(data: data) else {
+            throw providerResourceError("Provider 不是可解析的 YAML 或 Base64 内容。")
+        }
+        guard root.isEmpty == false else {
+            throw providerResourceError("Provider 顶层映射为空，已拒绝替换。")
+        }
+
+        let entryCount = providerEntryCount(root: root, provider: provider)
+        guard entryCount > 0 else {
+            throw providerResourceError("Provider 未发现可用条目，请检查类型、内容或订阅返回值。")
+        }
+
+        let digest = SHA256.hash(data: data)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        return ProviderResourceValidation(entryCount: entryCount, sha256: digest)
+    }
+
+    private func parseProviderMap(data: Data) -> [String: Any]? {
+        guard let text = String(data: data, encoding: .utf8) else { return nil }
+        if let loaded = try? Yams.load(yaml: text),
+           let root = normalizeYAMLValue(loaded) as? [String: Any] {
+            return root
+        }
+
+        let compact = text.components(separatedBy: .whitespacesAndNewlines).joined()
+        guard let decoded = Data(base64Encoded: compact, options: [.ignoreUnknownCharacters]),
+              let decodedText = String(data: decoded, encoding: .utf8),
+              let loaded = try? Yams.load(yaml: decodedText)
+        else { return nil }
+        return normalizeYAMLValue(loaded) as? [String: Any]
+    }
+
+    private func normalizeYAMLValue(_ value: Any) -> Any {
+        if let map = value as? [String: Any] {
+            return map.reduce(into: [String: Any]()) { result, pair in
+                result[pair.key] = normalizeYAMLValue(pair.value)
+            }
+        }
+        if let map = value as? [AnyHashable: Any] {
+            return map.reduce(into: [String: Any]()) { result, pair in
+                result[String(describing: pair.key)] = normalizeYAMLValue(pair.value)
+            }
+        }
+        if let array = value as? [Any] {
+            return array.map(normalizeYAMLValue)
+        }
+        return value
+    }
+
+    private func providerEntryCount(root: [String: Any], provider: ProviderItem) -> Int {
+        let kind = provider.kind.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let keys: [String]
+        if kind == "rule" {
+            keys = ["payload", "rules"]
+        } else if kind == "proxy" || kind == "node" {
+            keys = ["proxies", "payload", "nodes"]
+        } else {
+            keys = ["proxies", "payload", "rules", "nodes"]
+        }
+
+        for key in keys {
+            if let values = root[key] as? [Any] {
+                return values.count
+            }
+            if let text = root[key] as? String, text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+                return 1
+            }
+        }
+        return 0
     }
 
     private func backupURL(for target: URL, provider: ProviderItem, date: Date) -> URL {

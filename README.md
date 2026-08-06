@@ -2,7 +2,18 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.24.1 (79)`
+当前版本：`v1.25.0 (80)`
+
+## v1.25.0 更新重点
+
+- Activity 搜索加入 200ms debounce、稳定选区 reconciliation 和有界并发批量关闭，降低高频列表刷新与批量操作压力。
+- 网络接管状态新增“未知”和最近检查时间；系统代理、DNS、TUN 操作互斥，TUN 路由恢复失败默认 fail-closed，并提供明确的强制关闭确认。
+- Provider 下载采用 staging + fsync + 原子替换，拒绝 HTML/空映射/无有效条目内容，并记录 SHA-256 校验摘要。
+- 批量 Provider/Profile 刷新支持取消、去重和旧任务 generation 保护；设置保存前校验端口、并发、超时、URL、DNS 与 IP/CIDR。
+- 更新器支持受信任 HTTPS manifest 镜像并自动回退 GitHub，manifest Ed25519 签名链保持不变；网络页面、状态派生和 manifest 校验按职责拆分。
+- `swift test`：225/225 通过；维护性审计覆盖 232 个 Swift 文件，0 warning、0 over-max。
+
+完整变更见 [v1.25.0 Release Notes](docs/releases/v1.25.0.md)。
 
 ## v1.24.1 更新重点
 
@@ -171,7 +182,7 @@ git diff --check
 ./script/build_and_run.sh --verify
 ```
 
-当前测试集包含 211 个 XCTest，覆盖 Activity/日志展示与缓存筛选、多窗口流量聚合、筛选结果 selection reconciliation、远程来源 URL 参数与 path token 脱敏、概览时间轴空状态、分桶与两色流量语义、资源、规则、策略、Profile 与覆写列表 presentation snapshot、规则编辑 draft 规范化、覆写筛选/选区/表高边界、资源搜索/未就绪/无数据空状态、Profile↔App 设置同步、AppStore 派生状态与相同值发布抑制、覆写 YAML/JavaScript 分析、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量来源、DIRECT/代理测速设置、节点提供商与 Profile 双向同步、Provider 更新与回滚、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、网络请求超时、核心实时状态恢复、Helper 超时、签名部署选择、传统安装路径与 ad-hoc 更新 CDHash 固定、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
+当前测试集包含 225 个 XCTest，覆盖 Activity/日志展示与缓存筛选、多窗口流量聚合、筛选结果 selection reconciliation、远程来源 URL 参数与 path token 脱敏、概览时间轴空状态、分桶与两色流量语义、资源、规则、策略、Profile 与覆写列表 presentation snapshot、规则编辑 draft 规范化、覆写筛选/选区/表高边界、资源搜索/未就绪/无数据空状态、Profile↔App 设置同步、AppStore 派生状态与相同值发布抑制、覆写 YAML/JavaScript 分析、完整 Geo 默认值、域名嗅探配置、应用托管控制通道、多选表格键盘交互、规则参数与稳定命中计数、覆写作用域与远程订阅、配置质量来源、DIRECT/代理测速设置、节点提供商与 Profile 双向同步、Provider 更新与回滚与内容校验、批量取消、设置输入校验、运行时 Store 隔离、设置迁移、Runtime Config 合并、Profile 结构编辑、网络请求超时、核心实时状态恢复、Helper 超时、签名部署选择、传统安装路径与 ad-hoc 更新 CDHash 固定、备份恢复、更新回滚、Secret Vault 和 AppKit accessibility。
 
 网络恢复与辅助功能人工检查：
 

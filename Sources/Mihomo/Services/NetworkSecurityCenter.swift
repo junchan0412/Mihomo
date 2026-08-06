@@ -17,6 +17,7 @@ struct NetworkSecurityCenter {
     static func overallHealth(for states: [NetworkTakeoverState]) -> NetworkTakeoverHealth {
         if states.contains(where: { $0.health == .failed }) { return .failed }
         if states.contains(where: { $0.health == .warning }) { return .warning }
+        if states.contains(where: { $0.health == .unknown }) { return .unknown }
         if states.contains(where: { $0.health == .ok }) { return .ok }
         return .inactive
     }

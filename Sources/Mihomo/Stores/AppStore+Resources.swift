@@ -16,7 +16,7 @@ extension AppStore {
         do {
             let result = try await ProviderResourceManager().download(provider)
             let backupSuffix = result.backup.map { "；已备份上一版：\($0.path)" } ?? ""
-            resourceUpdateStatus = "\(provider.name) 已更新：\(result.target.path)\(backupSuffix)"
+            resourceUpdateStatus = "\(provider.name) 已更新：\(result.target.path)\(backupSuffix)；\(result.validationSummary)"
             appendLog("info", resourceUpdateStatus)
             recordProviderUpdate(
                 provider,
@@ -50,7 +50,7 @@ extension AppStore {
 
         do {
             let result = try ProviderResourceManager().refreshLocal(provider)
-            resourceUpdateStatus = "\(provider.name) 已重新载入：\(Formatters.bytes(result.size))"
+            resourceUpdateStatus = "\(provider.name) 已重新载入：\(Formatters.bytes(result.size))；\(result.validationSummary)"
             recordProviderUpdate(
                 provider,
                 action: "本地刷新",

@@ -7,7 +7,9 @@ extension AppStore {
     }
 
     var softwareUpdateSourceDescription: String {
-        "GitHub Releases"
+        settings.softwareUpdateManifestURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "GitHub Releases"
+            : "自定义更新镜像（失败时回退 GitHub Releases）"
     }
 
     var softwareUpdateSourceURL: URL {
@@ -36,7 +38,9 @@ extension AppStore {
         }
         do {
             softwareUpdateStatus = "正在检查 GitHub Releases..."
-            let result = try await softwareUpdateManager.checkForUpdate()
+            let result = try await softwareUpdateManager.checkForUpdate(
+                manifestURLs: SoftwareUpdateManager.manifestCandidates(customURLString: settings.softwareUpdateManifestURL)
+            )
             if result.isNewer {
                 availableUpdate = result.manifest
                 availableUpdateManifestURL = result.manifestURL
@@ -140,12 +144,16 @@ extension AppStore {
                     manifestURL = availableUpdateManifestURL
                 } else {
                     softwareUpdatePhase = .checking
-                    let result = try await softwareUpdateManager.checkForUpdate()
+                    let result = try await softwareUpdateManager.checkForUpdate(
+                        manifestURLs: SoftwareUpdateManager.manifestCandidates(customURLString: settings.softwareUpdateManifestURL)
+                    )
                     manifestURL = result.manifestURL
                 }
             } else {
                 softwareUpdatePhase = .checking
-                let result = try await softwareUpdateManager.checkForUpdate()
+                let result = try await softwareUpdateManager.checkForUpdate(
+                    manifestURLs: SoftwareUpdateManager.manifestCandidates(customURLString: settings.softwareUpdateManifestURL)
+                )
                 guard result.isNewer else {
                     softwareUpdateStatus = "已是最新：\(result.currentVersion) (\(result.currentBuild))"
                     softwareUpdatePhase = .idle

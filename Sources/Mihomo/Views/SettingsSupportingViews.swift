@@ -41,10 +41,10 @@ struct SettingsRemoteAccessPane: View {
                 )
 
                 if draft.remoteAPIEnabled {
-                    SettingsRow("监听地址") {
+                    SettingsRow("监听地址", validationMessage: AppSettingsValidation.issue(for: .remoteAPIBindAddress, in: draft)) {
                         TextField("0.0.0.0", text: $draft.remoteAPIBindAddress)
                     }
-                    SettingsRow("管理端口") {
+                    SettingsRow("管理端口", validationMessage: AppSettingsValidation.issue(for: .controllerPort, in: draft)) {
                         TextField("9090", value: $draft.controllerPort, format: .number)
                             .frame(width: 140)
                     }
@@ -117,15 +117,25 @@ struct SettingsAdvancedPane: View {
                 subtitle: "当前配置中的端口会先载入 App；在此应用修改后，同名字段会同步回当前配置文件。",
                 systemImage: "network"
             ) {
-                SettingsRow("Mixed 端口") {
+                SettingsRow("Mixed 端口", validationMessage: AppSettingsValidation.issue(for: .mixedPort, in: draft)) {
                     TextField("7890", value: $draft.mixedPort, format: .number)
                         .frame(width: 140)
                 }
-                SettingsRow("SOCKS 端口") {
+                SettingsRow("SOCKS 端口", validationMessage: AppSettingsValidation.issue(for: .socksPort, in: draft)) {
                     TextField("0", value: $draft.socksPort, format: .number)
                         .frame(width: 140)
                 }
                 SettingsToggleRow("策略切换后关闭旧连接", isOn: $draft.closeConnectionsOnPolicyChange)
+            }
+
+            SettingsSection(
+                title: "更新来源",
+                subtitle: "可选地提供受信任的 HTTPS manifest 镜像；镜像不可用或校验失败时自动回退到 GitHub Releases。manifest 仍必须通过内置 Ed25519 公钥校验。",
+                systemImage: "arrow.triangle.branch"
+            ) {
+                SettingsRow("自定义 manifest URL", validationMessage: AppSettingsValidation.issue(for: .softwareUpdateManifestURL, in: draft)) {
+                    TextField("留空使用 GitHub Releases", text: $draft.softwareUpdateManifestURL)
+                }
             }
 
         }
@@ -216,21 +226,32 @@ struct SettingsSection<Content: View>: View {
 
 struct SettingsRow<Content: View>: View {
     var title: String
+    var validationMessage: String?
     @ViewBuilder var content: Content
 
-    init(_ title: String, @ViewBuilder content: () -> Content) {
+    init(_ title: String, validationMessage: String? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.validationMessage = validationMessage
         self.content = content()
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 18) {
-            Text(title)
-                .foregroundStyle(.secondary)
-                .frame(width: 170, alignment: .trailing)
-            content
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 18) {
+                Text(title)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 170, alignment: .trailing)
+                content
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let validationMessage {
+                Label(validationMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .padding(.leading, 188)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

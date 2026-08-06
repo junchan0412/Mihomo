@@ -26,6 +26,7 @@ final class AppStore: ObservableObject {
     @Published var loginItemStatus = "未检查"
     @Published var profileRefreshQueue: [ProfileRefreshJob] = []
     @Published var profileRefreshFailureCount = 0
+    @Published var profileRefreshCancellationRequested = false
     @Published var pendingProfileRefreshPreviews: [RemoteProfileRefreshPreview] = []
     @Published var delayTestStatus = "未运行"
     @Published var delayTestFailureSummary = ""
@@ -51,6 +52,7 @@ final class AppStore: ObservableObject {
     @Published var managedCoreStatus = "未托管"
     @Published var resourceUpdateStatus = "资源未更新"
     @Published var isResourceBatchOperationInProgress = false
+    @Published var resourceBatchCancellationRequested = false
     @Published var geoUpdateStatus = "未更新"
     @Published var backupStatus = "未备份"
     @Published var ageStatus = "Profile 加密未启用"
@@ -62,6 +64,9 @@ final class AppStore: ObservableObject {
     @Published var connectionDetailConnectionID: String?
     @Published var policyGroupIconImages: [String: NSImage] = [:]
     @Published var networkTakeoverStates: [NetworkTakeoverState] = []
+    @Published var networkOperationInProgress: Set<NetworkTakeoverKind> = []
+    @Published var networkOperationMessages: [NetworkTakeoverKind: String] = [:]
+    @Published var pendingTunDisableRecoveryError: String?
     @Published var settingsMigrationLog: [String] = []
     @Published var diagnosticExportStatus = "尚未导出诊断包"
     @Published var lastDiagnosticBundleURL: URL?
@@ -98,7 +103,10 @@ final class AppStore: ObservableObject {
     let spotlightIndexer = SpotlightIndexer()
     var pollingTask: Task<Void, Never>?
     var profileRefreshTask: Task<Void, Never>?
+    var profileRefreshGeneration = UUID()
     var profileRefreshQueueRunning = false
+    var profileRefreshIDsInFlight: Set<UUID> = []
+    var profileRefreshCancellationToken: WorkCancellationToken?
     var lastUploadTotal: Int64?
     var lastDownloadTotal: Int64?
     var lastTrafficSampleAt: Date?
@@ -117,6 +125,7 @@ final class AppStore: ObservableObject {
     var softwareUpdateTask: Task<Void, Never>?
     var lastNetworkOperations: [NetworkTakeoverKind: String] = [:]
     var lastNetworkTakeoverRefreshAt = Date.distantPast
+    var resourceBatchCancellationToken: WorkCancellationToken?
     var lastSystemProxyGuardAttemptAt = Date.distantPast
     var systemProxyGuardTask: Task<Void, Never>?
     var profileStatsCache: [UUID: ProfileStatsCacheEntry] = [:]

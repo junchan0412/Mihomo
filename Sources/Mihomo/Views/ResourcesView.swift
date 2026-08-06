@@ -137,6 +137,15 @@ struct ResourcesView: View {
                     Text("\(store.settings.resourceUpdateMaxConcurrent)").monospacedDigit().frame(width: 24)
                 }
                 .help("同时更新的 Provider 数量")
+                if store.isResourceBatchOperationInProgress {
+                    Button {
+                        store.cancelResourceBatchOperation()
+                    } label: {
+                        Label("取消更新", systemImage: "xmark.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .help("停止派发新的资源请求，已开始的请求会完成或取消")
+                }
             }
         }
     }
