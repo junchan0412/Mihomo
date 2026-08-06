@@ -40,7 +40,6 @@ struct DiagnosticsView: View {
                 .pickerStyle(.segmented).frame(maxWidth: 560)
             }
             .padding(.horizontal, MihomoUI.pageHorizontalPadding).padding(.vertical, 14)
-            Divider()
 
             ScrollView {
                 Group {

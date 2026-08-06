@@ -111,7 +111,7 @@ struct NodeProviderChangePreviewSheet: View {
                         HStack(alignment: .firstTextBaseline, spacing: 10) {
                             Text(change.kind.title)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(change.kind == .add ? .green : .blue)
+                                .foregroundStyle(change.kind == .add ? .green : (change.kind == .remove ? .red : .blue))
                                 .frame(width: 28, alignment: .leading)
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("\(change.profileName) · \(change.providerName)")

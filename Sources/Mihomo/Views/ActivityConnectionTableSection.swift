@@ -96,12 +96,7 @@ struct ActivityConnectionTableSection: View {
         .controlSize(.small)
         .padding(.horizontal, 16)
         .padding(.vertical, 7)
-        .background(.bar)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(MihomoUI.cardStroke)
-                .frame(height: 1)
-        }
+        .background(MihomoUI.pageBackground)
     }
 
     private var contextMenuActions: [AppKitTableContextAction<ConnectionTableRow>] {

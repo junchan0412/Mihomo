@@ -3,7 +3,7 @@ import SwiftUI
 
 struct ResourcesView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var workspace: ResourceWorkspace = .nodeProviders
+    @State private var workspace: ResourceWorkspace = .configResources
     @State private var selectedResourceIDs: Set<String> = []
     @State private var searchText = ""
     @FocusState private var searchIsFocused: Bool
@@ -27,7 +27,8 @@ struct ResourcesView: View {
             latestRecords: latestRecords,
             historyKey: store.providerHistoryKey(for:),
             searchText: searchText,
-            showsOnlyUnready: showsOnlyUnready
+            showsOnlyUnready: showsOnlyUnready,
+            kindFilter: workspace.providerKind
         )
     }
 
@@ -127,11 +128,16 @@ struct ResourcesView: View {
                     ResourceCountBadge(title: "节点提供商", value: store.nodeProviders.count)
                     ResourceCountBadge(title: "当前配置", value: selectedNodeProviderCount)
                 } else {
-                    ResourceCountBadge(title: "Proxy", value: presentation.proxyCount)
-                    ResourceCountBadge(title: "Rule", value: presentation.ruleCount)
+                    ResourceCountBadge(
+                        title: workspace == .rules ? "规则" : "配置资源",
+                        value: presentation.allRows.count
+                    )
+                    if workspace == .configResources {
+                        ResourceCountBadge(title: "代理", value: presentation.proxyCount)
+                    }
+                    ResourceCountBadge(title: "规则", value: presentation.ruleCount)
                     ResourceCountBadge(title: "未就绪", value: presentation.unreadyCount)
                 }
-                Divider().frame(height: 22)
                 Text("并发").foregroundStyle(.secondary)
                 Stepper(value: resourceConcurrency, in: 1...12) {
                     Text("\(store.settings.resourceUpdateMaxConcurrent)").monospacedDigit().frame(width: 24)

@@ -70,7 +70,6 @@ struct ResourceTablePane: View {
                 .frame(minHeight: 360, maxHeight: .infinity)
             }
 
-            Divider()
             bottomBar
         }
         .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))

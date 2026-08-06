@@ -36,7 +36,6 @@ struct AdvancedView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     switch tab {
@@ -188,7 +187,7 @@ struct AdvancedView: View {
         }
         .padding(.horizontal, MihomoUI.pageHorizontalPadding)
         .padding(.vertical, 12)
-        .background(.bar)
+        .background(MihomoUI.pageBackground)
     }
 
     private func synchronizeDraft(with settings: AppSettings, force: Bool) {

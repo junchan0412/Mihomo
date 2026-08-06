@@ -1,15 +1,5 @@
 import Foundation
 
-struct NodeProviderProfileSynchronization {
-    var content: String
-    var changes: [NodeProviderProfileChange]
-}
-
-struct NodeProviderPreservationResult {
-    var content: String
-    var preservedProviderNames: [String]
-}
-
 struct NodeProviderProfileSynchronizer {
     typealias YAMLMap = [String: Any]
 
@@ -17,13 +7,35 @@ struct NodeProviderProfileSynchronizer {
         _ nodeProviders: [NodeProvider],
         into profileContent: String,
         profileID: UUID,
-        profileName: String
+        profileName: String,
+        removingProviderNames: Set<String> = []
     ) throws -> NodeProviderProfileSynchronization {
         var lines = lines(from: profileContent)
         var changes: [NodeProviderProfileChange] = []
         let selected = nodeProviders.filter(\.enabled)
+        let normalizedRemovalNames = Set(removingProviderNames.map(normalizedName))
+
+        if normalizedRemovalNames.isEmpty == false,
+           let section = try proxyProviderSection(in: lines) {
+            let blocks = providerBlocks(in: lines, section: section)
+                .filter { normalizedRemovalNames.contains(normalizedName($0.name)) }
+            for block in blocks.reversed() {
+                lines.removeSubrange(block.start..<block.end)
+            }
+            changes.append(contentsOf: blocks.map {
+                NodeProviderProfileChange(
+                    profileID: profileID,
+                    profileName: profileName,
+                    providerName: $0.name,
+                    kind: .remove,
+                    fields: ["proxy-providers"]
+                )
+            })
+        }
+
         guard selected.isEmpty == false else {
-            return NodeProviderProfileSynchronization(content: profileContent, changes: [])
+            let content = content(from: lines, preservingTrailingNewlineFrom: profileContent)
+            return NodeProviderProfileSynchronization(content: content, changes: changes)
         }
 
         if try proxyProviderSection(in: lines) == nil {
@@ -64,13 +76,22 @@ struct NodeProviderProfileSynchronizer {
         return NodeProviderProfileSynchronization(content: content, changes: changes)
     }
 
-    func synchronizing(_ nodeProviders: [NodeProvider], into profileContent: String) throws -> String {
+    func synchronizing(
+        _ nodeProviders: [NodeProvider],
+        into profileContent: String,
+        removingProviderNames: Set<String>
+    ) throws -> String {
         try synchronizationPreview(
             nodeProviders,
             into: profileContent,
             profileID: UUID(),
-            profileName: "当前配置"
+            profileName: "当前配置",
+            removingProviderNames: removingProviderNames
         ).content
+    }
+
+    func synchronizing(_ nodeProviders: [NodeProvider], into profileContent: String) throws -> String {
+        try synchronizing(nodeProviders, into: profileContent, removingProviderNames: [])
     }
 
     func preservingExistingProviders(from previousContent: String, in refreshedContent: String) throws -> String {
@@ -310,16 +331,4 @@ struct NodeProviderProfileSynchronizer {
     func syncError(_ message: String) -> NSError {
         NSError(domain: "Mihomo.NodeProviderProfile", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
     }
-}
-
-private struct YAMLSection {
-    var start: Int
-    var end: Int
-}
-
-private struct YAMLProviderBlock {
-    var name: String
-    var start: Int
-    var end: Int
-    var indent: Int
 }

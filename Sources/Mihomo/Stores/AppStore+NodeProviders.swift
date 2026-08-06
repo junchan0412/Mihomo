@@ -30,7 +30,18 @@ extension AppStore {
 
         for profile in profiles {
             let selected = proposedProviders.filter { $0.applies(to: profile.id) }
-            guard selected.isEmpty == false else { continue }
+            let previousAssociatedNames = Set(
+                nodeProviders
+                    .filter { $0.profileIDs.contains(profile.id) || $0.sourceProfileID == profile.id }
+                    .map(\.normalizedName)
+            )
+            let proposedAssociatedNames = Set(
+                proposedProviders
+                    .filter { $0.profileIDs.contains(profile.id) || $0.sourceProfileID == profile.id }
+                    .map(\.normalizedName)
+            )
+            let removedProviderNames = previousAssociatedNames.subtracting(proposedAssociatedNames)
+            guard selected.isEmpty == false || removedProviderNames.isEmpty == false else { continue }
             let original = try profileStore.loadProfileContent(profile, settings: settings)
             let groups = Dictionary(grouping: selected, by: \.normalizedName)
             let duplicateGroups = groups.values.filter { $0.count > 1 }
@@ -71,7 +82,8 @@ extension AppStore {
                 selected,
                 into: original,
                 profileID: profile.id,
-                profileName: profile.name
+                profileName: profile.name,
+                removingProviderNames: removedProviderNames
             )
             guard synchronization.content != original else { continue }
             patches.append(NodeProviderProfilePatch(
