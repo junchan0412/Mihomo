@@ -25,13 +25,15 @@ jobs:
       - name: Install pinned Xcode toolchain
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "27.0"
+          # GitHub's current macos-latest image provides 26.6.0; local release
+          # verification continues to use the explicitly selected Xcode 27.0 beta.
+          xcode-version: "26.6.0"
 
       - name: Verify pinned Xcode toolchain
         run: |
           xcodebuild -version
           swift --version
-          test "$(xcodebuild -version | awk '/Xcode/{print $2}')" = "27.0"
+          test "$(xcodebuild -version | awk '/Xcode/{print $2}')" = "26.6"
 
       - name: Check whitespace
         run: git diff --check
