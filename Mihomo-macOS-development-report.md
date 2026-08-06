@@ -1,14 +1,14 @@
 # Mihomo macOS 开发文档
 
 更新日期：2026-08-05
-对应版本：`v1.24.0 (78)`
+对应版本：`v1.24.1 (79)`
 
 本文档描述当前架构、关键数据流、页面职责、开发约束和发布流程。历史版本流水账不再作为主体；需要追溯时使用 Git history 和各版本 Release Notes。
 
 ## 当前状态与目标
 
-- 当前状态：已发布基线为 `v1.24.0 (78)`；配置资源的“全部更新”“更新所选”和“回滚所选”共用 Store 层有界并发队列，受 `resourceUpdateMaxConcurrent` 的 1-12 上限约束，worker 结果按输入顺序归并，避免 113 项资源的所选操作退化为串行等待；不可更新资源不会进入队列，运行中会禁用重复批量动作。远程覆写的所选/全部刷新复用订阅刷新并发设置，下载结果稳定归并后只写入一次覆写存储，同样阻止重复请求。`swift test` 覆盖 214 个 XCTest。连接、DNS、流量统计、概览时间轴以及配置、覆写、规则、日志、资源的无数据/无匹配结果统一使用明确空状态，不初始化空 AppKit 表格；筛选变化通过可测试的 selection reconciliation 清理隐藏选区；高频连接表、日志、流量和列表 presentation 均使用窄状态或单一 snapshot，减少重复计算与无关刷新。最新维护性审计覆盖 225 个 Swift 文件，warning 与 over-max 均为 0，当前最大文件为 `MenuBarView.swift`（347 行）。
-- 近期目标：保持高频界面只更新必要范围，并以 350 行 warning、500 行 over-max、214 个 XCTest、可复现的并发上限测试和逐页实机回归作为持续门禁；继续审计批量任务取消、策略历史、路由解释和版本恢复的可发现性，根据真实使用反馈确定 `v1.24.0` 发布范围。
+- 当前状态：发布基线推进至 `v1.24.1 (79)`；配置资源的“全部更新”“更新所选”和“回滚所选”共用 Store 层有界并发队列，受 `resourceUpdateMaxConcurrent` 的 1-12 上限约束，worker 结果按输入顺序归并，避免 113 项资源的所选操作退化为串行等待；不可更新资源不会进入队列，运行中会禁用重复批量动作。远程覆写的所选/全部刷新复用订阅刷新并发设置，下载结果稳定归并后只写入一次覆写存储，同样阻止重复请求。软件更新使用结构化阶段状态：检查、下载、校验、准备网络、准备 Helper、安装与重启入口共用可取消任务；下载显示真实字节数、总量和速率，进度事件至多每 100 ms 发布一次；更新包通过 SHA-256、签名与 bundle 校验后才显示重启安装入口，取消或失败会清理临时目录并保留旧状态。连接、DNS、流量统计、概览时间轴以及配置、覆写、规则、日志、资源的无数据/无匹配结果统一使用明确空状态，不初始化空 AppKit 表格；筛选变化通过可测试的 selection reconciliation 清理隐藏选区；高频连接表、日志、流量和列表 presentation 均使用窄状态或单一 snapshot，减少重复计算与无关刷新。
+- 近期目标：保持高频界面只更新必要范围，并以 350 行 warning、500 行 over-max、完整 `swift test`、可复现的并发上限测试和逐页实机回归作为持续门禁；继续审计批量任务取消、策略历史、路由解释和版本恢复的可发现性，根据真实使用反馈确定下一次发布范围。
 
 ## 1. 产品原则
 
@@ -263,8 +263,15 @@ Proxy Provider 本地缓存可能是 Mihomo YAML、完整配置、Base64 订阅�
 DEVELOPER_DIR='/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer' swift test
 git diff --check
 ./script/maintainability_audit.sh
-APP_VERSION=1.23.0 APP_BUILD=77 ./script/build_and_run.sh --verify
+APP_VERSION=1.24.1 APP_BUILD=79 ./script/build_and_run.sh --verify
 ```
+
+本轮 `v1.24.1 (79)` 核查证据：
+
+- `DEVELOPER_DIR='/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer' swift test`：217 tests，0 failures。
+- `git diff --check`：通过。
+- `./script/maintainability_audit.sh --fail-on-max`：227 个 Swift 文件，warning 0，over-max 0。
+- `APP_VERSION=1.24.1 APP_BUILD=79 ./script/build_and_run.sh --verify`：构建、ad-hoc 签名、bundle 严格校验和真实 `.app` 启动通过；窗口显示 `Mihomo v1.24.1 (79)`。
 
 高风险改动补充验证：
 

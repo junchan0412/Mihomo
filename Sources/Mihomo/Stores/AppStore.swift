@@ -57,6 +57,7 @@ final class AppStore: ObservableObject {
     @Published var launchDaemonStatus = "未安装"
     @Published var helperStatus = "Helper 未检查"
     @Published var softwareUpdateStatus = "未检查"
+    @Published var softwareUpdatePhase: SoftwareUpdatePhase = .idle
     @Published var availableUpdate: AppUpdateManifest?
     @Published var connectionDetailConnectionID: String?
     @Published var policyGroupIconImages: [String: NSImage] = [:]
@@ -112,6 +113,8 @@ final class AppStore: ObservableObject {
     var providerHitTotals: [String: Int] = [:]
     var observedConnectionHitIDs: Set<String> = []
     var availableUpdateManifestURL: URL?
+    var preparedSoftwareUpdate: PreparedUpdatePackage?
+    var softwareUpdateTask: Task<Void, Never>?
     var lastNetworkOperations: [NetworkTakeoverKind: String] = [:]
     var lastNetworkTakeoverRefreshAt = Date.distantPast
     var lastSystemProxyGuardAttemptAt = Date.distantPast

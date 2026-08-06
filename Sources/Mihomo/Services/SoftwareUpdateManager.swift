@@ -43,20 +43,25 @@ final class SoftwareUpdateManager {
         )
     }
 
-    func prepareUpdate(_ manifest: AppUpdateManifest, manifestURL: URL) async throws -> PreparedUpdatePackage {
+    func prepareUpdate(
+        _ manifest: AppUpdateManifest,
+        manifestURL: URL,
+        onDownloadProgress: @escaping @Sendable (SoftwareUpdateDownloadProgress) -> Void,
+        onVerificationStarted: @escaping @Sendable () -> Void
+    ) async throws -> PreparedUpdatePackage {
         let packageURL = try resolvedPackageURL(manifest.url, manifestURL: manifestURL)
         let tempRoot = AppPaths.runtimeDirectory.appendingPathComponent("app-update-\(UUID().uuidString)", isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: tempRoot, withIntermediateDirectories: true)
-
-            let (downloaded, response) = try await NetworkClient.download(from: packageURL)
-            try validateHTTP(response: response, data: Data())
             let zipURL = tempRoot.appendingPathComponent(packageURL.lastPathComponent.isEmpty ? "update.zip" : packageURL.lastPathComponent)
-            if FileManager.default.fileExists(atPath: zipURL.path) {
-                try FileManager.default.removeItem(at: zipURL)
-            }
-            try FileManager.default.copyItem(at: downloaded, to: zipURL)
-
+            var request = URLRequest(url: packageURL)
+            request.timeoutInterval = NetworkRequestKind.download.requestTimeout
+            request.setValue("Mihomo", forHTTPHeaderField: "User-Agent")
+            let downloader = SoftwareUpdateDownloader(progressHandler: onDownloadProgress)
+            let response = try await downloader.download(for: request, to: zipURL)
+            try validateHTTP(response: response, data: Data())
+            onVerificationStarted()
+            try Task.checkCancellation()
             return try prepareDownloadedUpdatePackage(zipURL: zipURL, manifest: manifest, tempRoot: tempRoot)
         } catch {
             try? FileManager.default.removeItem(at: tempRoot)
