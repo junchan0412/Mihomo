@@ -31,12 +31,7 @@ struct ActivityWorkspaceHeader: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(.bar)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(MihomoUI.cardStroke)
-                .frame(height: 1)
-        }
+        .background(MihomoUI.pageBackground)
     }
 
     private var moduleTabs: some View {

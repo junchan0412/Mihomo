@@ -146,4 +146,92 @@ final class NodeProviderProfileSynchronizerTests: XCTestCase {
         XCTAssertTrue(synchronized.contains("keep-me: # managed locally\n    type: http\n    # keep health check note"))
         XCTAssertTrue(synchronized.contains("rules: []"))
     }
+
+    func testRemovesSelectedProviderBlockWhilePreservingUnknownFieldsAndComments() throws {
+        let profile = """
+        proxy-providers:
+          remove-me: # locally managed
+            type: http
+            url: https://example.com/remove
+            health-check:
+              enable: true
+          keep-me:
+            type: file
+            path: proxy_providers/keep.yaml
+        proxy-groups:
+          - name: Auto
+            type: select
+            use:
+              - keep-me
+        """
+
+        let result = try NodeProviderProfileSynchronizer().synchronizationPreview(
+            [],
+            into: profile,
+            profileID: UUID(),
+            profileName: "Removal Test",
+            removingProviderNames: ["REMOVE-ME"]
+        )
+
+        XCTAssertFalse(result.content.contains("remove-me:"))
+        XCTAssertFalse(result.content.contains("https://example.com/remove"))
+        XCTAssertTrue(result.content.contains("keep-me:"))
+        XCTAssertTrue(result.content.contains("health-check:") == false)
+        XCTAssertTrue(result.content.contains("proxy-groups:"))
+        XCTAssertEqual(result.changes.map(\.kind), [.remove])
+        XCTAssertEqual(result.changes.first?.providerName, "remove-me")
+    }
+}
+
+@MainActor
+extension NodeProviderProfileSynchronizerTests {
+    func testAppStorePreviewRemovesDeletedProviderFromAssociatedProfile() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MihomoNodeProviderRemoval-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let profileID = UUID()
+        let fileName = "\(profileID.uuidString).yaml"
+        let file = directory.appendingPathComponent(fileName)
+        try """
+        mixed-port: 7890
+        proxy-providers:
+          stale-subscription:
+            type: http
+            url: https://example.com/stale
+            path: proxy_providers/stale.yaml
+        rules:
+          - MATCH,DIRECT
+        """.write(to: file, atomically: true, encoding: .utf8)
+
+        var settings = AppSettings.default
+        settings.profileStoragePath = directory.path
+        let profile = ProfileItem(
+            id: profileID,
+            name: "Removal Test",
+            source: .local,
+            location: file.path,
+            fileName: fileName,
+            updatedAt: Date()
+        )
+        let provider = NodeProvider(
+            name: "stale-subscription",
+            url: "https://example.com/stale",
+            path: "proxy_providers/stale.yaml",
+            profileIDs: [profileID]
+        )
+        let store = AppStore()
+        store.settings = settings
+        store.profiles = [profile]
+        store.nodeProviders = [provider]
+
+        let preview = try store.previewNodeProviderChange([], title: "删除节点提供商")
+
+        XCTAssertEqual(preview.providerDelta, -1)
+        XCTAssertEqual(preview.profilePatches.count, 1)
+        XCTAssertEqual(preview.changes.map(\.kind), [.remove])
+        XCTAssertFalse(preview.profilePatches[0].updatedContent.contains("stale-subscription:"))
+        XCTAssertTrue(preview.profilePatches[0].updatedContent.contains("rules:"))
+    }
 }

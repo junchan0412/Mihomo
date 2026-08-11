@@ -43,8 +43,8 @@ struct ProfilesPresentationSnapshot {
 
     private static func tableHeight(for visibleCount: Int) -> CGFloat {
         let visibleRows = max(visibleCount, 1)
-        let naturalHeight = 30 + CGFloat(visibleRows) * 28
-        return min(max(naturalHeight, 176), 280)
+        let naturalHeight = 16 + CGFloat(visibleRows) * 78
+        return min(max(naturalHeight, 210), 420)
     }
 
     private static func columns(activeProfileID: UUID?) -> [AppKitTableColumn<ProfileItem>] {

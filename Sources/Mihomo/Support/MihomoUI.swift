@@ -28,27 +28,30 @@ enum MihomoUI {
     }
 
     static var cardFill: Color {
-        if NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency {
-            return Color(nsColor: .controlBackgroundColor)
-        }
-        return Color(nsColor: .controlBackgroundColor).opacity(0.72)
+        // Keep cards opaque so the same semantic surface renders identically
+        // over every page and in both appearance modes. Translucent cards
+        // composited over `.bar`, `.windowBackgroundColor`, and AppKit tables
+        // were the source of the large light/dark color jumps.
+        Color(nsColor: .controlBackgroundColor)
     }
 
     static var cardStroke: Color {
         if NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast {
-            return Color(nsColor: .labelColor).opacity(0.58)
+            return Color(nsColor: .labelColor).opacity(0.48)
         }
-        return Color(nsColor: .separatorColor).opacity(0.42)
+        return Color(nsColor: .separatorColor).opacity(0.24)
     }
 
     static var pageBackground: Color {
-        Color(nsColor: .textBackgroundColor)
+        // Match the opaque card surface so the workspace and sidebar do not
+        // introduce a separate gray plane behind the white content cards.
+        cardFill
     }
 
     /// Keep the primary navigation column in the same visual plane as the workspace.
     /// Using the text background avoids the large material contrast of the system sidebar.
     static var sidebarBackground: Color {
-        Color(nsColor: .textBackgroundColor)
+        pageBackground
     }
 
     static var mutedFill: Color {

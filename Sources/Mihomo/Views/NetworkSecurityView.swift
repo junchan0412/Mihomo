@@ -9,7 +9,6 @@ struct NetworkSecurityView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             ScrollView {
                 Group {
                     switch store.networkWorkspaceTab {

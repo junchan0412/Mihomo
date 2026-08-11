@@ -37,8 +37,6 @@ struct NodeProviderWorkspaceView: View {
                 }
                 .padding(14)
 
-                Divider()
-
                 HStack {
                     Text("筛选分组")
                         .font(.caption)
@@ -60,7 +58,6 @@ struct NodeProviderWorkspaceView: View {
                 .padding(.vertical, 8)
 
                 if let undoTitle = store.nodeProviderUndoTitle {
-                    Divider()
                     HStack(spacing: 8) {
                         Label("已应用\(undoTitle)", systemImage: "checkmark.circle.fill")
                             .foregroundStyle(.secondary)
@@ -75,8 +72,6 @@ struct NodeProviderWorkspaceView: View {
                     .padding(.vertical, 8)
                 }
 
-                Divider()
-
                 if filteredNodeProviders.isEmpty {
                     ContentUnavailableView(
                         searchText.isEmpty ? "还没有节点提供商" : "没有匹配的节点提供商",
@@ -86,7 +81,7 @@ struct NodeProviderWorkspaceView: View {
                     .frame(maxWidth: .infinity, minHeight: 260)
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 0) {
+                        LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(filteredNodeProviders) { provider in
                                 NodeProviderRow(
                                     provider: provider,
@@ -101,9 +96,9 @@ struct NodeProviderWorkspaceView: View {
                                         presentNodeProviderPreview(store.nodeProviders.filter { $0.id != provider.id }, title: "删除节点提供商")
                                     }
                                 )
-                                if provider.id != filteredNodeProviders.last?.id { Divider().padding(.leading, 48) }
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(minHeight: 290, maxHeight: .infinity)
                 }

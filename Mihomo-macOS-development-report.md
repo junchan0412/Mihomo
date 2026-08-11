@@ -1,13 +1,13 @@
 # Mihomo macOS 开发文档
 
-更新日期：2026-08-06
-对应版本：`v1.25.0 (80)`
+更新日期：2026-08-12
+对应版本：`v1.25.2 (82)`
 
 本文档描述当前架构、关键数据流、页面职责、开发约束和发布流程。历史版本流水账不再作为主体；需要追溯时使用 Git history 和各版本 Release Notes。
 
 ## 当前状态与目标
 
-- 当前状态：已从远端最新发布基线 `v1.24.1 (79)` 递增到 `v1.25.0 (80)`。配置资源与远程覆写继续使用有界并发队列；Provider 写入改为 staging、`fsync`、内容解析、SHA-256 校验后原子替换，并在失败时保留旧文件。批量 Provider/Profile 刷新支持取消、去重、互斥和 generation 保护。网络接管状态增加 unknown 与最近检查时间，系统代理、DNS、TUN 操作互斥，TUN 路由恢复失败默认 fail-closed。设置保存前校验端口、并发、超时、HTTP(S) URL、DNS 与 IP/CIDR；更新器支持受信任 HTTPS manifest 镜像回退 GitHub，Ed25519 manifest 链不变。网络状态、网络页面子区和 manifest 校验按职责拆分后，维护性审计覆盖 232 个 Swift 文件并保持 0 warning、0 over-max。
+- 当前状态：在 `v1.25.1 (81)` 的可靠性基线上，`v1.25.2 (82)` 将规则、配置、覆写、配置资源和日志迁移为统一 SwiftUI 内容行，使用单色列表表面与固定右侧列；资源工作区拆分为“配置资源 / 节点提供商 / 规则”。侧边栏改用无动画导航行，Footer 独立订阅高频运行状态；页面进入不再同步重解析整份配置，并支持 Command/Shift 多选。配置资源与远程覆写继续使用有界并发队列；Provider 写入仍采用 staging、`fsync`、内容解析、SHA-256 校验后原子替换，并在失败时保留旧文件。网络接管、更新器、Helper 与安全边界保持上一版本约束。维护性审计覆盖 235 个 Swift 文件并保持 0 warning、0 over-max。
 - 目标状态：保持 350 行 warning、500 行 over-max、完整 `swift test`、发布 smoke、网络恢复 smoke、辅助功能清单和 ad-hoc manifest 校验均为持续门禁；下一轮仅在真实使用反馈或新的失败证据出现时增加范围，避免无证据的复杂化。
 
 ## 1. 产品原则
@@ -266,14 +266,14 @@ git diff --check
 APP_VERSION=1.25.0 APP_BUILD=80 ./script/build_and_run.sh --verify
 ```
 
-本轮 `v1.25.0 (80)` 核查证据：
+本轮 `v1.25.1 (81)` 核查证据：
 
-- `DEVELOPER_DIR='/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer' swift test`：225 tests，0 failures。
+- `DEVELOPER_DIR='/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer' swift test`：229 tests，0 failures。
 - `git diff --check`：通过。
-- `./script/maintainability_audit.sh --fail-on-max`：232 个 Swift 文件，warning 0，over-max 0。
-- `APP_VERSION=1.25.0 APP_BUILD=80 ./script/build_and_run.sh --verify`：构建、ad-hoc 签名和 bundle 严格校验通过。
-- `APP_VERSION=1.25.0 APP_BUILD=80 MIHOMO_ALLOW_UNNOTARIZED_RELEASE=1 ./script/package_release.sh 1.25.0`：生成 `dist/releases/Mihomo-1.25.0-macOS-arm64.zip` 与签名 manifest。
-- `./script/release_smoke_test.sh 1.25.0`：通过 SHA-256、Ed25519、bundle、App/Helper CDHash、zip 内容和更新替换 smoke。
+- `./script/maintainability_audit.sh --fail-on-max`：233 个 Swift 文件，warning 0，over-max 0。
+- `APP_VERSION=1.25.1 APP_BUILD=81 ./script/build_and_run.sh --verify`：构建、ad-hoc 签名和 bundle 严格校验通过。
+- `APP_VERSION=1.25.1 APP_BUILD=81 MIHOMO_ALLOW_UNNOTARIZED_RELEASE=1 ./script/package_release.sh 1.25.1`：生成 `dist/releases/Mihomo-1.25.1-macOS-arm64.zip` 与签名 manifest。
+- `./script/release_smoke_test.sh 1.25.1`：通过 SHA-256、Ed25519、bundle、App/Helper CDHash、zip 内容和更新替换 smoke。
 
 高风险改动补充验证：
 

@@ -68,6 +68,40 @@ final class ResourcePresentationTests: XCTestCase {
         XCTAssertFalse(ExternalResourceRow(provider: local, latestRecord: nil).isReady)
     }
 
+    func testRuleWorkspaceFiltersConfigurationResourcesByProviderKind() {
+        let proxy = provider(kind: "Proxy", name: "Nodes", remoteURL: "https://example.com/nodes")
+        let rule = provider(kind: "Rule", name: "Rules", remoteURL: "https://example.com/rules")
+
+        let presentation = ResourceTablePresentation.make(
+            providers: [proxy, rule],
+            latestRecords: [:],
+            historyKey: historyKey(for:),
+            searchText: "",
+            showsOnlyUnready: false,
+            kindFilter: "Rule"
+        )
+
+        XCTAssertEqual(presentation.allRows.map(\.provider.kind), ["Rule"])
+        XCTAssertEqual(presentation.proxyCount, 0)
+        XCTAssertEqual(presentation.ruleCount, 1)
+    }
+
+    func testConfigResourceWorkspaceFiltersProxyProviders() {
+        XCTAssertEqual(ResourceWorkspace.configResources.providerKind, "Proxy")
+        XCTAssertEqual(ResourceWorkspace.rules.providerKind, "Rule")
+        XCTAssertNil(ResourceWorkspace.nodeProviders.providerKind)
+    }
+
+    func testResourceWorkspaceOrderMatchesResourceCategories() {
+        XCTAssertEqual(
+            ResourceWorkspace.allCases,
+            [.configResources, .nodeProviders, .rules]
+        )
+        XCTAssertEqual(ResourceWorkspace.configResources.title, "配置资源")
+        XCTAssertEqual(ResourceWorkspace.nodeProviders.title, "节点提供商")
+        XCTAssertEqual(ResourceWorkspace.rules.title, "规则")
+    }
+
     private func provider(
         kind: String,
         name: String,

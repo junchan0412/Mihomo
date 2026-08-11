@@ -20,6 +20,7 @@ struct ConfigFragmentListPane: View {
     var presentation: ConfigFragmentListPresentation
     @Binding var selectedFragmentIDs: Set<UUID>
     var actions: ConfigFragmentListActions
+    @State private var selectionAnchor: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -53,20 +54,128 @@ struct ConfigFragmentListPane: View {
                 )
             )
         } else {
-            AppKitTable(
-                rows: presentation.visibleFragments,
-                selection: $selectedFragmentIDs,
-                columns: presentation.columns,
-                allowsMultipleSelection: true,
-                onDoubleClick: edit,
-                onActivate: activateFirst,
-                onPreview: actions.preview,
-                onDelete: actions.delete,
-                hasHorizontalScroller: false,
-                allowsParentScrollPassthrough: true,
-                contextMenuActions: contextMenuActions
-            )
+            MihomoListSurface(minHeight: presentation.tableHeight, maxHeight: presentation.tableHeight) {
+                ForEach(Array(presentation.visibleFragments.enumerated()), id: \.element.id) { offset, fragment in
+                    fragmentRow(fragment, order: presentation.index(of: fragment).map { $0 + 1 } ?? offset + 1)
+                }
+            }
         }
+    }
+
+    private func fragmentRow(_ fragment: ConfigFragment, order: Int) -> some View {
+        MihomoSelectableRow(
+            isSelected: selectedFragmentIDs.contains(fragment.id),
+            select: { select(fragment) },
+            activate: { edit(fragment) }
+        ) {
+            HStack(spacing: 12) {
+                Toggle(
+                    "启用覆写",
+                    isOn: Binding(
+                        get: { fragment.enabled },
+                        set: { enabled in
+                            selectedFragmentIDs = [fragment.id]
+                            selectionAnchor = fragment.id
+                            actions.setEnabled([fragment], enabled)
+                        }
+                    )
+                )
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+
+                Text("\(order)")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, alignment: .leading)
+
+                Image(systemName: fragment.kind == .yaml ? "doc.text" : "curlybraces")
+                    .foregroundStyle(fragment.enabled ? Color.accentColor : Color.secondary)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(fragment.name)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(fragment.enabled ? .primary : .secondary)
+                            .lineLimit(1)
+                        MihomoRowBadge(title: fragment.kind.title, color: fragment.kind == .yaml ? .blue : .orange)
+                        MihomoRowBadge(title: fragment.isRemote ? "远程" : "本地", color: fragment.isRemote ? .purple : .secondary)
+                        if fragment.enabled == false { MihomoRowBadge(title: "已停用") }
+                    }
+                    Text(ConfigFragmentTablePresentation.sourceText(for: fragment))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(ConfigFragmentTablePresentation.scopeText(for: fragment))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Spacer(minLength: 8)
+
+                MihomoRowMetadata(
+                    primary: Formatters.shortDate.string(from: fragment.updatedAt),
+                    secondary: fragment.appliesGlobally ? "全部配置" : "指定配置"
+                )
+
+                MihomoRowActions {
+                    Button {
+                        selectedFragmentIDs = [fragment.id]
+                        selectionAnchor = fragment.id
+                        edit(fragment)
+                    } label: {
+                        Image(systemName: "pencil")
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("编辑覆写")
+
+                    Menu {
+                        Button(fragment.enabled ? "停用" : "启用") { actions.setEnabled([fragment], !fragment.enabled) }
+                        if fragment.isRemote { Button("刷新") { actions.refresh([fragment]) } }
+                        Button("快速查看") { actions.preview([fragment]) }
+                        Button("复制内容") { copyContent([fragment]) }
+                        Button("上移") { actions.move(fragment, -1) }
+                            .disabled(canMove(fragment, offset: -1) == false)
+                        Button("下移") { actions.move(fragment, 1) }
+                            .disabled(canMove(fragment, offset: 1) == false)
+                        Divider()
+                        Button("删除", role: .destructive) { actions.delete([fragment]) }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: 18, height: 18)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .help("更多操作")
+                }
+            }
+        }
+        .contextMenu {
+            Button(fragment.enabled ? "停用" : "启用") { actions.setEnabled([fragment], !fragment.enabled) }
+            Button("编辑") { edit(fragment) }
+            if fragment.isRemote { Button("刷新") { actions.refresh([fragment]) } }
+            Button("快速查看") { actions.preview([fragment]) }
+            Button("复制内容") { copyContent([fragment]) }
+            Button("上移") { actions.move(fragment, -1) }
+                .disabled(canMove(fragment, offset: -1) == false)
+            Button("下移") { actions.move(fragment, 1) }
+                .disabled(canMove(fragment, offset: 1) == false)
+            Divider()
+            Button("删除", role: .destructive) { actions.delete([fragment]) }
+        }
+    }
+
+    private func select(_ fragment: ConfigFragment) {
+        let update = TableSelection.updated(
+            selectedFragmentIDs,
+            clicking: fragment.id,
+            visibleIDs: presentation.visibleFragments.map(\.id),
+            anchor: selectionAnchor,
+            modifiers: NSEvent.modifierFlags
+        )
+        selectedFragmentIDs = update.selection
+        selectionAnchor = update.anchor
     }
 
     private var actionBar: some View {
@@ -135,43 +244,9 @@ struct ConfigFragmentListPane: View {
         .buttonStyle(.bordered)
     }
 
-    private var contextMenuActions: [AppKitTableContextAction<ConfigFragment>] {
-        [
-            .init("启用", isEnabled: { $0.contains(where: { !$0.enabled }) }) {
-                actions.setEnabled($0, true)
-            },
-            .init("停用", isEnabled: { $0.contains(where: \.enabled) }) {
-                actions.setEnabled($0, false)
-            },
-            .init("编辑", isEnabled: { $0.count == 1 }) { fragments in
-                guard let fragment = fragments.first else { return }
-                edit(fragment)
-            },
-            .init("刷新", isEnabled: { $0.contains(where: \.isRemote) }) {
-                actions.refresh($0)
-            },
-            .init("快速查看", action: actions.preview),
-            .init("复制内容", isEnabled: { $0.count == 1 }) { copyContent($0) },
-            .init("上移", isEnabled: canMoveUp) { fragments in
-                guard let fragment = fragments.first else { return }
-                actions.move(fragment, -1)
-            },
-            .init("下移", isEnabled: canMoveDown) { fragments in
-                guard let fragment = fragments.first else { return }
-                actions.move(fragment, 1)
-            },
-            .init("删除", isDestructive: true, isEnabled: { !$0.isEmpty }, action: actions.delete)
-        ]
-    }
-
     private func edit(_ fragment: ConfigFragment) {
         selectedFragmentIDs = [fragment.id]
         actions.edit(fragment)
-    }
-
-    private func activateFirst(_ fragments: [ConfigFragment]) {
-        guard let fragment = fragments.first else { return }
-        edit(fragment)
     }
 
     private func copyContent(_ fragments: [ConfigFragment]) {
@@ -180,17 +255,9 @@ struct ConfigFragmentListPane: View {
         NSPasteboard.general.setString(fragment.content, forType: .string)
     }
 
-    private func canMoveUp(_ fragments: [ConfigFragment]) -> Bool {
-        guard fragments.count == 1, let fragment = fragments.first,
-              let index = presentation.index(of: fragment)
-        else { return false }
-        return index > 0
-    }
-
-    private func canMoveDown(_ fragments: [ConfigFragment]) -> Bool {
-        guard fragments.count == 1, let fragment = fragments.first,
-              let index = presentation.index(of: fragment)
-        else { return false }
-        return index < presentation.allFragments.count - 1
+    private func canMove(_ fragment: ConfigFragment, offset: Int) -> Bool {
+        guard let index = presentation.index(of: fragment) else { return false }
+        let destination = index + offset
+        return presentation.allFragments.indices.contains(destination)
     }
 }

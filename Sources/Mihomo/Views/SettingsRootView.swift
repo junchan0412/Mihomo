@@ -11,7 +11,6 @@ struct SettingsRootView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             ScrollView {
                 Group {
                     switch tab {
@@ -182,7 +181,7 @@ struct SettingsRootView: View {
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 12)
-        .background(.bar)
+        .background(MihomoUI.pageBackground)
     }
 
     private func chooseMihomoBinary() {

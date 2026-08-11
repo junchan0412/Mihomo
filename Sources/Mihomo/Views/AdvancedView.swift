@@ -36,7 +36,6 @@ struct AdvancedView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
-            Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     switch tab {
@@ -63,7 +62,6 @@ struct AdvancedView: View {
         .background(MihomoUI.pageBackground)
         .onAppear {
             synchronizeDraft(with: store.settings, force: true)
-            store.refreshConfigArtifacts()
         }
         .onReceive(store.$settings) { synchronizeDraft(with: $0, force: false) }
         .confirmationDialog("卸载 XPC Helper？", isPresented: $confirmsHelperUninstall, titleVisibility: .visible) {
@@ -188,7 +186,7 @@ struct AdvancedView: View {
         }
         .padding(.horizontal, MihomoUI.pageHorizontalPadding)
         .padding(.vertical, 12)
-        .background(.bar)
+        .background(MihomoUI.pageBackground)
     }
 
     private func synchronizeDraft(with settings: AppSettings, force: Bool) {

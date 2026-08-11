@@ -3,7 +3,7 @@ import SwiftUI
 
 struct ResourcesView: View {
     @EnvironmentObject private var store: AppStore
-    @State private var workspace: ResourceWorkspace = .nodeProviders
+    @State private var workspace: ResourceWorkspace = .configResources
     @State private var selectedResourceIDs: Set<String> = []
     @State private var searchText = ""
     @FocusState private var searchIsFocused: Bool
@@ -27,7 +27,8 @@ struct ResourcesView: View {
             latestRecords: latestRecords,
             historyKey: store.providerHistoryKey(for:),
             searchText: searchText,
-            showsOnlyUnready: showsOnlyUnready
+            showsOnlyUnready: showsOnlyUnready,
+            kindFilter: workspace.providerKind
         )
     }
 
@@ -68,7 +69,6 @@ struct ResourcesView: View {
                     rollbackableRows: rollbackableRows,
                     selectedURLs: resourceURLs(for: selectedRows),
                     isResourceUpdateInProgress: store.isResourceBatchOperationInProgress,
-                    contextMenuActions: resourceContextMenuActions,
                     updateAll: { Task { await store.updateAllExternalResources() } },
                     refresh: refreshResources,
                     preview: previewResources,
@@ -86,7 +86,6 @@ struct ResourcesView: View {
         .compatibleSearchFocused($searchIsFocused)
         .focusedSceneValue(\.workspaceCommands, commandContext(presentation, selectedRows: selectedRows))
         .onAppear {
-            store.refreshConfigArtifacts()
             ensureSelection()
         }
         .onChange(of: store.providers) {
@@ -113,7 +112,7 @@ struct ResourcesView: View {
     private func header(_ presentation: ResourceTablePresentation) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("外部资源")
+                Text("资源")
                     .font(MihomoUI.Fonts.pageTitle)
                 Text(workspace.subtitle)
                     .font(MihomoUI.Fonts.pageSubtitle)
@@ -127,11 +126,12 @@ struct ResourcesView: View {
                     ResourceCountBadge(title: "节点提供商", value: store.nodeProviders.count)
                     ResourceCountBadge(title: "当前配置", value: selectedNodeProviderCount)
                 } else {
-                    ResourceCountBadge(title: "Proxy", value: presentation.proxyCount)
-                    ResourceCountBadge(title: "Rule", value: presentation.ruleCount)
+                    ResourceCountBadge(
+                        title: workspace == .rules ? "规则" : "配置资源",
+                        value: presentation.allRows.count
+                    )
                     ResourceCountBadge(title: "未就绪", value: presentation.unreadyCount)
                 }
-                Divider().frame(height: 22)
                 Text("并发").foregroundStyle(.secondary)
                 Stepper(value: resourceConcurrency, in: 1...12) {
                     Text("\(store.settings.resourceUpdateMaxConcurrent)").monospacedDigit().frame(width: 24)
@@ -256,28 +256,6 @@ struct ResourcesView: View {
         Task {
             await store.rollbackProviderResources(providers)
         }
-    }
-
-    private var resourceContextMenuActions: [AppKitTableContextAction<ExternalResourceRow>] {
-        [
-            .init("更新", isEnabled: { _ in store.isResourceBatchOperationInProgress == false }) { rows in
-                refreshResources(rows)
-            },
-            .init(
-                "回滚",
-                isDestructive: true,
-                isEnabled: { rows in rows.contains { store.latestProviderRollbackRecord(for: $0.provider) != nil } }
-            ) { rows in
-                selectedResourceIDs = Set(rows.map(\.id))
-                confirmsRollback = true
-            },
-            .init("快速查看", isEnabled: { resourceURLs(for: $0).isEmpty == false }) { rows in
-                previewResources(rows)
-            },
-            .init("在 Finder 中显示", isEnabled: { resourceURLs(for: $0).isEmpty == false }) { rows in
-                NSWorkspace.shared.activateFileViewerSelecting(resourceURLs(for: rows))
-            }
-        ]
     }
 
     private func commandContext(

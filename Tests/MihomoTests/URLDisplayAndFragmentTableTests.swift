@@ -110,7 +110,7 @@ final class URLDisplayAndFragmentTableTests: XCTestCase {
         XCTAssertEqual(presentation.selectedFragment?.id, remote.id)
         XCTAssertEqual(presentation.enableActionTitle, "启用")
         XCTAssertEqual(presentation.enableActionSystemImage, "checkmark.circle")
-        XCTAssertEqual(presentation.tableHeight, 176)
+        XCTAssertEqual(presentation.tableHeight, 210)
         XCTAssertEqual(presentation.index(of: remote), 1)
     }
 
@@ -126,7 +126,7 @@ final class URLDisplayAndFragmentTableTests: XCTestCase {
         XCTAssertEqual(presentation.selectedFragments.count, 2)
         XCTAssertNil(presentation.selectedFragment)
         XCTAssertEqual(presentation.enableActionTitle, "停用")
-        XCTAssertEqual(presentation.tableHeight, 280)
+        XCTAssertEqual(presentation.tableHeight, 420)
     }
 
     private func fragment(name: String) -> ConfigFragment {

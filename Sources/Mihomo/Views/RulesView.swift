@@ -46,7 +46,6 @@ struct RulesView: View {
                 refresh: store.refreshConfigArtifacts,
                 apply: { Task { await store.restartCore() } }
             )
-            Divider()
 
             RuleTablePane(
                 presentation: presentation,
@@ -68,7 +67,6 @@ struct RulesView: View {
             commandContext(selectedEntries: selectedEntries, selectedEntry: selectedEntry)
         )
         .onAppear {
-            store.refreshConfigArtifacts()
             applyRuleFocusQuery()
         }
         .onChange(of: store.ruleFocusQuery) {

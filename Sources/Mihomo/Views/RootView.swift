@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct RootView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var store: AppStore
     @AppStorage("main.sidebar.visible") private var sidebarIsVisible = true
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -9,16 +8,16 @@ struct RootView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            MihomoSidebarView(selection: $store.selectedSection)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 236, max: 260)
-                .background(MihomoUI.sidebarBackground)
+            ZStack {
+                MihomoUI.sidebarBackground
+                MihomoSidebarView(selection: $store.selectedSection)
+            }
+            .navigationSplitViewColumnWidth(min: 220, ideal: 236, max: 260)
         } detail: {
             DetailSwitchView(section: store.selectedSection)
-                .id(store.selectedSection)
                 .navigationTitle("")
-                .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .trailing)), removal: .opacity))
-                .animation(reduceMotion ? nil : MihomoUI.Motion.soft, value: store.selectedSection)
         }
+        .navigationSplitViewStyle(.balanced)
         .toolbar(id: "main") {
             ToolbarItem(id: "core-control", placement: .primaryAction) {
                 ToolbarStateButton(
@@ -76,6 +75,8 @@ struct RootView: View {
             }
         }
         .toolbarRole(.editor)
+        .background(MihomoUI.pageBackground)
+        .toolbarBackground(MihomoUI.pageBackground, for: .windowToolbar)
         .sheet(isPresented: $store.isCommandPalettePresented) {
             CommandPaletteView()
                 .environmentObject(store)

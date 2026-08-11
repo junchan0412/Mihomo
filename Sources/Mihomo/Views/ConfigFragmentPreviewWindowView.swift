@@ -48,7 +48,6 @@ struct ConfigFragmentPreviewWindowView: View {
         let report = analyzer.analyze(fragment)
         return VStack(spacing: 0) {
             previewHeader(fragment, report: report)
-            Divider()
             HSplitView {
                 ConfigFragmentCodeView(fragment: fragment)
                     .frame(minWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
@@ -148,7 +147,7 @@ struct ConfigFragmentCodeView: View {
             }
             .padding(14)
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(MihomoUI.pageBackground)
         .accessibilityLabel("\(fragment.name) 覆写代码")
     }
 

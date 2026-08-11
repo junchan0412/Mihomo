@@ -2,18 +2,32 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.25.0 (80)`
+当前版本：`v1.25.2 (82)`
 
-## v1.25.0 更新重点
+## v1.25.2 更新重点
+
+- 规则、配置、覆写、配置资源与日志列表统一为 SwiftUI 内容行，使用同色背景、稳定分隔和固定右侧状态/操作列，取消相邻行的交替底色。
+- 资源页明确拆分为“配置资源 / 节点提供商 / 规则”，Proxy 与 Rule Provider 不再混在同一列表；节点提供商的时间、刷新和更多操作列保持统一横坐标。
+- 侧边栏改用无动画的稳定导航行，并把高频连接/运行状态移到独立 Footer，修复切页时图标闪烁。
+- 页面进入时不再同步重解析整份配置，减少切换工作区时的主线程卡顿；多选列表支持 Command/Shift 选择。
+- `swift test`：231/231 通过；维护性审计覆盖 235 个 Swift 文件，0 warning、0 over-max。
+
+完整变更见 [v1.25.2 Release Notes](docs/releases/v1.25.2.md)。
+
+## v1.25.1 更新重点
 
 - Activity 搜索加入 200ms debounce、稳定选区 reconciliation 和有界并发批量关闭，降低高频列表刷新与批量操作压力。
 - 网络接管状态新增“未知”和最近检查时间；系统代理、DNS、TUN 操作互斥，TUN 路由恢复失败默认 fail-closed，并提供明确的强制关闭确认。
 - Provider 下载采用 staging + fsync + 原子替换，拒绝 HTML/空映射/无有效条目内容，并记录 SHA-256 校验摘要。
 - 批量 Provider/Profile 刷新支持取消、去重和旧任务 generation 保护；设置保存前校验端口、并发、超时、URL、DNS 与 IP/CIDR。
 - 更新器支持受信任 HTTPS manifest 镜像并自动回退 GitHub，manifest Ed25519 签名链保持不变；网络页面、状态派生和 manifest 校验按职责拆分。
-- `swift test`：225/225 通过；维护性审计覆盖 232 个 Swift 文件，0 warning、0 over-max。
+- 删除节点提供商时同步移除关联 Profile 中的 `proxy-providers` 条目，并保留配置注释与换行格式。
+- 主窗口侧栏、页面背景、Toolbar 与 cards 统一语义底色，减少透明材质叠加造成的视觉色差。
+- 规则、配置、覆写、资源与日志列表统一使用稳定单色背景，去除相邻行色差；资源页拆分为“配置资源 / 节点提供商 / 规则”，并统一右侧操作列横坐标。
+- 页面切换移除整页重建、全局 transition 与 selection 动画，减少侧栏图标闪烁和切换卡顿。
+- `swift test`：229/229 通过；维护性审计覆盖 233 个 Swift 文件，0 warning、0 over-max。
 
-完整变更见 [v1.25.0 Release Notes](docs/releases/v1.25.0.md)。
+完整变更见 [v1.25.1 Release Notes](docs/releases/v1.25.1.md)。
 
 ## v1.24.1 更新重点
 

@@ -15,11 +15,12 @@ extension AppKitTable {
         tableView.headerView = NSTableHeaderView()
         tableView.allowsMultipleSelection = allowsMultipleSelection
         tableView.allowsEmptySelection = true
-        tableView.usesAlternatingRowBackgroundColors = true
         tableView.selectionHighlightStyle = .regular
         tableView.rowHeight = 28
-        tableView.intercellSpacing = NSSize(width: 0, height: 1)
-        tableView.backgroundColor = .textBackgroundColor
+        tableView.intercellSpacing = .zero
+        tableView.usesAlternatingRowBackgroundColors = false
+        tableView.gridStyleMask = []
+        tableView.backgroundColor = .controlBackgroundColor
         if contextMenuActions.isEmpty == false {
             let menu = NSMenu()
             menu.delegate = context.coordinator
@@ -44,6 +45,7 @@ extension AppKitTable {
         scrollView.allowsParentScrollPassthrough = allowsParentScrollPassthrough
         scrollView.autohidesScrollers = true
         scrollView.borderType = borderType
+        scrollView.drawsBackground = false
         scrollView.documentView = tableView
 
         context.coordinator.configureColumns(on: tableView)
@@ -54,8 +56,13 @@ extension AppKitTable {
         guard let tableView = scrollView.documentView as? NSTableView else { return }
         context.coordinator.parent = self
         tableView.allowsMultipleSelection = allowsMultipleSelection
+        tableView.intercellSpacing = .zero
+        tableView.usesAlternatingRowBackgroundColors = false
+        tableView.gridStyleMask = []
+        tableView.backgroundColor = .controlBackgroundColor
         scrollView.hasHorizontalScroller = hasHorizontalScroller
         scrollView.borderType = borderType
+        scrollView.drawsBackground = false
         (scrollView as? AppKitTableScrollView)?.allowsParentScrollPassthrough = allowsParentScrollPassthrough
         context.coordinator.configureContextMenu(on: tableView)
         context.coordinator.configureColumns(on: tableView)
