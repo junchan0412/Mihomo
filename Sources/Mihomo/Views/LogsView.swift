@@ -8,6 +8,7 @@ struct LogsView: View {
     @FocusState private var searchIsFocused: Bool
     @State private var selectedCategory: LogCategory = .all
     @State private var selectedRowIDs: Set<UUID> = []
+    @State private var selectionAnchor: UUID?
     @State private var allRows: [LogPresentationRow] = []
     @State private var rows: [LogPresentationRow] = []
     @State private var confirmsClear = false
@@ -79,29 +80,102 @@ struct LogsView: View {
                     description: Text(logStore.entries.isEmpty ? "新的运行事件会显示在这里。" : "请调整分类或尝试其他搜索词。")
                 )
             } else {
-                AppKitTable(
-                    rows: rows,
-                    selection: $selectedRowIDs,
-                    columns: [
-                        .init(title: "时间", width: 160) { $0.time },
-                        .init(title: "分类", width: 110, textColor: { $0.category.color }) { $0.category.title },
-                        .init(title: "标题", width: 360) { $0.title },
-                        .init(title: "详情", width: 680) { $0.detail }
-                    ],
-                    allowsMultipleSelection: true,
-                    onActivate: { copyRows($0) },
-                    onPreview: { copyRows($0) },
-                    hasHorizontalScroller: true,
-                    borderType: .noBorder,
-                    contextMenuActions: [
-                        .init("复制") { copyRows($0) },
-                        .init("按此分类过滤", isEnabled: { $0.count == 1 }) { selected in
-                            guard let row = selected.first else { return }
-                            selectedCategory = row.category
-                        }
-                    ]
-                )
+                MihomoListSurface(minHeight: 0, maxHeight: .infinity) {
+                    ForEach(rows) { row in
+                        logRow(row)
+                    }
+                }
             }
+        }
+    }
+
+    private func logRow(_ row: LogPresentationRow) -> some View {
+        MihomoSelectableRow(
+            isSelected: selectedRowIDs.contains(row.id),
+            select: { select(row) },
+            activate: { copyRows([row]) }
+        ) {
+            HStack(spacing: 12) {
+                Image(systemName: levelSystemImage(row.level))
+                    .foregroundStyle(levelColor(row.level))
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(row.title)
+                            .font(.body.weight(.semibold))
+                            .lineLimit(1)
+                        MihomoRowBadge(title: row.category.title, color: Color(nsColor: row.category.color))
+                        MihomoRowBadge(title: row.level, color: levelColor(row.level))
+                    }
+                    Text(row.detail)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 8)
+
+                MihomoRowMetadata(
+                    primary: row.time,
+                    secondary: row.category.title,
+                    primaryColor: levelColor(row.level)
+                )
+
+                MihomoRowActions {
+                    Button { copyRows([row]) } label: {
+                        Image(systemName: "doc.on.doc")
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("复制日志")
+
+                    Menu {
+                        Button("复制") { copyRows([row]) }
+                        Button("按此分类过滤") { selectedCategory = row.category }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: 18, height: 18)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .help("更多操作")
+                }
+            }
+        }
+        .contextMenu {
+            Button("复制") { copyRows([row]) }
+            Button("按此分类过滤") { selectedCategory = row.category }
+        }
+    }
+
+    private func select(_ row: LogPresentationRow) {
+        let update = TableSelection.updated(
+            selectedRowIDs,
+            clicking: row.id,
+            visibleIDs: rows.map(\.id),
+            anchor: selectionAnchor,
+            modifiers: NSEvent.modifierFlags
+        )
+        selectedRowIDs = update.selection
+        selectionAnchor = update.anchor
+    }
+
+    private func levelSystemImage(_ level: String) -> String {
+        switch level.lowercased() {
+        case "error": return "xmark.octagon.fill"
+        case "warning", "warn": return "exclamationmark.triangle.fill"
+        case "debug": return "ladybug.fill"
+        default: return "info.circle.fill"
+        }
+    }
+
+    private func levelColor(_ level: String) -> Color {
+        switch level.lowercased() {
+        case "error": return .red
+        case "warning", "warn": return .orange
+        case "debug": return .secondary
+        default: return .green
         }
     }
 

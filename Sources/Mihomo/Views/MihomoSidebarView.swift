@@ -1,9 +1,6 @@
 import SwiftUI
 
 struct MihomoSidebarView: View {
-    @Environment(\.openWindow) private var openWindow
-    @EnvironmentObject private var store: AppStore
-    @EnvironmentObject private var activityStore: RuntimeActivityStore
     @Binding var selection: AppSection
     @AppStorage("sidebar.favorites") private var favoriteSectionValues = ""
     @AppStorage("sidebar.section.general.expanded") private var mainSectionsExpanded = true
@@ -14,56 +11,125 @@ struct MihomoSidebarView: View {
     private let engineSections: [AppSection] = [.networkSecurity, .advanced, .diagnostics]
 
     var body: some View {
-        List(selection: $selection) {
-            if favoriteSections.isEmpty == false {
-                Section("收藏") {
-                    sidebarRows(favoriteSections)
-                }
-            }
-
-            Section(isExpanded: $mainSectionsExpanded) {
-                sidebarRows(mainSections)
-            } header: {
-                Text("常规")
-            }
-
-            Section(isExpanded: $engineSectionsExpanded) {
-                sidebarRows(engineSections)
-            } header: {
-                Text("引擎")
-            }
-
-            Section(isExpanded: $applicationSectionsExpanded) {
-                sidebarRows([.settings])
-            } header: {
-                Text("应用")
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .listRowBackground(MihomoUI.sidebarBackground)
-        .listRowSeparator(.hidden, edges: .all)
-        .background(MihomoUI.sidebarBackground)
-        .safeAreaInset(edge: .top, spacing: 0) {
+        VStack(spacing: 0) {
             brandHeader
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    if favoriteSections.isEmpty == false {
+                        sidebarSectionTitle("收藏")
+                        sidebarRows(favoriteSections)
+                    }
+
+                    collapsibleSection(
+                        title: "常规",
+                        isExpanded: $mainSectionsExpanded,
+                        sections: mainSections
+                    )
+                    collapsibleSection(
+                        title: "引擎",
+                        isExpanded: $engineSectionsExpanded,
+                        sections: engineSections
+                    )
+                    collapsibleSection(
+                        title: "应用",
+                        isExpanded: $applicationSectionsExpanded,
+                        sections: [.settings]
+                    )
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 6)
+            }
+            .frame(maxHeight: .infinity)
+
+            MihomoSidebarFooter()
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            sidebarFooter
+        .background(MihomoUI.sidebarBackground)
+    }
+
+    private func collapsibleSection(
+        title: String,
+        isExpanded: Binding<Bool>,
+        sections: [AppSection]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Button {
+                withTransaction(Transaction(animation: nil)) {
+                    isExpanded.wrappedValue.toggle()
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+                        .frame(width: 10)
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded.wrappedValue {
+                sidebarRows(sections)
+            }
+        }
+        .transaction { $0.animation = nil }
+    }
+
+    private func sidebarSectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.leading, 15)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func sidebarRows(_ sections: [AppSection]) -> some View {
+        VStack(spacing: 2) {
+            ForEach(sections) { section in
+                sidebarRow(section)
+            }
         }
     }
 
-    @ViewBuilder
-    private func sidebarRows(_ sections: [AppSection]) -> some View {
-        ForEach(sections) { section in
-            Label(section.sidebarTitle, systemImage: section.systemImage)
-                .tag(section)
-                .listRowSeparator(.hidden, edges: .all)
-                .help(section.title)
-                .contextMenu {
-                    Button(favoriteSections.contains(section) ? "从收藏移除" : "添加到收藏") {
-                        toggleFavorite(section)
-                    }
-                }
+    private func sidebarRow(_ section: AppSection) -> some View {
+        let isSelected = selection == section
+        return Button {
+            guard selection != section else { return }
+            withTransaction(Transaction(animation: nil)) {
+                selection = section
+            }
+        } label: {
+            HStack(spacing: 9) {
+                Image(systemName: section.systemImage)
+                    .symbolRenderingMode(.monochrome)
+                    .frame(width: 20, height: 20)
+                Text(section.sidebarTitle)
+                    .font(MihomoUI.Fonts.sidebar)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(isSelected ? Color.white : Color.primary)
+            .padding(.horizontal, 10)
+            .frame(height: 32)
+            .contentShape(Rectangle())
+            .background(
+                isSelected ? Color.accentColor : Color.clear,
+                in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .transaction { $0.animation = nil }
+        .help(section.title)
+        .accessibilityLabel(section.sidebarTitle)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .contextMenu {
+            Button(favoriteSections.contains(section) ? "从收藏移除" : "添加到收藏") {
+                toggleFavorite(section)
+            }
         }
     }
 
@@ -103,7 +169,19 @@ struct MihomoSidebarView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var sidebarFooter: some View {
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
+        return build.isEmpty ? "v\(version)" : "v\(version) (\(build))"
+    }
+}
+
+private struct MihomoSidebarFooter: View {
+    @Environment(\.openWindow) private var openWindow
+    @EnvironmentObject private var store: AppStore
+    @EnvironmentObject private var activityStore: RuntimeActivityStore
+
+    var body: some View {
         VStack(spacing: 9) {
             Button {
                 openWindow(id: "connections")
@@ -163,12 +241,6 @@ struct MihomoSidebarView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title)
         .accessibilityValue(isOn ? "已启用" : "未启用")
-    }
-
-    private var appVersion: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
-        return build.isEmpty ? "v\(version)" : "v\(version) (\(build))"
     }
 }
 

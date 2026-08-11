@@ -166,7 +166,7 @@ struct NodeProviderRow: View {
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            .frame(width: 116, alignment: .trailing)
+            .frame(width: MihomoListMetrics.metadataWidth, alignment: .trailing)
 
             HStack(spacing: 10) {
                 Button(action: refresh) {
@@ -186,11 +186,17 @@ struct NodeProviderRow: View {
                 .menuStyle(.borderlessButton)
                 .help("更多操作")
             }
-            .frame(width: 58, alignment: .trailing)
+            .frame(width: MihomoListMetrics.actionsWidth, alignment: .trailing)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, MihomoListMetrics.rowHorizontalPadding)
+        .padding(.vertical, MihomoListMetrics.rowVerticalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(MihomoUI.cardStroke.opacity(0.7))
+                .frame(height: 1)
+                .padding(.leading, 14)
+        }
     }
 }

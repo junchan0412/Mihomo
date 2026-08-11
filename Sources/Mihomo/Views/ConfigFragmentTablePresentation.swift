@@ -46,13 +46,13 @@ struct ConfigFragmentListPresentation {
 
         let selectedFragment = selectedIDs.count == 1 ? selectedFragments.first : nil
         let visibleRows = max(visibleFragments.count, 1)
-        let naturalHeight = 30 + CGFloat(visibleRows) * 28
+        let naturalHeight = 16 + CGFloat(visibleRows) * 78
         return ConfigFragmentListPresentation(
             allFragments: fragments,
             visibleFragments: visibleFragments,
             selectedFragments: selectedFragments,
             selectedFragment: selectedFragment,
-            tableHeight: min(max(naturalHeight, 176), 280)
+            tableHeight: min(max(naturalHeight, 210), 420)
         )
     }
 

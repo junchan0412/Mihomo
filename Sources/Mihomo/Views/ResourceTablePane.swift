@@ -34,11 +34,11 @@ struct ResourceTablePane: View {
     var rollbackableRows: [ExternalResourceRow]
     var selectedURLs: [URL]
     var isResourceUpdateInProgress: Bool
-    var contextMenuActions: [AppKitTableContextAction<ExternalResourceRow>]
     var updateAll: () -> Void
     var refresh: ([ExternalResourceRow]) -> Void
     var preview: ([ExternalResourceRow]) -> Void
     var requestRollback: () -> Void
+    @State private var selectionAnchor: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -50,24 +50,11 @@ struct ResourceTablePane: View {
                 )
                 .frame(minHeight: 360, maxHeight: .infinity)
             } else {
-                AppKitTable(
-                    rows: presentation.visibleRows,
-                    selection: $selectedResourceIDs,
-                    columns: columns,
-                    allowsMultipleSelection: true,
-                    onDoubleClick: { row in
-                        guard row.canRefresh, isResourceUpdateInProgress == false else { return }
-                        refresh([row])
-                    },
-                    onActivate: { rows in
-                        guard isResourceUpdateInProgress == false else { return }
-                        refresh(rows)
-                    },
-                    onPreview: preview,
-                    hasHorizontalScroller: true,
-                    contextMenuActions: contextMenuActions
-                )
-                .frame(minHeight: 360, maxHeight: .infinity)
+                MihomoListSurface(minHeight: 360, maxHeight: .infinity) {
+                    ForEach(presentation.visibleRows) { row in
+                        resourceRow(row)
+                    }
+                }
             }
 
             bottomBar
@@ -76,6 +63,123 @@ struct ResourceTablePane: View {
         .overlay {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(MihomoUI.cardStroke, lineWidth: 1)
+        }
+    }
+
+    private func resourceRow(_ row: ExternalResourceRow) -> some View {
+        MihomoSelectableRow(
+            isSelected: selectedResourceIDs.contains(row.id),
+            select: { select(row) },
+            activate: {
+                guard row.canRefresh, isResourceUpdateInProgress == false else { return }
+                refresh([row])
+            }
+        ) {
+            HStack(spacing: 12) {
+                Image(systemName: statusSystemImage(for: row.statusKind))
+                    .foregroundStyle(statusColor(for: row.statusKind))
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(row.nameText)
+                            .font(.body.weight(.semibold))
+                            .lineLimit(1)
+                        MihomoRowBadge(title: row.provider.kind, color: row.provider.kind == "Proxy" ? .blue : .purple)
+                        if row.provider.providerType.isEmpty == false {
+                            MihomoRowBadge(title: row.provider.providerType)
+                        }
+                    }
+                    Text(row.detailText)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Text(row.pathText)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 8)
+
+                MihomoRowMetadata(
+                    primary: row.statusText,
+                    secondary: row.lastUpdatedText,
+                    primaryColor: statusColor(for: row.statusKind)
+                )
+
+                MihomoRowActions {
+                    Button {
+                        refresh([row])
+                    } label: {
+                        Image(systemName: row.canDownload ? "arrow.down.circle" : "arrow.clockwise")
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(row.canRefresh == false || isResourceUpdateInProgress)
+                    .help(row.updateActionTitle)
+
+                    Menu {
+                        Button(row.updateActionTitle) { refresh([row]) }
+                            .disabled(row.canRefresh == false || isResourceUpdateInProgress)
+                        Button("快速查看") { preview([row]) }
+                            .disabled(row.pathText == "-")
+                        Button("在 Finder 中显示") {
+                            reveal(row)
+                        }
+                        Divider()
+                        Button("回滚", role: .destructive) { requestRollback(for: row) }
+                            .disabled(rollbackableRows.contains(where: { $0.id == row.id }) == false)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: 18, height: 18)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .help("更多操作")
+                }
+            }
+        }
+        .contextMenu {
+            Button(row.updateActionTitle) { refresh([row]) }
+                .disabled(row.canRefresh == false || isResourceUpdateInProgress)
+            Button("快速查看") { preview([row]) }
+            Divider()
+            Button("回滚", role: .destructive) { requestRollback(for: row) }
+                .disabled(rollbackableRows.contains(where: { $0.id == row.id }) == false)
+        }
+    }
+
+    private func select(_ row: ExternalResourceRow) {
+        let update = TableSelection.updated(
+            selectedResourceIDs,
+            clicking: row.id,
+            visibleIDs: presentation.visibleRows.map(\.id),
+            anchor: selectionAnchor,
+            modifiers: NSEvent.modifierFlags
+        )
+        selectedResourceIDs = update.selection
+        selectionAnchor = update.anchor
+    }
+
+    private func reveal(_ row: ExternalResourceRow) {
+        guard row.pathText != "-" else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: row.pathText)])
+    }
+
+    private func requestRollback(for row: ExternalResourceRow) {
+        selectedResourceIDs = [row.id]
+        selectionAnchor = row.id
+        requestRollback()
+    }
+
+    private func statusSystemImage(for status: ExternalResourceStatusKind) -> String {
+        switch status {
+        case .ready: return "checkmark.circle.fill"
+        case .pending: return "arrow.down.circle"
+        case .failed: return "xmark.octagon.fill"
+        case .localOnly: return "doc.text"
         }
     }
 
@@ -129,26 +233,13 @@ struct ResourceTablePane: View {
         .padding(.vertical, 10)
     }
 
-    private var columns: [AppKitTableColumn<ExternalResourceRow>] {
-        [
-            .init(title: "名称", width: 160) { $0.nameText },
-            .init(title: "类型", width: 150) { $0.typeText },
-            .init(title: "最后更新", width: 150) { $0.lastUpdatedText },
-            .init(title: "状态", width: 150, textColor: statusTextColor) { $0.statusText },
-            .init(title: "路径", width: 420) { $0.pathText }
-        ]
-    }
-
-    private func statusTextColor(_ row: ExternalResourceRow) -> NSColor? {
-        switch row.statusKind {
-        case .ready:
-            return .systemGreen
-        case .pending:
-            return .systemOrange
-        case .failed:
-            return .systemRed
-        case .localOnly:
-            return .secondaryLabelColor
+    private func statusColor(for status: ExternalResourceStatusKind) -> Color {
+        switch status {
+        case .ready: return .green
+        case .pending: return .orange
+        case .failed: return .red
+        case .localOnly: return .secondary
         }
     }
+
 }

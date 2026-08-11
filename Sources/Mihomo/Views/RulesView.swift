@@ -67,7 +67,6 @@ struct RulesView: View {
             commandContext(selectedEntries: selectedEntries, selectedEntry: selectedEntry)
         )
         .onAppear {
-            store.refreshConfigArtifacts()
             applyRuleFocusQuery()
         }
         .onChange(of: store.ruleFocusQuery) {

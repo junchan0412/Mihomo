@@ -21,7 +21,7 @@ final class ProfilesPresentationTests: XCTestCase {
         XCTAssertEqual(snapshot.visibleProfiles.map(\.id), [remote.id])
         XCTAssertEqual(snapshot.selectedProfiles.map(\.id), [remote.id])
         XCTAssertEqual(snapshot.selectedProfile?.id, remote.id)
-        XCTAssertEqual(snapshot.tableHeight, 176)
+        XCTAssertEqual(snapshot.tableHeight, 210)
         XCTAssertEqual(snapshot.columns[0].value(local), "启用")
         XCTAssertEqual(snapshot.columns[0].value(remote), "-")
         XCTAssertEqual(snapshot.columns[3].value(remote), "https://example.com/subscription")
@@ -43,7 +43,7 @@ final class ProfilesPresentationTests: XCTestCase {
         XCTAssertEqual(snapshot.visibleProfiles.map(\.id), profiles.map(\.id))
         XCTAssertEqual(snapshot.selectedProfiles.map(\.id), profiles.prefix(2).map(\.id))
         XCTAssertNil(snapshot.selectedProfile)
-        XCTAssertEqual(snapshot.tableHeight, 280)
+        XCTAssertEqual(snapshot.tableHeight, 420)
     }
 
     private func profile(

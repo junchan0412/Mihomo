@@ -220,13 +220,17 @@ enum ResourceWorkspace: String, CaseIterable, Identifiable {
     }
 
     var providerKind: String? {
-        self == .rules ? "Rule" : nil
+        switch self {
+        case .configResources: return "Proxy"
+        case .nodeProviders: return nil
+        case .rules: return "Rule"
+        }
     }
 
     var subtitle: String {
         switch self {
         case .configResources:
-            return "查看当前配置声明的 Proxy Provider、Rule Provider 与本地规则集。"
+            return "查看当前配置声明的 Proxy Provider 与节点资源。"
         case .nodeProviders:
             return "独立保存节点订阅，并按 Profile 复选注入运行时配置。"
         case .rules:

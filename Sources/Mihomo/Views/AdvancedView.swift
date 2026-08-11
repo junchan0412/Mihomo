@@ -62,7 +62,6 @@ struct AdvancedView: View {
         .background(MihomoUI.pageBackground)
         .onAppear {
             synchronizeDraft(with: store.settings, force: true)
-            store.refreshConfigArtifacts()
         }
         .onReceive(store.$settings) { synchronizeDraft(with: $0, force: false) }
         .confirmationDialog("卸载 XPC Helper？", isPresented: $confirmsHelperUninstall, titleVisibility: .visible) {

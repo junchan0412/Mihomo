@@ -46,9 +46,6 @@ struct PoliciesView: View {
         .compatibleSearchFocused($searchIsFocused)
         .focusedSceneValue(\.workspaceCommands, commandContext(in: presentation))
         .onAppear {
-            if presentation.displayGroups.isEmpty {
-                store.refreshConfigArtifacts()
-            }
             ensureSelection(in: presentation)
             Task { await store.preloadPolicyGroupIcons(for: presentation.displayGroups) }
         }

@@ -7,6 +7,7 @@ struct ProfilesView: View {
     @Environment(\.undoManager) private var undoManager
     @EnvironmentObject private var store: AppStore
     @State private var selectedProfileIDs: Set<UUID> = []
+    @State private var selectionAnchor: UUID?
     @State private var searchText = ""
     @FocusState private var searchIsFocused: Bool
     @State private var isDropTargeted = false
@@ -103,27 +104,11 @@ struct ProfilesView: View {
                 )
                 .frame(height: presentation.tableHeight)
             } else {
-                AppKitTable(
-                    rows: presentation.visibleProfiles,
-                    selection: $selectedProfileIDs,
-                    columns: presentation.columns,
-                    allowsMultipleSelection: true,
-                    onDoubleClick: { profile in
-                        selectedProfileIDs = [profile.id]
-                        openProfileEditor(profile)
-                    },
-                    onActivate: { profiles in
-                        guard let profile = profiles.first else { return }
-                        selectedProfileIDs = [profile.id]
-                        openProfileEditor(profile)
-                    },
-                    onPreview: { profiles in previewProfiles(profiles) },
-                    onDelete: requestDeleteProfiles,
-                    hasHorizontalScroller: false,
-                    allowsParentScrollPassthrough: true,
-                    contextMenuActions: profileContextMenuActions
-                )
-                .frame(height: presentation.tableHeight)
+                MihomoListSurface(minHeight: presentation.tableHeight, maxHeight: presentation.tableHeight) {
+                    ForEach(presentation.visibleProfiles) { profile in
+                        profileRow(profile, activeProfileID: store.settings.activeProfileID)
+                    }
+                }
             }
 
             HStack(spacing: 10) {
@@ -190,6 +175,55 @@ struct ProfilesView: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
+    private func profileRow(_ profile: ProfileItem, activeProfileID: UUID?) -> some View {
+        ProfileListRow(
+            profile: profile,
+            isActive: profile.id == activeProfileID,
+            isSelected: selectedProfileIDs.contains(profile.id),
+            select: { select(profile, visibleProfiles: listPresentation().visibleProfiles) },
+            activate: {
+                selectedProfileIDs = [profile.id]
+                selectionAnchor = profile.id
+                openProfileEditor(profile)
+            },
+            setActive: {
+                selectedProfileIDs = [profile.id]
+                selectionAnchor = profile.id
+                Task { await store.setActiveProfile(profile) }
+            },
+            edit: { openProfileEditor(profile) },
+            refresh: { refreshProfiles([profile]) },
+            preview: { previewProfiles([profile]) },
+            reveal: {
+                NSWorkspace.shared.activateFileViewerSelecting([
+                    store.profileStore.profileFile(profile, settings: store.settings)
+                ])
+            },
+            delete: { requestDeleteProfiles([profile]) }
+        )
+    }
+
+    private func select(_ profile: ProfileItem, visibleProfiles: [ProfileItem]) {
+        let update = TableSelection.updated(
+            selectedProfileIDs,
+            clicking: profile.id,
+            visibleIDs: visibleProfiles.map(\.id),
+            anchor: selectionAnchor,
+            modifiers: NSEvent.modifierFlags
+        )
+        selectedProfileIDs = update.selection
+        selectionAnchor = update.anchor
+    }
+
+    private func listPresentation() -> ProfilesPresentationSnapshot {
+        ProfilesPresentationSnapshot(
+            profiles: store.profiles,
+            selectedIDs: selectedProfileIDs,
+            searchText: searchText,
+            activeProfileID: store.settings.activeProfileID
+        )
+    }
+
     private var pendingProfileRefreshPreviewBinding: Binding<RemoteProfileRefreshPreview?> {
         Binding(
             get: { store.pendingProfileRefreshPreview },
@@ -241,38 +275,6 @@ struct ProfilesView: View {
     private func previewProfiles(_ profiles: [ProfileItem]) {
         let urls = profiles.map { store.profileStore.profileFile($0, settings: store.settings) }
         QuickLookPreviewer.shared.present(urls)
-    }
-
-    private var profileContextMenuActions: [AppKitTableContextAction<ProfileItem>] {
-        [
-            .init("启用", isEnabled: { $0.count == 1 }) { profiles in
-                guard let profile = profiles.first else { return }
-                Task { await store.setActiveProfile(profile) }
-            },
-            .init("编辑", isEnabled: { $0.count == 1 }) { profiles in
-                guard let profile = profiles.first else { return }
-                selectedProfileIDs = [profile.id]
-                openProfileEditor(profile)
-            },
-            .init("刷新", isEnabled: { $0.contains(where: \.isRemote) }) { profiles in
-                selectedProfileIDs = Set(profiles.map(\.id))
-                refreshProfiles(profiles)
-            },
-            .init("快速查看") { profiles in
-                previewProfiles(profiles)
-            },
-            .init("在 Finder 中显示") { profiles in
-                let urls = profiles.map { store.profileStore.profileFile($0, settings: store.settings) }
-                NSWorkspace.shared.activateFileViewerSelecting(urls)
-            },
-            .init(
-                "删除",
-                isDestructive: true,
-                isEnabled: { $0.isEmpty == false && $0.count < store.profiles.count }
-            ) { profiles in
-                requestDeleteProfiles(profiles)
-            }
-        ]
     }
 
     private func commandContext(for presentation: ProfilesPresentationSnapshot) -> WorkspaceCommandContext {

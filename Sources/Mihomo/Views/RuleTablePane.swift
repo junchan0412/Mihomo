@@ -54,17 +54,13 @@ struct RuleTablePane: View {
     var selectedEntries: [RuleTableEntry]
     var selectedEntry: RuleTableEntry?
     var actions: RuleTableActions
+    @State private var selectionAnchor: String?
 
     var body: some View {
         VStack(spacing: 10) {
             categoryStrip
             ruleTable
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(MihomoUI.cardStroke, lineWidth: 1)
-                }
             bottomBar
         }
     }
@@ -78,21 +74,113 @@ struct RuleTablePane: View {
                     description: Text(sourceIsEmpty ? "当前配置没有可显示的规则。" : "请调整分类或尝试其他搜索词。")
                 )
             } else {
-                AppKitTable(
-                    rows: presentation.filteredEntries,
-                    selection: $selectedRuleIDs,
-                    columns: columns,
-                    allowsMultipleSelection: true,
-                    onDoubleClick: actions.edit,
-                    onActivate: activateFirst,
-                    onPreview: activateFirst,
-                    onDelete: actions.delete,
-                    hasHorizontalScroller: false,
-                    contextMenuActions: contextMenuActions
-                )
+                MihomoListSurface(minHeight: 360) {
+                    ForEach(presentation.filteredEntries) { entry in
+                        ruleRow(entry)
+                    }
+                }
             }
         }
-        .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func ruleRow(_ entry: RuleTableEntry) -> some View {
+        MihomoSelectableRow(
+            isSelected: selectedRuleIDs.contains(entry.id),
+            select: { select(entry) },
+            activate: { actions.edit(entry) }
+        ) {
+            HStack(spacing: 12) {
+                Toggle(
+                    "启用规则",
+                    isOn: Binding(
+                        get: { entry.rule.disabled == false },
+                        set: { _ in
+                            selectedRuleIDs = [entry.id]
+                            selectionAnchor = entry.id
+                            actions.toggleEnabled(entry)
+                        }
+                    )
+                )
+                .labelsHidden()
+                .toggleStyle(.checkbox)
+
+                Image(systemName: entry.typeSystemImage)
+                    .foregroundStyle(entry.rule.disabled ? Color.secondary : entry.typeBadgeColor)
+                    .frame(width: 20)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(entry.type)
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(entry.rule.disabled ? .secondary : .primary)
+                        MihomoRowBadge(title: entry.typeCategory.title, color: entry.typeBadgeColor)
+                        if entry.rule.disabled {
+                            MihomoRowBadge(title: "已停用")
+                        }
+                    }
+
+                    Text(entry.value.isEmpty ? "匹配所有剩余流量" : entry.value)
+                        .font(.callout)
+                        .foregroundStyle(entry.rule.disabled ? .tertiary : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+
+                    HStack(spacing: 8) {
+                        Label(entry.policy, systemImage: "arrow.triangle.branch")
+                        if entry.optionsText.isEmpty == false {
+                            Text(entry.optionsText)
+                        }
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                MihomoRowMetadata(
+                    primary: entry.rule.hitCount > 0 ? "命中 \(entry.rule.hitCount)" : "未命中",
+                    secondary: "#\(entry.rule.index)",
+                    primaryColor: entry.rule.hitCount > 0 && entry.rule.disabled == false ? .green : .secondary
+                )
+
+                MihomoRowActions {
+                    Button {
+                        selectedRuleIDs = [entry.id]
+                        selectionAnchor = entry.id
+                        actions.edit(entry)
+                    } label: {
+                        Image(systemName: "pencil")
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.borderless)
+                    .help("编辑规则")
+
+                    Menu {
+                        Button(entry.rule.disabled ? "启用" : "停用") {
+                            actions.setDisabled([entry], entry.rule.disabled == false)
+                        }
+                        Button("复制规则") { copyRules([entry]) }
+                        Divider()
+                        Button("删除", role: .destructive) { actions.delete([entry]) }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: 18, height: 18)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .help("更多操作")
+                }
+            }
+        }
+        .contextMenu {
+            Button(entry.rule.disabled ? "启用" : "停用") {
+                actions.setDisabled([entry], entry.rule.disabled == false)
+            }
+            Button("编辑") { actions.edit(entry) }
+            Button("复制规则") { copyRules([entry]) }
+            Divider()
+            Button("删除", role: .destructive) { actions.delete([entry]) }
+        }
     }
 
     private var categoryStrip: some View {
@@ -174,35 +262,6 @@ struct RuleTablePane: View {
         .buttonStyle(.bordered)
     }
 
-    private var columns: [AppKitTableColumn<RuleTableEntry>] {
-        [
-            .init(title: "启用", width: 48, checked: { !$0.rule.disabled }) { entry in
-                selectedRuleIDs = [entry.id]
-                actions.toggleEnabled(entry)
-            },
-            .init(title: "ID", width: 48, textColor: ruleTextColor) { "\($0.rule.index)" },
-            .init(title: "类型", width: 140, textColor: ruleTypeColor) { $0.type },
-            .init(title: "分类", width: 72, textColor: ruleTypeColor) { $0.typeCategory.title },
-            .init(title: "值", width: 260, textColor: ruleTextColor) { $0.displayValue.isEmpty ? "-" : $0.displayValue },
-            .init(title: "策略", width: 120, textColor: ruleTextColor) { $0.policy },
-            .init(title: "命中", width: 64, textColor: ruleHitColor) { $0.hitDisplay },
-            .init(title: "选项", width: 120, textColor: ruleTextColor) { $0.optionsText.isEmpty ? "-" : $0.optionsText }
-        ]
-    }
-
-    private var contextMenuActions: [AppKitTableContextAction<RuleTableEntry>] {
-        [
-            .init("启用") { actions.setDisabled($0, false) },
-            .init("停用") { actions.setDisabled($0, true) },
-            .init("编辑", isEnabled: { $0.count == 1 }) { entries in
-                guard let entry = entries.first else { return }
-                actions.edit(entry)
-            },
-            .init("复制规则") { copyRules($0) },
-            .init("删除", isDestructive: true, action: actions.delete)
-        ]
-    }
-
     private func categoryChip(
         title: String,
         count: Int,
@@ -230,10 +289,16 @@ struct RuleTablePane: View {
         .buttonStyle(.plain)
     }
 
-    private func activateFirst(_ entries: [RuleTableEntry]) {
-        guard let entry = entries.first else { return }
-        selectedRuleIDs = [entry.id]
-        actions.edit(entry)
+    private func select(_ entry: RuleTableEntry) {
+        let update = TableSelection.updated(
+            selectedRuleIDs,
+            clicking: entry.id,
+            visibleIDs: presentation.filteredEntries.map(\.id),
+            anchor: selectionAnchor,
+            modifiers: NSEvent.modifierFlags
+        )
+        selectedRuleIDs = update.selection
+        selectionAnchor = update.anchor
     }
 
     private func copyRules(_ entries: [RuleTableEntry]) {
@@ -241,17 +306,4 @@ struct RuleTablePane: View {
         NSPasteboard.general.setString(entries.map(\.rule.content).joined(separator: "\n"), forType: .string)
     }
 
-    private func ruleTextColor(_ entry: RuleTableEntry) -> NSColor? {
-        entry.rule.disabled ? .secondaryLabelColor : nil
-    }
-
-    private func ruleTypeColor(_ entry: RuleTableEntry) -> NSColor? {
-        if entry.rule.disabled { return .secondaryLabelColor }
-        return NSColor(entry.typeBadgeColor)
-    }
-
-    private func ruleHitColor(_ entry: RuleTableEntry) -> NSColor? {
-        if entry.rule.disabled { return .secondaryLabelColor }
-        return entry.rule.hitCount > 0 ? .systemGreen : .secondaryLabelColor
-    }
 }

@@ -69,7 +69,6 @@ struct ResourcesView: View {
                     rollbackableRows: rollbackableRows,
                     selectedURLs: resourceURLs(for: selectedRows),
                     isResourceUpdateInProgress: store.isResourceBatchOperationInProgress,
-                    contextMenuActions: resourceContextMenuActions,
                     updateAll: { Task { await store.updateAllExternalResources() } },
                     refresh: refreshResources,
                     preview: previewResources,
@@ -87,7 +86,6 @@ struct ResourcesView: View {
         .compatibleSearchFocused($searchIsFocused)
         .focusedSceneValue(\.workspaceCommands, commandContext(presentation, selectedRows: selectedRows))
         .onAppear {
-            store.refreshConfigArtifacts()
             ensureSelection()
         }
         .onChange(of: store.providers) {
@@ -114,7 +112,7 @@ struct ResourcesView: View {
     private func header(_ presentation: ResourceTablePresentation) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("外部资源")
+                Text("资源")
                     .font(MihomoUI.Fonts.pageTitle)
                 Text(workspace.subtitle)
                     .font(MihomoUI.Fonts.pageSubtitle)
@@ -132,10 +130,6 @@ struct ResourcesView: View {
                         title: workspace == .rules ? "规则" : "配置资源",
                         value: presentation.allRows.count
                     )
-                    if workspace == .configResources {
-                        ResourceCountBadge(title: "代理", value: presentation.proxyCount)
-                    }
-                    ResourceCountBadge(title: "规则", value: presentation.ruleCount)
                     ResourceCountBadge(title: "未就绪", value: presentation.unreadyCount)
                 }
                 Text("并发").foregroundStyle(.secondary)
@@ -262,28 +256,6 @@ struct ResourcesView: View {
         Task {
             await store.rollbackProviderResources(providers)
         }
-    }
-
-    private var resourceContextMenuActions: [AppKitTableContextAction<ExternalResourceRow>] {
-        [
-            .init("更新", isEnabled: { _ in store.isResourceBatchOperationInProgress == false }) { rows in
-                refreshResources(rows)
-            },
-            .init(
-                "回滚",
-                isDestructive: true,
-                isEnabled: { rows in rows.contains { store.latestProviderRollbackRecord(for: $0.provider) != nil } }
-            ) { rows in
-                selectedResourceIDs = Set(rows.map(\.id))
-                confirmsRollback = true
-            },
-            .init("快速查看", isEnabled: { resourceURLs(for: $0).isEmpty == false }) { rows in
-                previewResources(rows)
-            },
-            .init("在 Finder 中显示", isEnabled: { resourceURLs(for: $0).isEmpty == false }) { rows in
-                NSWorkspace.shared.activateFileViewerSelecting(resourceURLs(for: rows))
-            }
-        ]
     }
 
     private func commandContext(

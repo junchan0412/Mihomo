@@ -86,6 +86,12 @@ final class ResourcePresentationTests: XCTestCase {
         XCTAssertEqual(presentation.ruleCount, 1)
     }
 
+    func testConfigResourceWorkspaceFiltersProxyProviders() {
+        XCTAssertEqual(ResourceWorkspace.configResources.providerKind, "Proxy")
+        XCTAssertEqual(ResourceWorkspace.rules.providerKind, "Rule")
+        XCTAssertNil(ResourceWorkspace.nodeProviders.providerKind)
+    }
+
     func testResourceWorkspaceOrderMatchesResourceCategories() {
         XCTAssertEqual(
             ResourceWorkspace.allCases,
