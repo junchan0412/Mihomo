@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("main.sidebar.visible") private var sidebarIsVisible = true
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @StateObject private var appIntentRouter = AppIntentRouter.shared
@@ -14,7 +15,7 @@ struct RootView: View {
             }
             .navigationSplitViewColumnWidth(min: 220, ideal: 236, max: 260)
         } detail: {
-            DetailSwitchView(section: store.selectedSection)
+            AnimatedDetailView(section: store.selectedSection, reduceMotion: reduceMotion)
                 .navigationTitle("")
         }
         .navigationSplitViewStyle(.balanced)
@@ -94,6 +95,20 @@ struct RootView: View {
             appIntentRouter.pendingAction = nil
             Task { await store.handleAppIntent(action) }
         }
+    }
+}
+
+private struct AnimatedDetailView: View {
+    let section: AppSection
+    let reduceMotion: Bool
+
+    var body: some View {
+        ZStack {
+            DetailSwitchView(section: section)
+                .id(section)
+                .transition(.opacity)
+        }
+        .animation(reduceMotion ? nil : MihomoUI.Motion.soft, value: section)
     }
 }
 
