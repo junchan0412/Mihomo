@@ -178,18 +178,21 @@ private struct MenuBarStatusLabel: View {
     @ObservedObject var activityStore: RuntimeActivityStore
 
     var body: some View {
-        HStack(spacing: 4) {
-            MenuBarTrafficMark(mode: store.currentMode)
+        HStack(spacing: 6) {
+            MenuBarStatusGlyph(
+                mode: store.currentMode,
+                isRunning: store.isCoreRunning
+            )
 
             if store.settings.showMenuBarTrafficRates {
-                VStack(alignment: .trailing, spacing: -2) {
+                VStack(alignment: .trailing, spacing: -1) {
                     Text(Formatters.rate(activityStore.uploadRate))
                     Text(Formatters.rate(activityStore.downloadRate))
                 }
                 .font(.system(size: 8, weight: .medium, design: .monospaced))
                 .lineLimit(1)
                 .monospacedDigit()
-                .frame(minWidth: 42, alignment: .trailing)
+                .frame(minWidth: 44, alignment: .trailing)
                 .contentTransition(.numericText())
                 .animation(MihomoUI.Motion.quick, value: activityStore.uploadRate)
                 .animation(MihomoUI.Motion.quick, value: activityStore.downloadRate)
@@ -211,54 +214,39 @@ private struct MenuBarStatusLabel: View {
     }
 }
 
-private struct MenuBarTrafficMark: View {
-    let mode: String
-
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            MihomoMarkShape()
-                .stroke(
-                    LinearGradient(
-                        colors: [.cyan, .blue, .purple],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    style: StrokeStyle(
-                        lineWidth: 2,
-                        lineCap: .round,
-                        lineJoin: .round
-                    )
-                )
-                .frame(width: 14, height: 14)
-                .padding(1)
-
-            Text(MenuBarPresentation.modeLetter(for: mode))
-                .font(.system(size: 5.5, weight: .bold, design: .rounded))
-                .foregroundStyle(modeColor)
-                .frame(width: 6, height: 6)
-                .background(
-                    Circle().fill(Color(nsColor: .controlBackgroundColor))
-                )
-        }
-        .frame(width: 20, height: 18)
-        .accessibilityHidden(true)
-    }
-
-    private var modeColor: Color {
-        switch mode.lowercased() {
-        case "global": return .blue
-        case "direct": return .green
-        default: return .orange
-        }
-    }
-}
-
 enum MenuBarPresentation {
     static func modeLetter(for mode: String) -> String {
         switch mode.lowercased() {
         case "global": return "G"
         case "direct": return "D"
         default: return "R"
+        }
+    }
+
+    static func modeTitle(for mode: String) -> String {
+        switch mode.lowercased() {
+        case "global": return "全局模式"
+        case "direct": return "直连模式"
+        default: return "规则模式"
+        }
+    }
+
+    static func modeTint(for mode: String) -> Color {
+        switch mode.lowercased() {
+        case "global": return .blue
+        case "direct": return .green
+        default: return .orange
+        }
+    }
+
+    static func modeGradient(for mode: String) -> [Color] {
+        switch mode.lowercased() {
+        case "global":
+            return [Color(red: 0.44, green: 0.63, blue: 1.0), Color(red: 0.18, green: 0.36, blue: 0.95)]
+        case "direct":
+            return [Color(red: 0.36, green: 0.78, blue: 0.48), Color(red: 0.16, green: 0.55, blue: 0.28)]
+        default:
+            return [Color(red: 1.0, green: 0.7, blue: 0.34), Color(red: 0.91, green: 0.47, blue: 0.12)]
         }
     }
 }

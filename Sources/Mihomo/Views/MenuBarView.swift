@@ -9,20 +9,27 @@ struct MenuBarView: View {
     @State private var nodeSearchText = ""
 
     var body: some View {
-        VStack(spacing: 0) {
-            menuHeader
-
-            Divider()
-
-            delayTestBar
-
-            Divider()
-
-            policyGroupList
-
-            Divider()
-
-            quickControls
+        ScrollView {
+            VStack(spacing: 0) {
+                menuHeader
+                Divider()
+                primaryActionRow
+                Divider()
+                outboundModeRow
+                Divider()
+                MenuBarSectionHeader(title: "策略组")
+                delayTestBar
+                policyGroupList
+                if hasRecentSelections {
+                    MenuBarSectionHeader(title: "进程与客户端")
+                    recentSelectionPane
+                }
+                MenuBarSectionHeader(title: "功能")
+                quickControls
+                MenuBarSectionHeader(title: "面板")
+                panelActions
+            }
+            .padding(.vertical, 6)
         }
         .frame(width: 380)
         .background(MihomoUI.pageBackground)
@@ -44,52 +51,64 @@ struct MenuBarView: View {
             }
 
             Spacer()
-
-            Button {
-                MainWindowPresenter.present(openWindow: openWindow)
-            } label: {
-                Image(systemName: "macwindow")
-                    .frame(width: 18, height: 18)
-            }
-            .buttonStyle(.borderless)
-            .help("显示主窗口")
-            .accessibilityLabel("显示主窗口")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
     }
 
+    private var primaryActionRow: some View {
+        Button {
+            MainWindowPresenter.present(openWindow: openWindow)
+        } label: {
+            MenuBarRowLabel(
+                title: "显示主窗口",
+                systemImage: "macwindow",
+                detail: "⌘M"
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("显示主窗口")
+    }
+
+    private var outboundModeRow: some View {
+        Menu {
+            modeButton("规则", mode: "rule")
+            modeButton("全局", mode: "global")
+            modeButton("直连", mode: "direct")
+        } label: {
+            MenuBarRowLabel(
+                title: "出站模式",
+                systemImage: "arrow.triangle.2.circlepath",
+                tint: MenuBarPresentation.modeTint(for: store.currentMode),
+                detail: MenuBarPresentation.modeTitle(for: store.currentMode),
+                rightBadge: MenuBarPresentation.modeLetter(for: store.currentMode),
+                showChevron: true
+            )
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+    }
+
     private var delayTestBar: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Button {
-                    testAllDelays()
-                } label: {
-                    Label(isTestingDelays ? "正在测速" : "延迟测试", systemImage: isTestingDelays ? "hourglass" : "speedometer")
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(store.proxyGroups.isEmpty || isTestingDelays)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("策略组与节点")
-                        .font(.caption.weight(.semibold))
-                    Text(store.delayTestStatus)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-
-                Spacer(minLength: 0)
+            Button {
+                testAllDelays()
+            } label: {
+                MenuBarRowLabel(
+                    title: isTestingDelays ? "正在测速" : "延迟测试",
+                    systemImage: isTestingDelays ? "hourglass" : "speedometer",
+                    detail: store.delayTestStatus
+                )
             }
+            .buttonStyle(.plain)
+            .disabled(store.proxyGroups.isEmpty || isTestingDelays)
 
             TextField("搜索节点或策略组", text: $nodeSearchText)
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
+                .padding(.horizontal, 14)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.vertical, 4)
     }
 
     private var policyGroupList: some View {
@@ -100,13 +119,6 @@ struct MenuBarView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
-                        if nodeSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                           store.recentProxySelections.isEmpty == false {
-                            recentSelectionPane
-                            Divider()
-                                .padding(.leading, 14)
-                        }
-
                         ForEach(visibleGroups) { group in
                             MenuBarPolicyGroupRow(
                                 group: group,
@@ -140,23 +152,31 @@ struct MenuBarView: View {
     }
 
     private var quickControls: some View {
-        HStack(spacing: 8) {
+        VStack(spacing: 0) {
             Button {
                 Task { await store.toggleCore() }
             } label: {
-                Image(systemName: store.isCoreRunning ? "stop.fill" : "play.fill")
-                    .frame(width: 18, height: 18)
+                MenuBarRowLabel(
+                    title: store.isCoreRunning ? "停止核心" : "启动核心",
+                    systemImage: store.isCoreRunning ? "stop.fill" : "play.fill",
+                    detail: coreStateTitle
+                )
             }
+            .buttonStyle(.plain)
             .help(store.isCoreRunning ? "停止核心" : "启动核心")
             .accessibilityLabel(store.isCoreRunning ? "停止核心" : "启动核心")
 
             Button {
                 Task { await store.toggleSystemProxy() }
             } label: {
-                Image(systemName: "network")
-                    .foregroundStyle(store.systemProxyEnabled ? .green : .primary)
-                    .frame(width: 18, height: 18)
+                MenuBarRowLabel(
+                    title: "系统代理",
+                    systemImage: "network",
+                    tint: store.systemProxyEnabled ? .green : .primary,
+                    detail: store.systemProxyEnabled ? "已开启" : "未开启"
+                )
             }
+            .buttonStyle(.plain)
             .help(store.systemProxyEnabled ? "关闭系统代理" : "开启系统代理")
             .accessibilityLabel(store.systemProxyEnabled ? "关闭系统代理" : "开启系统代理")
             .disabled(!store.isCoreRunning && !store.systemProxyEnabled)
@@ -164,88 +184,122 @@ struct MenuBarView: View {
             Button {
                 Task { await store.setTunEnabled(!store.settings.tunEnabled) }
             } label: {
-                Image(systemName: "lock.shield")
-                    .foregroundStyle(store.settings.tunEnabled ? .purple : .primary)
-                    .frame(width: 18, height: 18)
+                MenuBarRowLabel(
+                    title: "TUN",
+                    systemImage: "lock.shield",
+                    tint: store.settings.tunEnabled ? .purple : .primary,
+                    detail: store.settings.tunEnabled ? "已开启" : "未开启"
+                )
             }
+            .buttonStyle(.plain)
             .help(store.settings.tunEnabled ? "关闭 TUN" : "开启 TUN")
             .accessibilityLabel(store.settings.tunEnabled ? "关闭 TUN" : "开启 TUN")
 
-            Spacer()
+            Toggle(isOn: menuBarTrafficRatesBinding) {
+                MenuBarRowLabel(
+                    title: "显示上传下载速率",
+                    systemImage: "chart.line.uptrend.xyaxis",
+                    detail: store.settings.showMenuBarTrafficRates ? "已开启" : "已关闭"
+                )
+            }
+            .toggleStyle(.switch)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
+        }
+    }
 
+    private var menuBarTrafficRatesBinding: Binding<Bool> {
+        Binding(
+            get: { store.settings.showMenuBarTrafficRates },
+            set: { enabled in
+                var updated = store.settings
+                updated.showMenuBarTrafficRates = enabled
+                Task { await store.saveSettings(updated) }
+            }
+        )
+    }
+
+    private var panelActions: some View {
+        VStack(spacing: 0) {
             Menu {
-                Menu("出站模式") {
-                    modeButton("规则", mode: "rule")
-                    modeButton("全局", mode: "global")
-                    modeButton("直连", mode: "direct")
-                }
-
-                Toggle("显示上传下载速率", isOn: $store.settings.showMenuBarTrafficRates)
-
-                Divider()
-
-                Button("重启核心") {
-                    Task { await store.restartCore() }
-                }
-
-                Button("更新资源") {
-                    Task { await store.updateAllExternalResources() }
-                }
-
-                Menu("切换配置") {
-                    if store.profiles.isEmpty {
-                        Text("暂无配置")
-                    } else {
-                        ForEach(store.profiles) { profile in
-                            Button {
-                                Task { await store.setActiveProfile(profile) }
-                            } label: {
-                                if profile.id == store.settings.activeProfileID {
-                                    Label(Formatters.trimmedMenuText(profile.name, limit: 30), systemImage: "checkmark")
-                                } else {
-                                    Text(Formatters.trimmedMenuText(profile.name, limit: 30))
-                                }
+                if store.profiles.isEmpty {
+                    Text("暂无配置")
+                } else {
+                    ForEach(store.profiles) { profile in
+                        Button {
+                            Task { await store.setActiveProfile(profile) }
+                        } label: {
+                            if profile.id == store.settings.activeProfileID {
+                                Label(Formatters.trimmedMenuText(profile.name, limit: 30), systemImage: "checkmark")
+                            } else {
+                                Text(Formatters.trimmedMenuText(profile.name, limit: 30))
                             }
                         }
                     }
                 }
+            } label: {
+                MenuBarRowLabel(
+                    title: "切换配置",
+                    systemImage: "doc.on.doc",
+                    detail: store.activeProfile?.name ?? "未选择",
+                    showChevron: true
+                )
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
 
-                Menu("打开面板") {
-                    sectionButton("概览", .overview)
-                    sectionButton("策略", .policies)
-                    sectionButton("配置", .profiles)
-                    sectionButton("规则", .rules)
-                    sectionButton("资源", .resources)
-                    sectionButton("诊断", .diagnostics)
-                    Button("连接") {
-                        openWindow(id: "connections")
-                    }
-                }
+            Button {
+                Task { await store.restartCore() }
+            } label: {
+                MenuBarRowLabel(title: "重启核心", systemImage: "arrow.clockwise")
+            }
+            .buttonStyle(.plain)
 
-                Divider()
+            Button {
+                Task { await store.updateAllExternalResources() }
+            } label: {
+                MenuBarRowLabel(title: "更新资源", systemImage: "arrow.down.circle")
+            }
+            .buttonStyle(.plain)
 
-                Button("检查更新...") {
-                    openWindow(id: "software-update")
-                    store.startSoftwareUpdateCheck()
-                }
+            Button {
+                openWindow(id: "software-update")
+                store.startSoftwareUpdateCheck()
+            } label: {
+                MenuBarRowLabel(title: "检查更新", systemImage: "square.and.arrow.down", detail: "⌘U")
+            }
+            .buttonStyle(.plain)
 
-                Button("退出 Mihomo") {
-                    Task {
-                        await store.shutdown()
-                        NSApp.terminate(nil)
-                    }
+            Menu {
+                sectionButton("概览", .overview)
+                sectionButton("策略", .policies)
+                sectionButton("配置", .profiles)
+                sectionButton("规则", .rules)
+                sectionButton("资源", .resources)
+                sectionButton("诊断", .diagnostics)
+                Button("连接") {
+                    openWindow(id: "connections")
                 }
             } label: {
-                Image(systemName: "ellipsis.circle")
-                    .frame(width: 18, height: 18)
+                MenuBarRowLabel(
+                    title: "打开面板",
+                    systemImage: "macwindow",
+                    showChevron: true
+                )
             }
-            .help("更多操作")
-            .accessibilityLabel("更多操作")
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+
+            Button(role: .destructive) {
+                Task {
+                    await store.shutdown()
+                    NSApp.terminate(nil)
+                }
+            } label: {
+                MenuBarRowLabel(title: "退出 Mihomo", systemImage: "power")
+            }
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
     }
 
     private var coreStateTitle: String {
@@ -264,6 +318,15 @@ struct MenuBarView: View {
             let rhsFavorite = store.favoritePolicyGroupNames.contains(rhs.name)
             if lhsFavorite != rhsFavorite { return lhsFavorite }
             return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    private var hasRecentSelections: Bool {
+        store.recentProxySelections.contains { selection in
+            guard let group = store.proxyGroups.first(where: { $0.name == selection.groupName }) else {
+                return false
+            }
+            return group.all.contains { $0.name == selection.proxyName }
         }
     }
 

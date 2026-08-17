@@ -1,5 +1,9 @@
 import SwiftUI
 
+enum ResourceWorkspaceLayoutMetrics {
+    static let contentMinHeight: CGFloat = 560
+}
+
 struct ExternalResourceRow: Identifiable, Hashable {
     var provider: ProviderItem
     var latestRecord: ProviderUpdateRecord?

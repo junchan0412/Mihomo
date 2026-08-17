@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ResourcesView: View {
     @EnvironmentObject private var store: AppStore
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var workspace: ResourceWorkspace = .configResources
     @State private var selectedResourceIDs: Set<String> = []
     @State private var searchText = ""
@@ -44,7 +45,7 @@ struct ResourcesView: View {
 
         return VStack(alignment: .leading, spacing: 14) {
             header(presentation)
-            Picker("资源工作区", selection: $workspace) {
+            Picker("资源工作区", selection: workspaceSelection) {
                 ForEach(ResourceWorkspace.allCases) { workspace in
                     Label(workspace.title, systemImage: workspace.systemImage).tag(workspace)
                 }
@@ -53,29 +54,18 @@ struct ResourcesView: View {
             .labelsHidden()
             .frame(maxWidth: 360)
 
-            if workspace == .nodeProviders {
-                NodeProviderWorkspaceView(searchText: $searchText)
-            } else {
-                ResourceTablePane(
+            ZStack(alignment: .topLeading) {
+                workspaceBody(
                     presentation: presentation,
-                    selectedResourceIDs: $selectedResourceIDs,
-                    showsOnlyUnready: $showsOnlyUnready,
-                    updateStatus: store.resourceUpdateStatus,
-                    emptyState: ResourceEmptyState(
-                        searchText: searchText,
-                        showsOnlyUnready: showsOnlyUnready
-                    ),
                     selectedRows: selectedRows,
-                    rollbackableRows: rollbackableRows,
-                    selectedURLs: resourceURLs(for: selectedRows),
-                    isResourceUpdateInProgress: store.isResourceBatchOperationInProgress,
-                    updateAll: { Task { await store.updateAllExternalResources() } },
-                    refresh: refreshResources,
-                    preview: previewResources,
-                    requestRollback: { confirmsRollback = true }
+                    rollbackableRows: rollbackableRows
                 )
-                selectedResourcePane(presentation)
+                .id(workspace)
+                .transition(.opacity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+            .frame(maxWidth: .infinity, minHeight: ResourceWorkspaceLayoutMetrics.contentMinHeight, alignment: .topLeading)
+            .mihomoInteractiveMotion(reduceMotion: reduceMotion, animation: MihomoUI.Motion.soft)
         }
         .padding(.horizontal, MihomoUI.pageHorizontalPadding)
         .padding(.vertical, MihomoUI.pageVerticalPadding)
@@ -109,6 +99,54 @@ struct ResourcesView: View {
         }
     }
 
+    private var workspaceSelection: Binding<ResourceWorkspace> {
+        Binding(
+            get: { workspace },
+            set: { newWorkspace in
+                guard newWorkspace != workspace else { return }
+                withAnimation(reduceMotion ? nil : MihomoUI.Motion.soft) {
+                    workspace = newWorkspace
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func workspaceBody(
+        presentation: ResourceTablePresentation,
+        selectedRows: [ExternalResourceRow],
+        rollbackableRows: [ExternalResourceRow]
+    ) -> some View {
+        switch workspace {
+        case .nodeProviders:
+            NodeProviderWorkspaceView(searchText: $searchText)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        case .configResources, .rules:
+            VStack(alignment: .leading, spacing: 14) {
+                ResourceTablePane(
+                    presentation: presentation,
+                    selectedResourceIDs: $selectedResourceIDs,
+                    showsOnlyUnready: $showsOnlyUnready,
+                    updateStatus: store.resourceUpdateStatus,
+                    emptyState: ResourceEmptyState(
+                        searchText: searchText,
+                        showsOnlyUnready: showsOnlyUnready
+                    ),
+                    selectedRows: selectedRows,
+                    rollbackableRows: rollbackableRows,
+                    selectedURLs: resourceURLs(for: selectedRows),
+                    isResourceUpdateInProgress: store.isResourceBatchOperationInProgress,
+                    updateAll: { Task { await store.updateAllExternalResources() } },
+                    refresh: refreshResources,
+                    preview: previewResources,
+                    requestRollback: { confirmsRollback = true }
+                )
+                selectedResourcePane(presentation)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+    }
+
     private func header(_ presentation: ResourceTablePresentation) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
@@ -122,16 +160,8 @@ struct ResourcesView: View {
             Spacer()
 
             HStack(spacing: 8) {
-                if workspace == .nodeProviders {
-                    ResourceCountBadge(title: "节点提供商", value: store.nodeProviders.count)
-                    ResourceCountBadge(title: "当前配置", value: selectedNodeProviderCount)
-                } else {
-                    ResourceCountBadge(
-                        title: workspace == .rules ? "规则" : "配置资源",
-                        value: presentation.allRows.count
-                    )
-                    ResourceCountBadge(title: "未就绪", value: presentation.unreadyCount)
-                }
+                resourceCountBadges(presentation)
+                    .frame(width: 218, alignment: .trailing)
                 Text("并发").foregroundStyle(.secondary)
                 Stepper(value: resourceConcurrency, in: 1...12) {
                     Text("\(store.settings.resourceUpdateMaxConcurrent)").monospacedDigit().frame(width: 24)
@@ -146,6 +176,22 @@ struct ResourcesView: View {
                     .buttonStyle(.bordered)
                     .help("停止派发新的资源请求，已开始的请求会完成或取消")
                 }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func resourceCountBadges(_ presentation: ResourceTablePresentation) -> some View {
+        HStack(spacing: 8) {
+            if workspace == .nodeProviders {
+                ResourceCountBadge(title: "节点提供商", value: store.nodeProviders.count)
+                ResourceCountBadge(title: "当前配置", value: selectedNodeProviderCount)
+            } else {
+                ResourceCountBadge(
+                    title: workspace == .rules ? "规则" : "配置资源",
+                    value: presentation.allRows.count
+                )
+                ResourceCountBadge(title: "未就绪", value: presentation.unreadyCount)
             }
         }
     }
@@ -273,5 +319,4 @@ struct ResourcesView: View {
             previewSelection: searchIsFocused || selectedURLs.isEmpty ? nil : { previewResources(selectedRows) }
         )
     }
-
 }
