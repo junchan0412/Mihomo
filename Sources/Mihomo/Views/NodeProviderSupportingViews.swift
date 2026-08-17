@@ -37,7 +37,7 @@ struct NodeProviderEditorSheet: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(original == nil ? "添加节点提供商" : "编辑节点提供商")
                     .font(.title2.weight(.semibold))
-                Text("保存前会显示关联 Profile 的字段变更；确认后才会写入配置文件。")
+                Text("支持 Clash YAML、Base64 YAML 与常见 Base64 节点链接订阅；保存前会显示关联 Profile 的字段变更。")
                     .foregroundStyle(.secondary)
             }
 
