@@ -78,7 +78,7 @@ struct NodeProviderWorkspaceView: View {
                         systemImage: "point.3.connected.trianglepath.dotted",
                         description: Text(searchText.isEmpty ? "添加订阅后，可为当前配置复选多个节点来源。" : "调整搜索条件后再试。")
                     )
-                    .frame(maxWidth: .infinity, minHeight: 260)
+                    .frame(maxWidth: .infinity, minHeight: 360, alignment: .topLeading)
                 } else {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
@@ -100,13 +100,14 @@ struct NodeProviderWorkspaceView: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .frame(minHeight: 290, maxHeight: .infinity)
+                    .frame(minHeight: 360, maxHeight: .infinity)
                 }
             } else {
                 ContentUnavailableView("先选择配置", systemImage: "doc.badge.plus", description: Text("节点提供商可以独立保存，接入时需要指定一个 Profile。"))
-                    .frame(maxWidth: .infinity, minHeight: 320)
+                    .frame(maxWidth: .infinity, minHeight: 360, alignment: .topLeading)
             }
         }
+        .frame(maxWidth: .infinity, minHeight: ResourceWorkspaceLayoutMetrics.contentMinHeight, alignment: .topLeading)
         .background(MihomoUI.cardFill, in: RoundedRectangle(cornerRadius: 8))
         .overlay { RoundedRectangle(cornerRadius: 8).stroke(MihomoUI.cardStroke, lineWidth: 1) }
         .sheet(item: $nodeProviderEditor) { route in
