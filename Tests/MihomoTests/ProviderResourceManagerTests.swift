@@ -39,6 +39,21 @@ final class ProviderResourceManagerTests: XCTestCase {
         }
     }
 
+    func testRefreshLocalExplainsHTML404SubscriptionResponse() throws {
+        let root = temporaryDirectory()
+        let runtime = root.appendingPathComponent("Runtime", isDirectory: true)
+        let directory = runtime.appendingPathComponent("proxy_providers", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("remote.yaml")
+        try "<html><body><h1>404 Not Found</h1></body></html>".write(to: file, atomically: true, encoding: .utf8)
+        let manager = ProviderResourceManager(runtimeDirectory: runtime, backupsDirectory: root.appendingPathComponent("Backups"))
+        let provider = ProviderItem(kind: "Node", name: "Remote", detail: "", providerType: "file", path: "proxy_providers/remote.yaml")
+
+        XCTAssertThrowsError(try manager.refreshLocal(provider)) { error in
+            XCTAssertTrue(error.localizedDescription.contains("404 Not Found"))
+        }
+    }
+
     func testRefreshLocalAcceptsBase64EncodedProxyProvider() throws {
         let root = temporaryDirectory()
         let runtime = root.appendingPathComponent("Runtime", isDirectory: true)
@@ -54,6 +69,43 @@ final class ProviderResourceManagerTests: XCTestCase {
         let result = try manager.refreshLocal(provider)
 
         XCTAssertTrue(result.validationSummary.contains("1 项"))
+    }
+
+    func testRefreshLocalConvertsBase64EncodedShareLinksToProxyProvider() throws {
+        let root = temporaryDirectory()
+        let runtime = root.appendingPathComponent("Runtime", isDirectory: true)
+        let directory = runtime.appendingPathComponent("proxy_providers", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("remote.yaml")
+        let links = "ss://YWVzLTI1Ni1nY206cGFzc3dvcmRAMTI3LjAuMC4xOjgzODg#Demo"
+        try Data(links.utf8).base64EncodedString().write(to: file, atomically: true, encoding: .utf8)
+        let manager = ProviderResourceManager(runtimeDirectory: runtime, backupsDirectory: root.appendingPathComponent("Backups"))
+        let provider = ProviderItem(kind: "Node", name: "Remote", detail: "", providerType: "file", path: "proxy_providers/remote.yaml")
+
+        let result = try manager.refreshLocal(provider)
+
+        XCTAssertTrue(result.validationSummary.contains("1 项"))
+        let normalized = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertTrue(normalized.contains("type: ss"))
+        XCTAssertTrue(normalized.contains("server: 127.0.0.1"))
+    }
+
+    func testRefreshLocalConvertsSIP002ShadowsocksLinkWithBase64Credentials() throws {
+        let root = temporaryDirectory()
+        let runtime = root.appendingPathComponent("Runtime", isDirectory: true)
+        let directory = runtime.appendingPathComponent("proxy_providers", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("remote.yaml")
+        let links = "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@127.0.0.1:8388#Demo"
+        try links.write(to: file, atomically: true, encoding: .utf8)
+        let manager = ProviderResourceManager(runtimeDirectory: runtime, backupsDirectory: root.appendingPathComponent("Backups"))
+        let provider = ProviderItem(kind: "Proxy", name: "Remote", detail: "", providerType: "file", path: "proxy_providers/remote.yaml")
+
+        _ = try manager.refreshLocal(provider)
+
+        let normalized = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertTrue(normalized.contains("cipher: aes-256-gcm"))
+        XCTAssertTrue(normalized.contains("password: password"))
     }
 
     func testTargetURLRejectsParentTraversal() throws {
