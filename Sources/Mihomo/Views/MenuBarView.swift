@@ -14,10 +14,6 @@ struct MenuBarView: View {
                 outboundModeMenu
                 Divider().padding(.leading, 14)
                 policyMenus
-                if activeConnections.isEmpty == false {
-                    Divider().padding(.leading, 14)
-                    connectionMenus
-                }
                 Divider().padding(.leading, 14)
                 maintenanceMenus
                 Divider().padding(.leading, 14)
@@ -67,7 +63,7 @@ struct MenuBarView: View {
         VStack(spacing: 0) {
             ForEach(orderedGroups) { group in
                 Menu {
-                    Button("测试此策略组") { Task { await store.testGroupDelay(group) } }
+                    Button("延迟测试") { Task { await store.testGroupDelay(group) } }
                     Divider()
                     ForEach(group.all) { node in
                         Button {
@@ -83,7 +79,6 @@ struct MenuBarView: View {
                 } label: {
                     MenuBarRowLabel(
                         title: Formatters.trimmedMenuText(group.name, limit: 23),
-                        subtitle: group.type,
                         systemImage: groupIcon(for: group),
                         detail: nodeTitle(group.all.first { $0.name == group.now }),
                         showChevron: true
@@ -95,27 +90,6 @@ struct MenuBarView: View {
             if orderedGroups.isEmpty {
                 MenuBarRowLabel(title: "暂无策略组", systemImage: "switch.2", detail: "请先启动核心")
                     .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var connectionMenus: some View {
-        VStack(spacing: 0) {
-            MenuBarSectionHeader(title: "进程与客户端", detail: "\(activeConnections.count)")
-            ForEach(activeConnections) { connection in
-                HStack(spacing: 10) {
-                    Image(systemName: "app.fill")
-                        .foregroundStyle(.secondary)
-                        .frame(width: 18)
-                    Text(Formatters.trimmedMenuText(connection.processName, limit: 24))
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text(Formatters.rate(connection.upload + connection.download))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
             }
         }
     }
@@ -139,7 +113,7 @@ struct MenuBarView: View {
                 Task { await store.setTunEnabled(!store.settings.tunEnabled) }
             } label: {
                 MenuBarRowLabel(
-                    title: "增强模式 (TUN)",
+                    title: "TUN 模式",
                     systemImage: "lock.shield",
                     tint: store.settings.tunEnabled ? .purple : .primary,
                     detail: store.settings.tunEnabled ? "已启用" : "未启用"
@@ -158,43 +132,61 @@ struct MenuBarView: View {
         VStack(spacing: 0) {
             Menu {
                 Button(store.isCoreRunning ? "停止核心" : "启动核心") { Task { await store.toggleCore() } }
-                Button("重启核心") { Task { await store.restartCore() } }
-                    .disabled(!store.isCoreRunning)
                 Divider()
                 Button(isTestingDelays ? "正在测速…" : "测试全部节点延迟") { testAllDelays() }
                     .disabled(store.proxyGroups.isEmpty || isTestingDelays)
-                Button("更新所有资源") { Task { await store.updateAllExternalResources() } }
                 Button("刷新远程订阅") { Task { await store.refreshAllRemoteSubscriptions() } }
-            } label: {
-                MenuBarRowLabel(title: "功能", systemImage: "wrench.and.screwdriver", showChevron: true)
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-
-            Menu {
+                Divider()
                 sectionButton(.overview)
                 sectionButton(.policies)
                 sectionButton(.profiles)
                 sectionButton(.rules)
-                Divider()
                 Button("连接") { openWindow(id: "connections") }
             } label: {
-                MenuBarRowLabel(title: "面板", systemImage: "rectangle.3.group", showChevron: true)
+                MenuBarRowLabel(title: "功能面板", systemImage: "rectangle.3.group", showChevron: true)
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
 
             Menu {
-                sectionButton(.resources)
-                sectionButton(.overrides)
-                sectionButton(.networkSecurity)
-                sectionButton(.advanced)
-                sectionButton(.diagnostics)
+                if applicableConfigFragments.isEmpty {
+                    Text(store.configFragments.isEmpty ? "暂无覆写" : "当前配置没有可用覆写")
+                } else {
+                    ForEach(applicableConfigFragments) { fragment in
+                        Button {
+                            Task { await store.toggleConfigFragmentEnabled(fragment) }
+                        } label: {
+                            if fragment.enabled {
+                                Label(Formatters.trimmedMenuText(fragment.name, limit: 30), systemImage: "checkmark")
+                            } else {
+                                Label(Formatters.trimmedMenuText(fragment.name, limit: 30), systemImage: "circle")
+                            }
+                        }
+                    }
+                }
+                Divider()
+                Button("管理覆写…") { sectionButtonAction(.overrides) }
             } label: {
-                MenuBarRowLabel(title: "模块", systemImage: "square.grid.2x2", showChevron: true)
+                MenuBarRowLabel(
+                    title: "覆写列表",
+                    systemImage: "slider.horizontal.3",
+                    detail: configFragmentSummary,
+                    showChevron: true
+                )
             }
             .menuStyle(.button)
             .buttonStyle(.plain)
+
+            Button {
+                Task { await store.updateAllExternalResources() }
+            } label: {
+                MenuBarRowLabel(
+                    title: store.isResourceBatchOperationInProgress ? "正在更新外部资源…" : "更新外部资源",
+                    systemImage: "arrow.triangle.2.circlepath"
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(store.isResourceBatchOperationInProgress)
 
             Menu {
                 if store.profiles.isEmpty { Text("暂无配置") }
@@ -247,8 +239,16 @@ struct MenuBarView: View {
         }
     }
 
-    private var activeConnections: [ConnectionItem] {
-        Array(store.activityStore.connections.prefix(5))
+    private var applicableConfigFragments: [ConfigFragment] {
+        guard let profileID = store.activeProfile?.id else { return [] }
+        return store.configFragments.filter { fragment in
+            fragment.appliesGlobally || fragment.profileIDs.contains(profileID)
+        }
+    }
+
+    private var configFragmentSummary: String {
+        let enabled = applicableConfigFragments.filter(\.enabled).count
+        return "\(enabled)/\(applicableConfigFragments.count)"
     }
 
     private func nodeTitle(_ node: ProxyNode?) -> String {
@@ -270,10 +270,12 @@ struct MenuBarView: View {
     }
 
     private func sectionButton(_ section: AppSection) -> some View {
-        Button(section.title) {
-            store.selectedSection = section
-            MainWindowPresenter.present(openWindow: openWindow)
-        }
+        Button(section.title) { sectionButtonAction(section) }
+    }
+
+    private func sectionButtonAction(_ section: AppSection) {
+        store.selectedSection = section
+        MainWindowPresenter.present(openWindow: openWindow)
     }
 
     private func testAllDelays() {
