@@ -9,6 +9,13 @@ struct MenuBarView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
+                MenuBarStatusHeader(
+                    mode: store.currentMode,
+                    isRunning: store.isCoreRunning,
+                    title: store.menuBarTitle,
+                    uploadRate: Formatters.rate(store.activityStore.uploadRate),
+                    downloadRate: Formatters.rate(store.activityStore.downloadRate)
+                )
                 primaryAction
                 Divider().padding(.leading, 14)
                 outboundModeMenu
@@ -24,10 +31,18 @@ struct MenuBarView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.vertical, 5)
+            .padding(.bottom, 8)
         }
-        .frame(width: 312, height: 620)
-        .background(MihomoUI.pageBackground)
+        .frame(width: 332, height: 648)
+        .scrollIndicators(.hidden)
+        .background(.ultraThinMaterial)
+        .background(
+            LinearGradient(
+                colors: [Color.blue.opacity(0.12), Color.purple.opacity(0.07), .clear],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
         .task { await store.preloadPolicyGroupIcons() }
     }
 

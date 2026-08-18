@@ -8,15 +8,7 @@ struct AppBrandIcon: View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.23, style: .continuous)
                 .fill(backgroundGradient)
-            MihomoMarkShape()
-                .stroke(
-                    markGradient,
-                    style: StrokeStyle(
-                        lineWidth: size * 0.105,
-                        lineCap: .round,
-                        lineJoin: .round
-                    )
-                )
+            MihomoSignalMark(gradient: markGradient)
                 .padding(size * 0.19)
         }
         .frame(width: size, height: size)
@@ -41,6 +33,29 @@ struct AppBrandIcon: View {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+    }
+}
+
+struct MihomoSignalMark: View {
+    let gradient: LinearGradient
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let barWidth = width * 0.18
+            HStack(alignment: .bottom, spacing: width * 0.2) {
+                RoundedRectangle(cornerRadius: barWidth / 2, style: .continuous)
+                    .fill(gradient)
+                    .frame(width: barWidth, height: width * 0.48)
+                RoundedRectangle(cornerRadius: barWidth / 2, style: .continuous)
+                    .fill(gradient)
+                    .frame(width: barWidth, height: width * 0.86)
+                RoundedRectangle(cornerRadius: barWidth / 2, style: .continuous)
+                    .fill(gradient)
+                    .frame(width: barWidth, height: width * 0.66)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        }
     }
 }
 

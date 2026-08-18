@@ -9,16 +9,8 @@ struct MenuBarStatusGlyph: View {
         ZStack(alignment: .bottomTrailing) {
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(background)
-            MihomoMarkShape()
-                .stroke(
-                    foreground,
-                    style: StrokeStyle(
-                        lineWidth: 1.8,
-                        lineCap: .round,
-                        lineJoin: .round
-                    )
-                )
-                .padding(3.2)
+            MihomoSignalMark(gradient: foreground)
+                .padding(3.6)
 
             Text(MenuBarPresentation.modeLetter(for: mode))
                 .font(.system(size: 5.8, weight: .bold, design: .rounded))
@@ -60,6 +52,46 @@ struct MenuBarStatusGlyph: View {
     }
 }
 
+struct MenuBarStatusHeader: View {
+    let mode: String
+    let isRunning: Bool
+    let title: String
+    let uploadRate: String
+    let downloadRate: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            MenuBarStatusGlyph(mode: mode, isRunning: isRunning)
+                .frame(width: 34, height: 34)
+                .scaleEffect(1.15)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Mihomo")
+                    .font(.headline.weight(.semibold))
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(uploadRate)
+                Text(downloadRate)
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(.white.opacity(0.16), lineWidth: 0.7)
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
+    }
+}
+
 struct MenuBarSectionHeader: View {
     var title: String
     var detail: String? = nil
@@ -91,6 +123,7 @@ struct MenuBarRowLabel: View {
     var detail: String? = nil
     var rightBadge: String? = nil
     var showChevron: Bool = false
+    @State private var isHovering = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -135,6 +168,12 @@ struct MenuBarRowLabel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(isHovering ? Color.primary.opacity(0.09) : .clear)
+                .padding(.horizontal, 6)
+        )
+        .onHover { isHovering = $0 }
         .contentShape(Rectangle())
     }
 }
