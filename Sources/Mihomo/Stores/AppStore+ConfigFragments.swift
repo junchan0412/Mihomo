@@ -82,9 +82,10 @@ extension AppStore {
         }
     }
 
-    func setConfigFragments(_ fragments: [ConfigFragment], enabled: Bool, undoManager: UndoManager? = nil) {
+    @discardableResult
+    func setConfigFragments(_ fragments: [ConfigFragment], enabled: Bool, undoManager: UndoManager? = nil) -> Bool {
         let identifiers = Set(fragments.map(\.id))
-        guard identifiers.isEmpty == false else { return }
+        guard identifiers.isEmpty == false else { return false }
         let now = Date()
         let next = configFragments.map { fragment -> ConfigFragment in
             guard identifiers.contains(fragment.id) else { return fragment }
@@ -93,11 +94,19 @@ extension AppStore {
             updated.updatedAt = now
             return updated
         }
-        commitConfigFragments(
+        return commitConfigFragments(
             next,
             actionName: enabled ? "启用覆写" : "停用覆写",
             undoManager: undoManager
         )
+    }
+
+    func toggleConfigFragmentEnabled(_ fragment: ConfigFragment) async {
+        guard configFragments.contains(where: { $0.id == fragment.id }) else { return }
+        guard setConfigFragments([fragment], enabled: !fragment.enabled) else { return }
+        guard isCoreRunning else { return }
+        appendLog("info", "覆写状态已更新，正在重载核心使其生效")
+        await restartCore()
     }
 
     func moveConfigFragment(_ fragment: ConfigFragment, offset: Int, undoManager: UndoManager? = nil) {
