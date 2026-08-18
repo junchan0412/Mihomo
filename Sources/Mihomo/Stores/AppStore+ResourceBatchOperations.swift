@@ -44,7 +44,9 @@ extension AppStore {
         defer { isResourceBatchOperationInProgress = false }
 
         refreshConfigArtifacts()
-        let providerItems = providers + nodeProviders.map(\.providerItem)
+        let providerItems = Self.deduplicatedProviderItems(
+            providers + nodeProviders.map(\.providerItem)
+        )
         let summary = await refreshProviderResources(
             providerItems,
             remoteAction: "批量下载",
@@ -107,7 +109,8 @@ extension AppStore {
         appendsGeoData: Bool = false,
         refreshesArtifactsAfterCompletion: Bool = true
     ) async -> ProviderResourceBatchSummary {
-        let refreshableProviders = providers.filter(\.canRefreshResource)
+        let refreshableProviders = Self.deduplicatedProviderItems(providers)
+            .filter(\.canRefreshResource)
         guard refreshableProviders.isEmpty == false else {
             if appendsGeoData == false {
                 resourceUpdateStatus = "所选资源没有可更新的 Provider。"
@@ -142,6 +145,27 @@ extension AppStore {
             refreshConfigArtifacts()
         }
         return summary
+    }
+
+    static func deduplicatedProviderItems(
+        _ providers: [ProviderItem],
+        runtimeDirectory: URL = AppPaths.runtimeDirectory
+    ) -> [ProviderItem] {
+        let manager = ProviderResourceManager(runtimeDirectory: runtimeDirectory)
+        var seenTargets = Set<String>()
+        return providers.filter { provider in
+            let key: String
+            if let target = try? manager.targetURL(for: provider) {
+                key = target.standardizedFileURL.path.lowercased()
+            } else {
+                key = [
+                    provider.kind.lowercased(),
+                    provider.name.lowercased(),
+                    provider.path?.lowercased() ?? ""
+                ].joined(separator: "\u{1f}")
+            }
+            return seenTargets.insert(key).inserted
+        }
     }
 
     private func recordResourceBatchResults(

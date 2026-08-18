@@ -202,6 +202,58 @@ final class ProviderResourceManagerTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: replacedBackup, encoding: .utf8), "new-version")
     }
 
+    func testRollbackReplacesReadOnlyTargetWithAtomicRename() throws {
+        let root = temporaryDirectory()
+        let manager = ProviderResourceManager(
+            runtimeDirectory: root.appendingPathComponent("Runtime", isDirectory: true),
+            backupsDirectory: root.appendingPathComponent("Backups", isDirectory: true)
+        )
+        let provider = ProviderItem(
+            kind: "Rule",
+            name: "readonly",
+            detail: "",
+            remoteURL: "https://example.com/rules.yaml",
+            path: "rule_providers/readonly.yaml"
+        )
+        let target = try manager.targetURL(for: provider)
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try "current-version".write(to: target, atomically: true, encoding: .utf8)
+        let backup = try XCTUnwrap(manager.backupExistingResource(at: target, provider: provider))
+        try "restored-version".write(to: backup, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o444], ofItemAtPath: target.path)
+
+        _ = try manager.rollback(provider, from: backup)
+
+        XCTAssertEqual(try String(contentsOf: target, encoding: .utf8), "restored-version")
+    }
+
+    @MainActor
+    func testBatchDeduplicatesProvidersSharingTargetPath() {
+        let runtime = temporaryDirectory().appendingPathComponent("Runtime", isDirectory: true)
+        let profileProvider = ProviderItem(
+            kind: "Proxy",
+            name: "良心云",
+            detail: "",
+            remoteURL: "https://example.com/profile.yaml",
+            path: "proxy_providers/managed-shared.yaml"
+        )
+        let nodeProvider = ProviderItem(
+            kind: "Node",
+            name: "良心云",
+            detail: "",
+            remoteURL: "https://example.com/node.yaml",
+            path: "./proxy_providers/managed-shared.yaml"
+        )
+
+        let result = AppStore.deduplicatedProviderItems(
+            [profileProvider, nodeProvider],
+            runtimeDirectory: runtime
+        )
+
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result.first?.kind, "Proxy")
+    }
+
     func testRollbackRejectsMissingBackupWithoutChangingCurrentProvider() throws {
         let root = temporaryDirectory()
         let manager = ProviderResourceManager(

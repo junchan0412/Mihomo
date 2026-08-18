@@ -167,16 +167,7 @@ struct ProviderResourceManager {
         do {
             try FileManager.default.copyItem(at: source, to: staging)
             try syncFile(at: staging)
-            if FileManager.default.fileExists(atPath: target.path) {
-                _ = try FileManager.default.replaceItemAt(
-                    target,
-                    withItemAt: staging,
-                    backupItemName: nil,
-                    options: [.usingNewMetadataOnly]
-                )
-            } else {
-                try FileManager.default.moveItem(at: staging, to: target)
-            }
+            try atomicRename(staging, over: target)
         } catch {
             if let rollbackBackup, FileManager.default.fileExists(atPath: rollbackBackup.path) {
                 try? restoreBackup(rollbackBackup, to: target)
@@ -191,16 +182,23 @@ struct ProviderResourceManager {
         defer { try? FileManager.default.removeItem(at: staging) }
         try FileManager.default.copyItem(at: backup, to: staging)
         try syncFile(at: staging)
-        if FileManager.default.fileExists(atPath: target.path) {
-            _ = try FileManager.default.replaceItemAt(
-                target,
-                withItemAt: staging,
-                backupItemName: nil,
-                options: [.usingNewMetadataOnly]
-            )
-        } else {
-            try FileManager.default.moveItem(at: staging, to: target)
+        try atomicRename(staging, over: target)
+    }
+
+    private func atomicRename(_ source: URL, over target: URL) throws {
+        let result = source.path.withCString { sourcePath in
+            target.path.withCString { targetPath in
+                Darwin.rename(sourcePath, targetPath)
+            }
         }
+        guard result == 0 else {
+            let errorCode = errno
+            throw providerResourceError(
+                "无法替换 Provider 文件：\(String(cString: strerror(errorCode)))",
+                code: Int(errorCode)
+            )
+        }
+        try syncDirectory(at: target.deletingLastPathComponent())
     }
 
     private func syncFile(at url: URL) throws {
@@ -211,6 +209,17 @@ struct ProviderResourceManager {
         defer { close(descriptor) }
         guard fsync(descriptor) == 0 else {
             throw providerResourceError("无法将临时 Provider 文件落盘。")
+        }
+    }
+
+    private func syncDirectory(at url: URL) throws {
+        let descriptor = open(url.path, O_RDONLY | O_DIRECTORY)
+        guard descriptor >= 0 else {
+            throw providerResourceError("无法打开 Provider 目录进行落盘：\(url.path)")
+        }
+        defer { close(descriptor) }
+        guard fsync(descriptor) == 0 else {
+            throw providerResourceError("无法将 Provider 目录变更落盘。")
         }
     }
 
