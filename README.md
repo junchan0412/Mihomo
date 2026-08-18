@@ -2,7 +2,15 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.25.7`
+当前版本：`v1.25.8`
+
+## v1.25.8 更新重点
+
+- 修复同一 Runtime Provider 路径同时被 Profile Provider 与 Node Provider 引用时的重复刷新，批量更新现在只会处理一次目标文件。
+- 修复 mihomo core 曾以 `root` 创建 Provider 文件后，后续刷新因权限不足而失败的问题；替换过程改为同目录 staging、原子 `rename` 和目录 `fsync`。
+- 保持既有内容校验、备份、回滚与 HTML 错误页拒绝机制，异常响应不会覆盖当前可用资源。
+
+完整变更见 [v1.25.8 Release Notes](docs/releases/v1.25.8.md)。
 
 ## v1.25.7 更新重点
 
