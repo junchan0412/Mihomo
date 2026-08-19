@@ -2,15 +2,15 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.25.11`
+当前版本：`v1.25.12`
 
-## v1.25.11 更新重点
+## v1.25.12 更新重点
 
 - 菜单栏下拉窗口的 window 背景统一使用 Liquid Glass/material，与内部玻璃表面保持一致。
 - 菜单栏状态图标复用 Mihomo 软件图标的三柱矢量 mark，并固定尺寸避免 template label 中只显示模式 badge。
 - 修复 ad-hoc/传统 Helper 更新时误调用 `SMAppService` 注销导致的 entitlement 错误，并避免更新后强制启动重复实例。
 
-完整变更见 [v1.25.11 Release Notes](docs/releases/v1.25.11.md)。
+完整变更见 [v1.25.12 Release Notes](docs/releases/v1.25.12.md)。
 
 ## v1.25.9 更新重点
 
@@ -348,6 +348,6 @@ script/                 构建、发布、smoke 与质量门禁
 - Bundle 内 Helper 只接受同一 App Bundle；传统 Helper 使用 root 所有的授权文件校验 App 路径、bundle identifier 和精确签名 CDHash，并继续验证允许访问的路径。
 - 下载的 core、Age 与 Geo 数据在替换前验证 SHA-256；默认 Geo 数据会自动读取上游 `.sha256sum`。
 - Runtime/Provider 路径禁止父目录穿越和 symlink escape。
-- 普通备份默认脱敏；可迁移 Secret 使用单独的口令加密 bundle。
+- 普通备份完整保存可恢复的设置与 Profile 内容；可迁移 Secret 使用单独的口令加密 bundle。备份文件可能包含代理凭据，请仅保存到可信位置。
 - 诊断导出会脱敏已知 secret、credential 和 URL query。
 - 软件更新验证 manifest 签名、zip SHA-256、bundle id，以及 Developer ID TeamIdentifier 或精确 ad-hoc CDHash，并在替换失败时恢复旧 App 与 Helper 状态。

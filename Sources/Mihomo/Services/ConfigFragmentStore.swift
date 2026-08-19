@@ -12,9 +12,14 @@ protocol ConfigFragmentRemoteLoading {
 }
 
 struct CertificatePinnedConfigFragmentRemoteLoader: ConfigFragmentRemoteLoading {
+    static let maximumRemoteFragmentBytes = 2 * 1024 * 1024
+
     func fetch(_ url: URL, expectedFingerprint: String?) async throws -> ConfigFragmentRemoteResponse {
         let session = CertificatePinningSession(expectedFingerprint: expectedFingerprint)
-        let (data, response, fingerprint) = try await session.fetch(url)
+        let (data, response, fingerprint) = try await session.fetch(
+            url,
+            maxBytes: Self.maximumRemoteFragmentBytes
+        )
         return ConfigFragmentRemoteResponse(
             data: data,
             response: response,

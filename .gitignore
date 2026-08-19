@@ -4,4 +4,3 @@ dist/
 vendor/
 *.xcuserdata/
 DerivedData/
-Package.resolved

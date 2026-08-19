@@ -10,6 +10,7 @@ struct BackupPayload: Codable {
 }
 
 final class BackupManager {
+    static let maximumRemoteArchiveBytes = 100 * 1024 * 1024
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     private let supportDirectory: URL
@@ -80,7 +81,7 @@ final class BackupManager {
         request.httpMethod = "PUT"
         request.httpBody = try Data(contentsOf: archive)
         applyBasicAuth(username: username, password: password, to: &request)
-        let (data, response) = try await NetworkClient.data(for: request)
+        let (data, response) = try await NetworkClient.data(for: request, maxBytes: Self.maximumRemoteArchiveBytes)
         try validateHTTP(response: response, data: data)
         return target.absoluteString
     }
@@ -91,7 +92,10 @@ final class BackupManager {
         }
         var request = URLRequest(url: url)
         applyBasicAuth(username: username, password: password, to: &request)
-        let (data, response) = try await NetworkClient.data(for: request)
+        let (data, response) = try await NetworkClient.data(
+            for: request,
+            maxBytes: Self.maximumRemoteArchiveBytes
+        )
         try validateHTTP(response: response, data: data)
         try ensureBaseDirectories()
         let target = backupsDirectory.appendingPathComponent(url.lastPathComponent.isEmpty ? "webdav-restore.zip" : url.lastPathComponent)
@@ -124,7 +128,10 @@ final class BackupManager {
             "files": ["mihomo-backup.json": ["content": payload]]
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await NetworkClient.data(for: request)
+        let (data, response) = try await NetworkClient.data(
+            for: request,
+            maxBytes: Self.maximumRemoteArchiveBytes
+        )
         try validateHTTP(response: response, data: data)
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         return (json?["id"] as? String) ?? gistID

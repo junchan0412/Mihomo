@@ -138,6 +138,9 @@ app_signature="$(codesign_summary "$APP_BUNDLE")"
 helper_signature="$(codesign_summary "$APP_BUNDLE/Contents/Library/LaunchServices/MihomoHelper")"
 js_worker_signature="$(codesign_summary "$APP_BUNDLE/Contents/Resources/MihomoJSWorker")"
 core_signature="$(codesign_summary "$APP_BUNDLE/Contents/Resources/Core/mihomo")"
+core_sha="$(file_sha "$APP_BUNDLE/Contents/Resources/Core/mihomo")"
+core_source_sha="$(file_sha "$ROOT_DIR/vendor/mihomo")"
+core_version="$("$APP_BUNDLE/Contents/Resources/Core/mihomo" -v 2>&1 | head -n 1 || true)"
 
 cat >"$OUTPUT_PATH" <<REPORT
 # Mihomo Release Provenance
@@ -157,6 +160,14 @@ cat >"$OUTPUT_PATH" <<REPORT
 | Latest manifest | \`$(file_sha "$LATEST_PATH")\` | $(stat -f '%z' "$LATEST_PATH" 2>/dev/null || wc -c <"$LATEST_PATH" | tr -d ' ') bytes |
 | Package.resolved | \`$package_resolved_sha\` | $(if [[ -f "$ROOT_DIR/Package.resolved" ]]; then stat -f '%z' "$ROOT_DIR/Package.resolved"; else printf 'missing'; fi) |
 | THIRD_PARTY_NOTICES.md | \`$notices_sha\` | $(stat -f '%z' "$ROOT_DIR/THIRD_PARTY_NOTICES.md" 2>/dev/null || printf 'missing') |
+
+## Core Artifact
+
+| Field | Value |
+| --- | --- |
+| Version | \`$core_version\` |
+| SHA-256 | \`$core_sha\` |
+| Source SHA-256 | \`$core_source_sha\` |
 
 ## Update Manifest
 

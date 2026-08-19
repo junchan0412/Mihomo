@@ -1,6 +1,7 @@
 import Foundation
 
 final class ManagedCoreManager {
+    static let maximumDownloadBytes = 50 * 1024 * 1024
     private let managedCoreFile: URL
 
     init(managedCoreFile: URL = AppPaths.managedCoreFile) {
@@ -16,7 +17,10 @@ final class ManagedCoreManager {
             throw NSError(domain: "ManagedCore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Core 下载 URL 无效"])
         }
         try AppPaths.ensureBaseDirectories()
-        let (downloaded, _) = try await NetworkClient.download(from: url)
+        let (downloaded, _) = try await NetworkClient.download(
+            from: url,
+            maxBytes: Self.maximumDownloadBytes
+        )
         return try installDownloadedArtifact(downloaded, sourceURL: url, expectedSHA256: expectedSHA256)
     }
 
