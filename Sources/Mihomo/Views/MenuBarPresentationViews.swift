@@ -42,19 +42,14 @@ struct MenuBarStatusGlyph: View {
 
 private struct MenuBarSignalMark: View {
     var body: some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            let barWidth = width * 0.18
-            HStack(alignment: .bottom, spacing: width * 0.2) {
-                Capsule()
-                    .frame(width: barWidth, height: width * 0.48)
-                Capsule()
-                    .frame(width: barWidth, height: width * 0.86)
-                Capsule()
-                    .frame(width: barWidth, height: width * 0.66)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        }
+        MihomoSignalMark(
+            gradient: LinearGradient(
+                colors: [.primary, .primary],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        )
+        .frame(width: 19, height: 19)
         .accessibilityHidden(true)
     }
 }
@@ -97,6 +92,25 @@ struct MenuBarGlassSurface<Content: View>: View {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(.white.opacity(0.16), lineWidth: 0.7)
                 }
+        }
+    }
+}
+
+struct MenuBarWindowSurface<Content: View>: View {
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if #available(macOS 15.0, *) {
+            content
+                .containerBackground(.regularMaterial, for: .window)
+        } else {
+            content
+                .background(.regularMaterial)
         }
     }
 }

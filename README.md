@@ -2,14 +2,15 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.25.10`
+当前版本：`v1.25.11`
 
-## v1.25.10 更新重点
+## v1.25.11 更新重点
 
-- 菜单栏下拉窗口外围统一使用 `regularMaterial`，消除外围区域与内部 Liquid Glass 表面的材质断层。
-- 菜单栏状态图标改为始终可见的 Mihomo 三柱矢量 mark，规则/全局/直连模式 badge 继续叠加显示。
+- 菜单栏下拉窗口的 window 背景统一使用 Liquid Glass/material，与内部玻璃表面保持一致。
+- 菜单栏状态图标复用 Mihomo 软件图标的三柱矢量 mark，并固定尺寸避免 template label 中只显示模式 badge。
+- 修复 ad-hoc/传统 Helper 更新时误调用 `SMAppService` 注销导致的 entitlement 错误，并避免更新后强制启动重复实例。
 
-完整变更见 [v1.25.10 Release Notes](docs/releases/v1.25.10.md)。
+完整变更见 [v1.25.11 Release Notes](docs/releases/v1.25.11.md)。
 
 ## v1.25.9 更新重点
 
