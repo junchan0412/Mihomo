@@ -45,6 +45,7 @@ struct MenuBarView: View {
         }
         .frame(width: 332, height: 648)
         .scrollIndicators(.hidden)
+        .background(.regularMaterial)
         .task { await store.preloadPolicyGroupIcons() }
     }
 
