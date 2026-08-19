@@ -4,12 +4,19 @@ import SwiftUI
 struct MenuBarStatusGlyph: View {
     let mode: String
     let isRunning: Bool
+    var usesTemplateMark = true
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            AppBrandIcon(size: 19)
-                .saturation(isRunning ? 1 : 0)
-                .opacity(isRunning ? 1 : 0.52)
+            if usesTemplateMark {
+                MenuBarSignalMark()
+                    .foregroundStyle(isRunning ? .primary : .secondary)
+                    .opacity(isRunning ? 1 : 0.62)
+            } else {
+                AppBrandIcon(size: 19)
+                    .saturation(isRunning ? 1 : 0)
+                    .opacity(isRunning ? 1 : 0.52)
+            }
 
             Text(MenuBarPresentation.modeLetter(for: mode))
                 .font(.system(size: 5.8, weight: .bold, design: .rounded))
@@ -30,6 +37,25 @@ struct MenuBarStatusGlyph: View {
             }
         }
         .frame(width: 19, height: 19)
+    }
+}
+
+private struct MenuBarSignalMark: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let barWidth = width * 0.18
+            HStack(alignment: .bottom, spacing: width * 0.2) {
+                Capsule()
+                    .frame(width: barWidth, height: width * 0.48)
+                Capsule()
+                    .frame(width: barWidth, height: width * 0.86)
+                Capsule()
+                    .frame(width: barWidth, height: width * 0.66)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -84,7 +110,7 @@ struct MenuBarStatusHeader: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            MenuBarStatusGlyph(mode: mode, isRunning: isRunning)
+            MenuBarStatusGlyph(mode: mode, isRunning: isRunning, usesTemplateMark: false)
                 .frame(width: 34, height: 34)
                 .scaleEffect(1.15)
             VStack(alignment: .leading, spacing: 3) {
