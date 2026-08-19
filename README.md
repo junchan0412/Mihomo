@@ -2,7 +2,15 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.25.8`
+当前版本：`v1.25.9`
+
+## v1.25.9 更新重点
+
+- 菜单栏状态图标复用 Mihomo App 的矢量品牌 mark，运行状态、出站模式与停用状态保持清晰区分。
+- 菜单栏下拉面板改用 macOS 26 Liquid Glass；相关玻璃表面共享同一 `GlassEffectContainer`，macOS 14/15 继续使用自适应 material fallback。
+- 移除菜单栏整块渐变背景与重复自绘 chrome，保留系统窗口材质和原生菜单交互，减少滚动与 hover 时的视觉冲突。
+
+完整变更见 [v1.25.9 Release Notes](docs/releases/v1.25.9.md)。
 
 ## v1.25.8 更新重点
 

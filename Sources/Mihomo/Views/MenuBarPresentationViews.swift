@@ -7,17 +7,18 @@ struct MenuBarStatusGlyph: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(background)
-            MihomoSignalMark(gradient: foreground)
-                .padding(3.6)
+            AppBrandIcon(size: 19)
+                .saturation(isRunning ? 1 : 0)
+                .opacity(isRunning ? 1 : 0.52)
 
             Text(MenuBarPresentation.modeLetter(for: mode))
                 .font(.system(size: 5.8, weight: .bold, design: .rounded))
                 .foregroundStyle(MenuBarPresentation.modeTint(for: mode))
                 .frame(width: 9, height: 9)
                 .background(
-                    Circle().fill(Color(nsColor: .controlBackgroundColor))
+                    Circle()
+                        .fill(.regularMaterial)
+                        .overlay(Circle().stroke(.white.opacity(0.22), lineWidth: 0.5))
                 )
                 .offset(x: 1.5, y: 1.5)
 
@@ -30,25 +31,47 @@ struct MenuBarStatusGlyph: View {
         }
         .frame(width: 19, height: 19)
     }
+}
 
-    private var background: LinearGradient {
-        LinearGradient(
-            colors: isRunning
-                ? MenuBarPresentation.modeGradient(for: mode)
-                : [Color(nsColor: .quaternaryLabelColor).opacity(0.25), Color(nsColor: .tertiaryLabelColor).opacity(0.12)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+struct MenuBarGlassContainer<Content: View>: View {
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
     }
 
-    private var foreground: LinearGradient {
-        LinearGradient(
-            colors: isRunning
-                ? [Color.white.opacity(0.98), Color.white.opacity(0.78)]
-                : [Color.secondary.opacity(0.9), Color.secondary.opacity(0.65)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    @ViewBuilder
+    var body: some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: 12) {
+                content
+            }
+        } else {
+            content
+        }
+    }
+}
+
+struct MenuBarGlassSurface<Content: View>: View {
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if #available(macOS 26.0, *) {
+            content
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        } else {
+            content
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(.white.opacity(0.16), lineWidth: 0.7)
+                }
+        }
     }
 }
 
@@ -81,14 +104,6 @@ struct MenuBarStatusHeader: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(.white.opacity(0.16), lineWidth: 0.7)
-        }
-        .padding(.horizontal, 8)
-        .padding(.top, 8)
-        .padding(.bottom, 4)
     }
 }
 

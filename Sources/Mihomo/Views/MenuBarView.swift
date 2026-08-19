@@ -8,41 +8,43 @@ struct MenuBarView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 0) {
-                MenuBarStatusHeader(
-                    mode: store.currentMode,
-                    isRunning: store.isCoreRunning,
-                    title: store.menuBarTitle,
-                    uploadRate: Formatters.rate(store.activityStore.uploadRate),
-                    downloadRate: Formatters.rate(store.activityStore.downloadRate)
-                )
-                primaryAction
-                Divider().padding(.leading, 14)
-                outboundModeMenu
-                Divider().padding(.leading, 14)
-                policyMenus
-                Divider().padding(.leading, 14)
-                maintenanceMenus
-                Divider().padding(.leading, 14)
-                managementMenus
-                Divider().padding(.leading, 14)
-                Button(role: .destructive, action: quit) {
-                    MenuBarRowLabel(title: "退出 Mihomo", systemImage: "power")
+            MenuBarGlassContainer {
+                VStack(spacing: 10) {
+                    MenuBarGlassSurface {
+                        MenuBarStatusHeader(
+                            mode: store.currentMode,
+                            isRunning: store.isCoreRunning,
+                            title: store.menuBarTitle,
+                            uploadRate: Formatters.rate(store.activityStore.uploadRate),
+                            downloadRate: Formatters.rate(store.activityStore.downloadRate)
+                        )
+                    }
+
+                    MenuBarGlassSurface {
+                        VStack(spacing: 0) {
+                            primaryAction
+                            Divider().padding(.leading, 14)
+                            outboundModeMenu
+                            Divider().padding(.leading, 14)
+                            policyMenus
+                            Divider().padding(.leading, 14)
+                            maintenanceMenus
+                            Divider().padding(.leading, 14)
+                            managementMenus
+                            Divider().padding(.leading, 14)
+                            Button(role: .destructive, action: quit) {
+                                MenuBarRowLabel(title: "退出 Mihomo", systemImage: "power")
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
                 }
-                .buttonStyle(.plain)
             }
-            .padding(.bottom, 8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 8)
         }
         .frame(width: 332, height: 648)
         .scrollIndicators(.hidden)
-        .background(.ultraThinMaterial)
-        .background(
-            LinearGradient(
-                colors: [Color.blue.opacity(0.12), Color.purple.opacity(0.07), .clear],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
         .task { await store.preloadPolicyGroupIcons() }
     }
 
