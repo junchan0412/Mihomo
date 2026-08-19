@@ -6,6 +6,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var openMainWindow: (() -> Void)?
     weak var store: AppStore?
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else { return }
+        let currentPID = ProcessInfo.processInfo.processIdentifier
+        guard let existing = NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+            .first(where: { $0.processIdentifier != currentPID }) else {
+            return
+        }
+
+        existing.activate(options: [.activateAllWindows])
+        NSApp.terminate(nil)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
