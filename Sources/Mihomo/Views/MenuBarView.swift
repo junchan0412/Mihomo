@@ -7,45 +7,46 @@ struct MenuBarView: View {
     @State private var isTestingDelays = false
 
     var body: some View {
-        ScrollView {
-            MenuBarGlassContainer {
-                VStack(spacing: 10) {
-                    MenuBarGlassSurface {
-                        MenuBarStatusHeader(
-                            mode: store.currentMode,
-                            isRunning: store.isCoreRunning,
-                            title: store.menuBarTitle,
-                            uploadRate: Formatters.rate(store.activityStore.uploadRate),
-                            downloadRate: Formatters.rate(store.activityStore.downloadRate)
-                        )
-                    }
+        MenuBarWindowSurface {
+            ScrollView {
+                MenuBarGlassContainer {
+                    VStack(spacing: 10) {
+                        MenuBarGlassSurface {
+                            MenuBarStatusHeader(
+                                mode: store.currentMode,
+                                isRunning: store.isCoreRunning,
+                                title: store.menuBarTitle,
+                                uploadRate: Formatters.rate(store.activityStore.uploadRate),
+                                downloadRate: Formatters.rate(store.activityStore.downloadRate)
+                            )
+                        }
 
-                    MenuBarGlassSurface {
-                        VStack(spacing: 0) {
-                            primaryAction
-                            Divider().padding(.leading, 14)
-                            outboundModeMenu
-                            Divider().padding(.leading, 14)
-                            policyMenus
-                            Divider().padding(.leading, 14)
-                            maintenanceMenus
-                            Divider().padding(.leading, 14)
-                            managementMenus
-                            Divider().padding(.leading, 14)
-                            Button(role: .destructive, action: quit) {
-                                MenuBarRowLabel(title: "退出 Mihomo", systemImage: "power")
+                        MenuBarGlassSurface {
+                            VStack(spacing: 0) {
+                                primaryAction
+                                Divider().padding(.leading, 14)
+                                outboundModeMenu
+                                Divider().padding(.leading, 14)
+                                policyMenus
+                                Divider().padding(.leading, 14)
+                                maintenanceMenus
+                                Divider().padding(.leading, 14)
+                                managementMenus
+                                Divider().padding(.leading, 14)
+                                Button(role: .destructive, action: quit) {
+                                    MenuBarRowLabel(title: "退出 Mihomo", systemImage: "power")
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 8)
+            .frame(width: 332, height: 648)
+            .scrollIndicators(.hidden)
         }
-        .frame(width: 332, height: 648)
-        .scrollIndicators(.hidden)
-        .background(.regularMaterial)
         .task { await store.preloadPolicyGroupIcons() }
     }
 

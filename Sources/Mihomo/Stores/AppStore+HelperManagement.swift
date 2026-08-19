@@ -157,7 +157,7 @@ extension AppStore {
         }
 
         helperStatus = "正在停用旧版 Helper"
-        if helperService.isRegistered {
+        if shouldUseLegacyHelper == false, helperService.isRegistered {
             try await helperService.unregisterAndWait()
         }
         let marker = PendingHelperReregistration(targetVersion: targetVersion, requestedAt: Date())
@@ -214,7 +214,7 @@ extension AppStore {
     }
 
     func installLegacyHelperReplacingSMAppService() async throws {
-        if helperService.isRegistered {
+        if shouldUseLegacyHelper == false, helperService.isRegistered {
             try await helperService.unregisterAndWait()
         }
         try await legacyHelperInstaller.install()

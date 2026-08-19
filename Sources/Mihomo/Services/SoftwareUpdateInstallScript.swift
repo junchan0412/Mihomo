@@ -49,7 +49,7 @@ enum SoftwareUpdateInstallScript {
           exit 1
         fi
 
-        /usr/bin/open -n "$current"
+        /usr/bin/open "$current"
         /bin/rm -rf "$backup" "$temp"
         """
         try body.write(to: script, atomically: true, encoding: .utf8)
