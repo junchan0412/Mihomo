@@ -165,7 +165,7 @@ extension AppStore {
         })
         return BackupPayload(
             createdAt: Date(),
-            settings: settings.redactedSecretsForDisk,
+            settings: settings,
             profiles: profiles,
             fragments: configFragments,
             disabledRules: disabledRules.sorted(),

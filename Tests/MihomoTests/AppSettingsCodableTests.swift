@@ -260,6 +260,29 @@ final class AppSettingsCodableTests: XCTestCase {
         XCTAssertEqual(merged.gistToken, "legacy-gist")
     }
 
+    func testBackupPayloadRoundTripPreservesCompleteSettingsSecrets() throws {
+        let settings = AppSettings(
+            controllerSecret: "controller-secret",
+            backupWebDAVPassword: "webdav-password",
+            gistToken: "gist-token"
+        )
+        let payload = BackupPayload(
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            settings: settings,
+            profiles: [],
+            fragments: [],
+            disabledRules: [],
+            profileContents: [:]
+        )
+        let manager = BackupManager()
+
+        let restored = try manager.decodePayload(manager.encodePayload(payload))
+
+        XCTAssertEqual(restored.settings.controllerSecret, "controller-secret")
+        XCTAssertEqual(restored.settings.backupWebDAVPassword, "webdav-password")
+        XCTAssertEqual(restored.settings.gistToken, "gist-token")
+    }
+
     func testManualSecretRestoreAppliesOnlyFilledFields() {
         let current = AppSettings(
             controllerHost: "127.0.0.2",

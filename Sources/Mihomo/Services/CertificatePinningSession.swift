@@ -12,10 +12,33 @@ final class CertificatePinningSession: NSObject, URLSessionDelegate {
         self.expectedFingerprint = cleaned.isEmpty ? nil : cleaned
     }
 
-    func fetch(_ url: URL) async throws -> (Data, URLResponse, String?) {
+    func fetch(_ url: URL, maxBytes: Int? = nil) async throws -> (Data, URLResponse, String?) {
         let session = URLSession(configuration: NetworkSessionFactory.configuration(for: .api), delegate: self, delegateQueue: nil)
         defer { session.invalidateAndCancel() }
-        let (data, response) = try await session.data(from: url)
+        let request = URLRequest(url: url)
+        let data: Data
+        let response: URLResponse
+        if let maxBytes {
+            let (bytes, receivedResponse) = try await session.bytes(for: request)
+            if receivedResponse.expectedContentLength > Int64(maxBytes) {
+                throw NSError(domain: "CertificatePinning", code: 413, userInfo: [
+                    NSLocalizedDescriptionKey: "远程内容超过 \(maxBytes / 1024 / 1024) MiB，已拒绝读取。"
+                ])
+            }
+            var bounded = Data()
+            for try await byte in bytes {
+                bounded.append(byte)
+                if bounded.count > maxBytes {
+                    throw NSError(domain: "CertificatePinning", code: 413, userInfo: [
+                        NSLocalizedDescriptionKey: "远程内容超过 \(maxBytes / 1024 / 1024) MiB，已拒绝读取。"
+                    ])
+                }
+            }
+            data = bounded
+            response = receivedResponse
+        } else {
+            (data, response) = try await session.data(for: request)
+        }
         if let pinningError {
             throw pinningError
         }

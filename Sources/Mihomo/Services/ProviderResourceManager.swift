@@ -31,6 +31,7 @@ private struct ProviderResourceValidation {
 }
 
 struct ProviderResourceManager {
+    static let maximumRemoteResourceBytes = 100 * 1024 * 1024
     var runtimeDirectory: URL = AppPaths.runtimeDirectory
     var backupsDirectory: URL = AppPaths.providerBackupsDirectory
 
@@ -51,7 +52,10 @@ struct ProviderResourceManager {
         let downloaded: URL
         let response: URLResponse
         do {
-            (downloaded, response) = try await NetworkClient.download(for: request)
+            (downloaded, response) = try await NetworkClient.download(
+                for: request,
+                maxBytes: Self.maximumRemoteResourceBytes
+            )
         } catch {
             throw providerDownloadError(error, remoteURL: url)
         }

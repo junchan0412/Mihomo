@@ -16,10 +16,13 @@ LATEST_PATH="$RELEASE_DIR/mihomo-update.json"
 
 NOTICES_PATH="$APP_BUNDLE/Contents/Resources/THIRD_PARTY_NOTICES.md"
 JS_WORKER_PATH="$APP_BUNDLE/Contents/Resources/MihomoJSWorker"
+CORE_PATH="$APP_BUNDLE/Contents/Resources/Core/mihomo"
+SOURCE_CORE_PATH="$ROOT_DIR/vendor/mihomo"
 EXPECTED_BUNDLE_ID="dev.codex.Mihomo"
+EXPECTED_CORE_SHA256="ec66e3e883bdc3fca06753784e324e08921e13239f8e945587cb1bfbf4c6b936"
 EXPECTED_PUBLIC_KEY="V4ac9RiJwSRBGJG/mD7xM2D40VB5feBCin6gCm8Cu3E="
 
-for path in "$APP_BUNDLE" "$ZIP_PATH" "$MANIFEST_PATH" "$LATEST_PATH" "$NOTICES_PATH" "$JS_WORKER_PATH"; do
+for path in "$APP_BUNDLE" "$ZIP_PATH" "$MANIFEST_PATH" "$LATEST_PATH" "$NOTICES_PATH" "$JS_WORKER_PATH" "$CORE_PATH" "$SOURCE_CORE_PATH"; do
   if [[ ! -e "$path" ]]; then
     echo "missing artifact: $path" >&2
     exit 1
@@ -105,9 +108,22 @@ cmp -s "$MANIFEST_PATH" "$LATEST_PATH" || { echo "latest manifest differs from v
   echo "JS worker missing from zip" >&2
   exit 1
 }
+/usr/bin/unzip -l "$ZIP_PATH" "Mihomo.app/Contents/Resources/Core/mihomo" >/dev/null || {
+  echo "core missing from zip" >&2
+  exit 1
+}
 
 /usr/bin/codesign --verify --deep --strict "$APP_BUNDLE"
 "$ROOT_DIR/script/verify_release_identity.sh" "$APP_BUNDLE" >/dev/null
+[[ "$(/usr/bin/shasum -a 256 "$SOURCE_CORE_PATH" | awk '{print $1}')" == "$EXPECTED_CORE_SHA256" ]] || {
+  echo "source core SHA-256 mismatch" >&2
+  exit 1
+}
+"$CORE_PATH" -v 2>&1 | grep -F "Mihomo Meta v1.19.29" >/dev/null || {
+  echo "bundle core version mismatch" >&2
+  exit 1
+}
+/usr/bin/codesign --verify --strict "$CORE_PATH"
 "$ROOT_DIR/script/update_replacement_smoke.sh" "$VERSION" >/dev/null
 echo "$app_signature" | grep -q "Identifier=$EXPECTED_BUNDLE_ID" || {
   echo "codesign identifier mismatch" >&2

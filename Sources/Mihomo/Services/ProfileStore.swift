@@ -1,6 +1,7 @@
 import Foundation
 
 final class ProfileStore {
+    static let maximumRemoteProfileBytes = 10 * 1024 * 1024
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     let runtimeConfigBuilder = RuntimeConfigBuilder()
@@ -115,7 +116,7 @@ final class ProfileStore {
             throw NSError(domain: "Mihomo", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid subscription URL"])
         }
         let pinningSession = CertificatePinningSession(expectedFingerprint: nil)
-        let (data, response, fingerprint) = try await pinningSession.fetch(url)
+        let (data, response, fingerprint) = try await pinningSession.fetch(url, maxBytes: Self.maximumRemoteProfileBytes)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "Mihomo", code: 2, userInfo: [NSLocalizedDescriptionKey: "Subscription request failed"])
         }
@@ -151,7 +152,7 @@ final class ProfileStore {
             )
         }
         let pinningSession = CertificatePinningSession(expectedFingerprint: profile.certificateFingerprint)
-        let (data, response, fingerprint) = try await pinningSession.fetch(url)
+        let (data, response, fingerprint) = try await pinningSession.fetch(url, maxBytes: Self.maximumRemoteProfileBytes)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "Mihomo", code: 3, userInfo: [NSLocalizedDescriptionKey: "Subscription refresh failed"])
         }
@@ -214,9 +215,52 @@ final class ProfileStore {
     }
 
     func migrateProfileEncryption(_ profiles: [ProfileItem], settings: AppSettings) throws {
+        guard profiles.isEmpty == false else { return }
+        let manager = FileManager.default
+        let directory = profileStorageDirectory(settings: settings)
+        try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let staging = directory.appendingPathComponent(".encryption-staging-\(UUID().uuidString)", isDirectory: true)
+        let backup = directory.appendingPathComponent(".encryption-backup-\(UUID().uuidString)", isDirectory: true)
+        try manager.createDirectory(at: staging, withIntermediateDirectories: true)
+        defer {
+            try? manager.removeItem(at: staging)
+            try? manager.removeItem(at: backup)
+        }
+
         for profile in profiles {
             let plain = try loadProfileContent(profile, settings: settings)
-            try writeProfileContent(plain, to: profileFile(profile, settings: settings), settings: settings)
+            let transformed = try ageService.encryptedContent(plain, settings: settings)
+            try transformed.write(to: staging.appendingPathComponent(profile.fileName), atomically: true, encoding: .utf8)
+        }
+
+        var movedBackups: [String] = []
+        var installedFileNames: [String] = []
+        do {
+            try manager.createDirectory(at: backup, withIntermediateDirectories: true)
+            for profile in profiles {
+                let target = profileFile(profile, settings: settings)
+                guard manager.fileExists(atPath: target.path) else { continue }
+                try manager.moveItem(at: target, to: backup.appendingPathComponent(profile.fileName))
+                movedBackups.append(profile.fileName)
+            }
+            for profile in profiles {
+                try manager.moveItem(
+                    at: staging.appendingPathComponent(profile.fileName),
+                    to: profileFile(profile, settings: settings)
+                )
+                installedFileNames.append(profile.fileName)
+            }
+        } catch {
+            for fileName in installedFileNames {
+                let target = directory.appendingPathComponent(fileName)
+                if manager.fileExists(atPath: target.path) { try? manager.removeItem(at: target) }
+            }
+            for fileName in movedBackups {
+                let saved = backup.appendingPathComponent(fileName)
+                let target = directory.appendingPathComponent(fileName)
+                if manager.fileExists(atPath: saved.path) { try? manager.moveItem(at: saved, to: target) }
+            }
+            throw error
         }
     }
 
