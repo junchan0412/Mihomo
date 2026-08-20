@@ -3,6 +3,8 @@ import Foundation
 
 @MainActor
 final class RuntimeActivityStore: ObservableObject {
+    private static let policyTrafficSampleLimit = 50_000
+
     @Published private(set) var connections: [ConnectionItem] = []
     @Published private(set) var recentConnections: [ConnectionItem] = []
     @Published var uploadRate: Int64 = 0
@@ -226,7 +228,10 @@ final class RuntimeActivityStore: ObservableObject {
 
         previousConnectionTraffic = currentTraffic
         let cutoff = now.addingTimeInterval(-24 * 60 * 60)
-        policyTrafficSamples = samples.filter { $0.date >= cutoff }
+        let retainedSamples = samples.filter { $0.date >= cutoff }
+        policyTrafficSamples = retainedSamples.count > Self.policyTrafficSampleLimit
+            ? Array(retainedSamples.suffix(Self.policyTrafficSampleLimit))
+            : retainedSamples
     }
 
     private func connectionTrafficIdentity(_ connection: ConnectionItem) -> String {
