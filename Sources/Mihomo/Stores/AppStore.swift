@@ -113,6 +113,7 @@ final class AppStore: ObservableObject {
     var isExpectedCoreExit = false
     var shutdownRequested = false
     var crashRestartCount = 0
+    var consecutiveControllerFailures = 0
     var bufferedLogs: [LogEntry] = []
     var pendingLogEntries: [LogEntry] = []
     var logFlushTask: Task<Void, Never>?
@@ -125,9 +126,12 @@ final class AppStore: ObservableObject {
     var softwareUpdateTask: Task<Void, Never>?
     var lastNetworkOperations: [NetworkTakeoverKind: String] = [:]
     var lastNetworkTakeoverRefreshAt = Date.distantPast
+    var networkTakeoverRefreshTask: Task<Void, Never>?
+    var networkTakeoverRefreshGeneration = 0
     var resourceBatchCancellationToken: WorkCancellationToken?
     var lastSystemProxyGuardAttemptAt = Date.distantPast
     var systemProxyGuardTask: Task<Void, Never>?
+    var systemProxyGuardGeneration = 0
     var profileStatsCache: [UUID: ProfileStatsCacheEntry] = [:]
     var profileQualityCache: [UUID: ProfileQualityCacheEntry] = [:]
     var controllerTrafficStreamTask: Task<Void, Never>?

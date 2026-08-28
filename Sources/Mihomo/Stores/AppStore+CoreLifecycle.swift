@@ -1,6 +1,11 @@
 import Foundation
 
 extension AppStore {
+    /// Consecutive failed controller polls that count as "the core went away". The controller is
+    /// on loopback, so a handful of back-to-back failures means the process is gone rather than a
+    /// transient network blip.
+    static let controllerFailureExitThreshold = 3
+
     func toggleCore() async {
         isCoreRunning ? await stopCore(restoreSystemProxy: true) : await startCore()
     }
@@ -64,12 +69,18 @@ extension AppStore {
 
             isCoreRunning = true
             coreStatus = "启动中"
+            consecutiveControllerFailures = 0
             startControllerEventStreams()
             appendLog("info", "\(result.message)：\(AppPaths.runtimeConfigFile.path)")
             try? await Task.sleep(nanoseconds: 800_000_000)
             await refreshController()
         } catch {
+            // The restart path above may already have stopped the running core, so leaving
+            // `isCoreRunning` alone would strand the UI showing a core that is not there.
+            isCoreRunning = false
             coreStatus = "启动失败"
+            consecutiveControllerFailures = 0
+            stopControllerEventStreams(status: "轮询")
             try? profileStore.restoreRuntimeBackup()
             appendLog("error", "启动失败：\(error.localizedDescription)")
         }
@@ -78,6 +89,7 @@ extension AppStore {
 
     func stopCore(restoreSystemProxy: Bool = true) async {
         isExpectedCoreExit = true
+        consecutiveControllerFailures = 0
         do {
             let result = try await helperClient.stopCore(
                 restoreDNS: settings.autoSetSystemDNS,
@@ -187,6 +199,8 @@ extension AppStore {
         profileRefreshTask = nil
         pollingTask?.cancel()
         pollingTask = nil
+        networkTakeoverRefreshTask?.cancel()
+        networkTakeoverRefreshTask = nil
         systemProxyGuardTask?.cancel()
         systemProxyGuardTask = nil
         stopControllerEventStreams(status: "轮询")
@@ -279,16 +293,22 @@ extension AppStore {
             || message.contains("geodata")
     }
 
-    private func handleCoreExit(_ status: Int32) {
+    /// Reacts to the core disappearing without us asking it to.
+    ///
+    /// The core runs under the privileged helper now, so there is no in-process termination
+    /// handler to hang this off — `refreshController` reports repeated controller failures
+    /// instead. Without that wiring the "异常退出后自动恢复" setting did nothing at all.
+    func handleCoreExit(reason: String) {
         if isExpectedCoreExit || shutdownRequested {
             appendLog("info", "核心已按计划退出")
             return
         }
 
         isCoreRunning = false
-        coreStatus = "异常退出 \(status)"
+        coreStatus = "异常退出"
+        consecutiveControllerFailures = 0
         stopControllerEventStreams(status: "降级")
-        appendLog("warning", "核心异常退出，状态码 \(status)")
+        appendLog("warning", "核心异常退出：\(reason)")
 
         guard settings.restartCoreOnCrash else { return }
         guard crashRestartCount < max(settings.maxCrashRestarts, 0) else {

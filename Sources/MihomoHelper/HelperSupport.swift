@@ -1,37 +1,27 @@
 import Foundation
+import MihomoShared
 
-struct HelperShellResult {
-    var status: Int32
-    var stdout: String
-    var stderr: String
-}
+typealias HelperShellResult = ProcessRunResult
 
+/// Helper-side entry point for the shared subprocess runner.
 enum HelperShell {
     @discardableResult
-    static func run(_ executable: String, _ arguments: [String], workDirectory: URL? = nil) throws -> HelperShellResult {
-        let process = Process()
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.currentDirectoryURL = workDirectory
-        process.standardOutput = stdout
-        process.standardError = stderr
-        try process.run()
-        process.waitUntilExit()
-
-        return HelperShellResult(
-            status: process.terminationStatus,
-            stdout: String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? "",
-            stderr: String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    static func run(
+        _ executable: String,
+        _ arguments: [String],
+        workDirectory: URL? = nil,
+        forcesPOSIXLocale: Bool = false
+    ) throws -> HelperShellResult {
+        try ProcessRunner.run(
+            executable,
+            arguments,
+            workDirectory: workDirectory,
+            forcesPOSIXLocale: forcesPOSIXLocale
         )
     }
 
     static func output(_ result: HelperShellResult) -> String {
-        [result.stdout, result.stderr]
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
+        result.combinedOutput
     }
 }
 

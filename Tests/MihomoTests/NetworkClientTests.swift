@@ -31,4 +31,18 @@ final class NetworkClientTests: XCTestCase {
         XCTAssertEqual(configuration.timeoutIntervalForResource, NetworkRequestKind.controller.resourceTimeout)
         XCTAssertFalse(configuration.waitsForConnectivity)
     }
+
+    func testEventStreamSessionOutlivesTheControllerResourceBudget() {
+        let configuration = NetworkSessionFactory.eventStreamSession.configuration
+
+        // timeoutIntervalForResource caps a task's total lifetime, WebSocket tasks included.
+        // Reusing the controller session tore every event stream down after 15 s.
+        XCTAssertGreaterThan(
+            configuration.timeoutIntervalForResource,
+            NetworkRequestKind.controller.resourceTimeout
+        )
+        XCTAssertGreaterThan(configuration.timeoutIntervalForResource, 3600)
+        XCTAssertEqual(configuration.timeoutIntervalForRequest, NetworkRequestKind.controller.requestTimeout)
+        XCTAssertFalse(configuration.waitsForConnectivity)
+    }
 }

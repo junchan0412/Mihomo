@@ -1,30 +1,22 @@
 import Foundation
+import MihomoShared
 
-struct ShellResult {
-    var status: Int32
-    var stdout: String
-    var stderr: String
-}
+typealias ShellResult = ProcessRunResult
 
+/// App-side entry point for the shared subprocess runner.
 enum Shell {
-    static func run(_ executable: String, _ arguments: [String], workDirectory: URL? = nil) throws -> ShellResult {
-        let process = Process()
-        let stdout = Pipe()
-        let stderr = Pipe()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.currentDirectoryURL = workDirectory
-        process.standardOutput = stdout
-        process.standardError = stderr
-        try process.run()
-        process.waitUntilExit()
-
-        let outData = stdout.fileHandleForReading.readDataToEndOfFile()
-        let errData = stderr.fileHandleForReading.readDataToEndOfFile()
-        return ShellResult(
-            status: process.terminationStatus,
-            stdout: String(data: outData, encoding: .utf8) ?? "",
-            stderr: String(data: errData, encoding: .utf8) ?? ""
+    @discardableResult
+    static func run(
+        _ executable: String,
+        _ arguments: [String],
+        workDirectory: URL? = nil,
+        forcesPOSIXLocale: Bool = false
+    ) throws -> ShellResult {
+        try ProcessRunner.run(
+            executable,
+            arguments,
+            workDirectory: workDirectory,
+            forcesPOSIXLocale: forcesPOSIXLocale
         )
     }
 }

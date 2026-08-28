@@ -55,7 +55,7 @@ struct ActivityDNSSidebar: View {
     var body: some View {
         ActivityTypeSidebar(
             title: "类型",
-            items: ActivityDNSFilter.allCases,
+            items: [.all, .dynamic],
             selection: $selection,
             label: \.title
         )
@@ -131,7 +131,7 @@ struct ActivityDNSView: View {
                         .init(title: "类型", width: 82) { $0.kind.title },
                         .init(title: "域名", width: 300) { $0.host },
                         .init(title: "值", width: 460) { $0.addresses.isEmpty ? "-" : $0.addresses.joined(separator: ", ") },
-                        .init(title: "DNS 服务器", width: 180) { $0.server },
+                        .init(title: "来源地址", width: 180) { $0.server },
                         .init(title: "注释", width: 160) { _ in "连接观测" }
                     ],
                     hasHorizontalScroller: true,

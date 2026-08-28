@@ -29,9 +29,9 @@ final class BackupManager {
 
     func createLocalArchive() throws -> URL {
         try ensureBaseDirectories()
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let archive = backupsDirectory.appendingPathComponent("Mihomo-\(formatter.string(from: Date())).zip")
+        let archive = backupsDirectory.appendingPathComponent(
+            "Mihomo-\(Formatters.fileStamp.string(from: Date())).zip"
+        )
         let candidates = [
             "settings.json",
             "profiles.json",
@@ -116,7 +116,12 @@ final class BackupManager {
             throw NSError(domain: "Backup", code: 4, userInfo: [NSLocalizedDescriptionKey: "Gist Token 为空"])
         }
         let isUpdate = gistID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-        let url = URL(string: isUpdate ? "https://api.github.com/gists/\(gistID)" : "https://api.github.com/gists")!
+        let url: URL
+        if isUpdate {
+            url = try Self.gistURL(id: gistID)
+        } else {
+            url = Self.gistsEndpoint
+        }
         var request = URLRequest(url: url)
         request.httpMethod = isUpdate ? "PATCH" : "POST"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -141,7 +146,7 @@ final class BackupManager {
         guard gistID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else {
             throw NSError(domain: "Backup", code: 5, userInfo: [NSLocalizedDescriptionKey: "Gist ID 为空"])
         }
-        var request = URLRequest(url: URL(string: "https://api.github.com/gists/\(gistID)")!)
+        var request = URLRequest(url: try Self.gistURL(id: gistID))
         if token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -154,6 +159,23 @@ final class BackupManager {
             throw NSError(domain: "Backup", code: 6, userInfo: [NSLocalizedDescriptionKey: "Gist 中没有 mihomo-backup.json"])
         }
         return content
+    }
+
+    static let gistsEndpoint = URL(string: "https://api.github.com/gists")!
+
+    /// Gist IDs come straight from a settings text field, so they cannot be interpolated into a
+    /// URL and force-unwrapped — a stray space or slash would either trap or retarget the request.
+    static func gistURL(id: String) throws -> URL {
+        let trimmed = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false,
+              trimmed.rangeOfCharacter(from: CharacterSet.alphanumerics.inverted) == nil,
+              let url = URL(string: "https://api.github.com/gists/\(trimmed)")
+        else {
+            throw NSError(domain: "Backup", code: 7, userInfo: [
+                NSLocalizedDescriptionKey: "Gist ID 无效，只允许字母和数字：\(id)"
+            ])
+        }
+        return url
     }
 
     private func webDAVTarget(urlString: String, archive: URL) -> URL? {

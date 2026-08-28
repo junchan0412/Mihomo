@@ -6,6 +6,14 @@ struct ConnectionTableRow: Identifiable, Hashable {
     var isActive = true
     var sequence: Int = 0
 
+    /// Rendered when the row is built rather than on access.
+    ///
+    /// `AppKitTable` picks the rows to reload by comparing rows for equality, and a computed
+    /// property reading `Date()` takes no part in that comparison. Leaving it computed froze the
+    /// 时长 column for any connection whose byte counters were not moving, while busy rows next to
+    /// it kept ticking.
+    var durationText: String = "-"
+
     var id: String { connection.id }
     var idText: String { "#\(sequence)" }
 
@@ -38,11 +46,6 @@ struct ConnectionTableRow: Identifiable, Hashable {
     var uploadText: String { Formatters.bytes(connection.upload) }
     var downloadText: String { Formatters.bytes(connection.download) }
 
-    var durationText: String {
-        guard let start = connection.start else { return "-" }
-        return Self.durationText(from: Date().timeIntervalSince(start))
-    }
-
     var methodText: String {
         let text = connection.metadataType.isEmpty ? connection.network : connection.metadataType
         return text.isEmpty ? "-" : text.uppercased()
@@ -50,6 +53,11 @@ struct ConnectionTableRow: Identifiable, Hashable {
 
     var addressText: String { connection.remoteEndpoint }
     var statusColor: NSColor { isActive ? .systemGreen : .systemYellow }
+
+    static func durationText(for connection: ConnectionItem, now: Date) -> String {
+        guard let start = connection.start else { return "-" }
+        return durationText(from: now.timeIntervalSince(start))
+    }
 
     private static func durationText(from interval: TimeInterval) -> String {
         let seconds = max(0, Int(interval.rounded()))
@@ -62,6 +70,7 @@ struct ConnectionTableRow: Identifiable, Hashable {
 
 struct ActivityConnectionTableRowsInput: Equatable {
     var sourceRevision: Int
+    var activeConnectionsRevision: Int
     var filterText: String
     var selectedFilterID: String
     var moduleTab: ActivityModuleTab
@@ -71,7 +80,8 @@ struct ActivityConnectionTableRowsInput: Equatable {
 enum ActivityConnectionTableRows {
     static func make(
         from connections: [ConnectionItem],
-        activeConnectionIDs: Set<String>
+        activeConnectionIDs: Set<String>,
+        now: Date = Date()
     ) -> [ConnectionTableRow] {
         connections
             .sorted(by: newestFirst)
@@ -80,7 +90,8 @@ enum ActivityConnectionTableRows {
                 ConnectionTableRow(
                     connection: connection,
                     isActive: activeConnectionIDs.contains(connection.id),
-                    sequence: offset + 1
+                    sequence: offset + 1,
+                    durationText: ConnectionTableRow.durationText(for: connection, now: now)
                 )
             }
     }

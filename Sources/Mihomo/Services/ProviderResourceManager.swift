@@ -404,9 +404,14 @@ struct ProviderResourceManager {
               let port = components.port
         else { return nil }
         let user = components.user?.removingPercentEncoding
-        let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).compactMap { item in
-            item.value.map { (item.name.lowercased(), $0) }
-        })
+        // Subscription links are untrusted input and routinely repeat parameters
+        // (`?type=ws&type=grpc`); `Dictionary(uniqueKeysWithValues:)` would trap on those.
+        let query = Dictionary(
+            (components.queryItems ?? []).compactMap { item in
+                item.value.map { (item.name.lowercased(), $0) }
+            },
+            uniquingKeysWith: { _, last in last }
+        )
         let displayName = components.fragment?.removingPercentEncoding
         var proxy: [String: Any] = [
             "name": displayName?.isEmpty == false ? displayName! : host,
@@ -536,9 +541,7 @@ struct ProviderResourceManager {
     }
 
     private func backupURL(for target: URL, provider: ProviderItem, date: Date) -> URL {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let stamp = formatter.string(from: date)
+        let stamp = Formatters.fileStamp.string(from: date)
         let targetBase = target.deletingPathExtension().lastPathComponent
         let pathExtension = target.pathExtension.isEmpty ? "yaml" : target.pathExtension
         let name = [

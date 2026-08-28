@@ -15,9 +15,11 @@ final class RuntimeActivityStore: ObservableObject {
 
     private(set) var connectionsRevision = 0
     private(set) var recentConnectionsRevision = 0
+    private(set) var activeConnectionsRevision = 0
 
     private var previousConnectionTraffic: [String: (upload: Int64, download: Int64)] = [:]
     private var lastTrafficSampleAppendAt = Date.distantPast
+    private var lastPolicyTrafficPruneAt = Date.distantPast
     private var lastConnectionsPublishAt = Date.distantPast
     private(set) var activeConnectionIDs: Set<String> = []
     private var recentConnectionsByID: [String: ConnectionItem] = [:]
@@ -42,14 +44,26 @@ final class RuntimeActivityStore: ObservableObject {
 
         recordPolicyTraffic(items)
         mergeRecentConnections(items)
-        totalUploadBytes = items.reduce(Int64(0)) { $0 + $1.upload }
-        totalDownloadBytes = items.reduce(Int64(0)) { $0 + $1.download }
-        uniqueTargetCount = Set(items.map(\.host).filter { $0.isEmpty == false }).count
-        directTrafficBytes = items.reduce(Int64(0)) { total, connection in
+        var nextUploadBytes: Int64 = 0
+        var nextDownloadBytes: Int64 = 0
+        var nextDirectBytes: Int64 = 0
+        var nextTargets = Set<String>()
+        for connection in items {
+            nextUploadBytes += connection.upload
+            nextDownloadBytes += connection.download
+            if connection.host.isEmpty == false {
+                nextTargets.insert(connection.host)
+            }
             let routing = "\(connection.rule) \(connection.chain)".lowercased()
             let isDirect = routing.contains("direct") || routing.contains("直连")
-            return isDirect ? total + connection.download + connection.upload : total
+            if isDirect {
+                nextDirectBytes += connection.download + connection.upload
+            }
         }
+        totalUploadBytes = nextUploadBytes
+        totalDownloadBytes = nextDownloadBytes
+        uniqueTargetCount = nextTargets.count
+        directTrafficBytes = nextDirectBytes
 
         // High-frequency stream frames often only change byte counters.
         // Keep totals fresh, but throttle full table publishes to cut AppKit/SwiftUI thrash.
@@ -60,7 +74,11 @@ final class RuntimeActivityStore: ObservableObject {
             connections = items
             connectionsRevision &+= 1
         }
-        activeConnectionIDs = Set(items.map(\.id))
+        let nextActiveConnectionIDs = Set(items.map(\.id))
+        if activeConnectionIDs != nextActiveConnectionIDs {
+            activeConnectionIDs = nextActiveConnectionIDs
+            activeConnectionsRevision &+= 1
+        }
     }
 
     func connectionStructureChanged(from oldItems: [ConnectionItem], to newItems: [ConnectionItem]) -> Bool {
@@ -203,8 +221,8 @@ final class RuntimeActivityStore: ObservableObject {
     }
 
     private func recordPolicyTraffic(_ items: [ConnectionItem], now: Date = Date()) {
-        var samples = policyTrafficSamples
         var currentTraffic: [String: (upload: Int64, download: Int64)] = [:]
+        var newSamples: [PolicyTrafficSample] = []
 
         for item in items {
             let identity = connectionTrafficIdentity(item)
@@ -214,7 +232,7 @@ final class RuntimeActivityStore: ObservableObject {
             currentTraffic[identity] = (item.upload, item.download)
 
             guard uploadDelta > 0 || downloadDelta > 0 else { continue }
-            samples.append(PolicyTrafficSample(
+            newSamples.append(PolicyTrafficSample(
                 date: now,
                 policy: policyName(for: item),
                 process: item.processName,
@@ -227,11 +245,18 @@ final class RuntimeActivityStore: ObservableObject {
         }
 
         previousConnectionTraffic = currentTraffic
-        let cutoff = now.addingTimeInterval(-24 * 60 * 60)
-        let retainedSamples = samples.filter { $0.date >= cutoff }
-        policyTrafficSamples = retainedSamples.count > Self.policyTrafficSampleLimit
-            ? Array(retainedSamples.suffix(Self.policyTrafficSampleLimit))
-            : retainedSamples
+        let shouldPrune = now.timeIntervalSince(lastPolicyTrafficPruneAt) >= 60
+        if shouldPrune {
+            lastPolicyTrafficPruneAt = now
+            let cutoff = now.addingTimeInterval(-24 * 60 * 60)
+            policyTrafficSamples.removeAll { $0.date < cutoff }
+        }
+        if newSamples.isEmpty == false {
+            policyTrafficSamples.append(contentsOf: newSamples)
+        }
+        if policyTrafficSamples.count > Self.policyTrafficSampleLimit + 1_024 {
+            policyTrafficSamples = Array(policyTrafficSamples.suffix(Self.policyTrafficSampleLimit))
+        }
     }
 
     private func connectionTrafficIdentity(_ connection: ConnectionItem) -> String {

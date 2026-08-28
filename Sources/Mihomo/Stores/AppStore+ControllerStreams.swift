@@ -24,6 +24,11 @@ extension AppStore {
         return Date().timeIntervalSince(controllerEventStreamLastEventAt) < 8
     }
 
+    var isControllerConnectionStreamHealthy: Bool {
+        guard let controllerConnectionStreamLastEventAt else { return false }
+        return Date().timeIntervalSince(controllerConnectionStreamLastEventAt) < 8
+    }
+
     func updateTrafficRates(uploadTotal: Int64, downloadTotal: Int64) {
         let now = Date()
         guard let lastAt = lastTrafficSampleAt,

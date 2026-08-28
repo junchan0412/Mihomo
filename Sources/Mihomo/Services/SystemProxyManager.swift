@@ -50,8 +50,11 @@ final class SystemProxyManager {
     }
 
     func networkServices() -> [String] {
-        guard let result = try? Shell.run("/usr/sbin/networksetup", ["-listallnetworkservices"]),
-              result.status == 0
+        guard let result = try? Shell.run(
+            "/usr/sbin/networksetup",
+            ["-listallnetworkservices"],
+            forcesPOSIXLocale: true
+        ), result.status == 0
         else { return [] }
         return result.stdout
             .split(separator: "\n")
@@ -96,8 +99,19 @@ final class SystemProxyManager {
     }
 
     func captureSnapshot() throws -> SystemProxySnapshot {
-        let services = networkServices().map { service in
-            NetworkServiceProxyState(
+        let names = networkServices()
+        guard names.isEmpty == false else {
+            return SystemProxySnapshot(createdAt: Date(), services: [])
+        }
+
+        // Each service needs five independent `networksetup` probes. Run services in parallel:
+        // serially this is 5x(service count) process spawns — 40+ and one to two seconds on a
+        // typical Mac — and it runs on every takeover refresh and proxy-guard reconciliation.
+        let lock = NSLock()
+        var captured: [Int: NetworkServiceProxyState] = [:]
+        DispatchQueue.concurrentPerform(iterations: names.count) { index in
+            let service = names[index]
+            let state = NetworkServiceProxyState(
                 service: service,
                 web: endpointState(command: "-getwebproxy", service: service),
                 secureWeb: endpointState(command: "-getsecurewebproxy", service: service),
@@ -105,16 +119,30 @@ final class SystemProxyManager {
                 bypassDomains: bypassDomains(service: service),
                 dnsServers: dnsServers(service: service)
             )
+            lock.lock()
+            captured[index] = state
+            lock.unlock()
         }
-        return SystemProxySnapshot(createdAt: Date(), services: services)
+
+        return SystemProxySnapshot(
+            createdAt: Date(),
+            services: names.indices.compactMap { captured[$0] }
+        )
     }
 
     func restore(_ snapshot: SystemProxySnapshot) throws {
         throw helperOnlyError()
     }
 
+    // `networksetup` localises its output, so every parser below pins LC_ALL=C. Without it the
+    // "Enabled:"/"Server:"/"There aren't any" labels never match on a non-English system and the
+    // app silently reports "no proxy configured".
     private func endpointState(command: String, service: String) -> ProxyEndpointState {
-        guard let result = try? Shell.run("/usr/sbin/networksetup", [command, service]), result.status == 0 else {
+        guard let result = try? Shell.run(
+            "/usr/sbin/networksetup",
+            [command, service],
+            forcesPOSIXLocale: true
+        ), result.status == 0 else {
             return ProxyEndpointState(enabled: false, server: "", port: 0)
         }
         let lines = result.stdout.split(separator: "\n").map(String.init)
@@ -125,8 +153,11 @@ final class SystemProxyManager {
     }
 
     private func bypassDomains(service: String) -> [String] {
-        guard let result = try? Shell.run("/usr/sbin/networksetup", ["-getproxybypassdomains", service]),
-              result.status == 0
+        guard let result = try? Shell.run(
+            "/usr/sbin/networksetup",
+            ["-getproxybypassdomains", service],
+            forcesPOSIXLocale: true
+        ), result.status == 0
         else { return [] }
         return result.stdout
             .split(separator: "\n")
@@ -135,8 +166,11 @@ final class SystemProxyManager {
     }
 
     private func dnsServers(service: String) -> [String] {
-        guard let result = try? Shell.run("/usr/sbin/networksetup", ["-getdnsservers", service]),
-              result.status == 0
+        guard let result = try? Shell.run(
+            "/usr/sbin/networksetup",
+            ["-getdnsservers", service],
+            forcesPOSIXLocale: true
+        ), result.status == 0
         else { return [] }
         return result.stdout
             .split(separator: "\n")

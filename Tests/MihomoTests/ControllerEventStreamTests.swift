@@ -138,6 +138,13 @@ final class ControllerEventStreamTests: XCTestCase {
         XCTAssertEqual(lastDecision?.backoffSeconds, 12)
     }
 
+    func testEventStreamUsesDedicatedLongLivedSession() {
+        let stream = MihomoControllerEventStream(host: "127.0.0.1", port: 9090)
+
+        XCTAssertTrue(stream.session === NetworkSessionFactory.eventStreamSession)
+        XCTAssertFalse(stream.session === NetworkSessionFactory.session(for: .controller))
+    }
+
     private func jsonData(_ value: [String: Any]) throws -> Data {
         try JSONSerialization.data(withJSONObject: value)
     }

@@ -65,7 +65,7 @@ extension AppStore {
                     appendLog("info", "\(proxy) 延迟：\(delay) ms（\(url)）")
                     return
                 } catch {
-                    failures.append(error.localizedDescription)
+                    failures.append(Self.describeProbeFailure(error))
                 }
             }
             let message = failures.map(friendlyDelayError).joined(separator: "，")
@@ -95,16 +95,30 @@ extension AppStore {
               let proxyIndex = proxyGroups[groupIndex].all.firstIndex(where: { $0.name == proxy })
         else { return }
         proxyGroups[groupIndex].all[proxyIndex].delay = delay
-        proxyGroups = proxyGroups
     }
 
     private func updateDelay(proxy: String, delay: Int) {
-        for groupIndex in proxyGroups.indices {
-            for proxyIndex in proxyGroups[groupIndex].all.indices where proxyGroups[groupIndex].all[proxyIndex].name == proxy {
-                proxyGroups[groupIndex].all[proxyIndex].delay = delay
+        applyDelays([proxy: delay])
+    }
+
+    /// Applies a whole batch in one pass and publishes once. Updating `proxyGroups` per result
+    /// re-scanned every group for every node and emitted an objectWillChange per assignment, so a
+    /// 500-node sweep re-rendered the policy table 500+ times.
+    func applyDelays(_ delays: [String: Int]) {
+        guard delays.isEmpty == false else { return }
+        var updated = proxyGroups
+        var didChange = false
+        for groupIndex in updated.indices {
+            for proxyIndex in updated[groupIndex].all.indices {
+                guard let delay = delays[updated[groupIndex].all[proxyIndex].name],
+                      updated[groupIndex].all[proxyIndex].delay != delay
+                else { continue }
+                updated[groupIndex].all[proxyIndex].delay = delay
+                didChange = true
             }
         }
-        proxyGroups = proxyGroups
+        guard didChange else { return }
+        proxyGroups = updated
     }
 
     private func testPolicyRowsDelay(_ rows: [PolicyTableRow], label: String) async {
@@ -115,74 +129,81 @@ extension AppStore {
 
         let targets = uniqueDelayTargets(from: rows)
         let maxConcurrent = max(1, settings.delayTestConcurrency)
-        var pendingTargets = targets
-        var runningTasks: [Task<ProxyDelayResult, Never>] = []
+        let request = DelayProbeRequest(
+            host: settings.localControlHost,
+            port: settings.controllerPort,
+            secret: settings.controllerSecret,
+            urls: normalizedDelayTestURLs,
+            directURLs: normalizedDirectDelayTestURLs,
+            timeout: normalizedDelayTestTimeout
+        )
         var completed = 0
         var succeeded = 0
         var failed = 0
         var skipped = 0
+        var wasCancelled = false
         var failureReasons: [String: Int] = [:]
+        var pendingDelays: [String: Int] = [:]
+        var lastDelayFlushAt = Date.distantPast
         delayTestFailureSummary = ""
         delayTestStatus = "\(label) 测速开始，节点 \(targets.count)，并发 \(maxConcurrent)"
 
-        while pendingTargets.isEmpty == false || runningTasks.isEmpty == false {
-            while runningTasks.count < maxConcurrent, pendingTargets.isEmpty == false {
-                let target = pendingTargets.removeFirst()
-                let host = settings.localControlHost
-                let port = settings.controllerPort
-                let secret = settings.controllerSecret
-                let urls = normalizedDelayTestURLs
-                let directURLs = normalizedDirectDelayTestURLs
-                let timeout = normalizedDelayTestTimeout
-                runningTasks.append(Task {
-                    if Self.isRejectProxy(type: target.type, name: target.proxy) {
-                        return ProxyDelayResult(proxy: target.proxy, delay: nil, errorMessage: nil, skippedMessage: "REJECT 不可测速")
-                    }
-                    if Self.isDirectProxy(type: target.type, name: target.proxy) {
-                        do {
-                            let delay = try await Self.measureDirectDelay(urls: directURLs, timeout: timeout)
-                            return ProxyDelayResult(proxy: target.proxy, delay: delay, errorMessage: nil, skippedMessage: nil)
-                        } catch {
-                            return ProxyDelayResult(proxy: target.proxy, delay: nil, errorMessage: error.localizedDescription, skippedMessage: nil)
-                        }
-                    }
-                    let client = MihomoControllerClient(host: host, port: port, secret: secret)
-                    var failures: [String] = []
-                    for url in urls {
-                        do {
-                            let delay = try await client.proxyDelay(proxy: target.proxy, url: url, timeout: timeout)
-                            return ProxyDelayResult(proxy: target.proxy, delay: delay, errorMessage: nil, skippedMessage: nil)
-                        } catch {
-                            failures.append(error.localizedDescription)
-                        }
-                    }
-                    return ProxyDelayResult(proxy: target.proxy, delay: nil, errorMessage: failures.joined(separator: "，"), skippedMessage: nil)
-                })
+        await withTaskGroup(of: ProxyDelayResult.self) { group in
+            var next = 0
+            while next < min(maxConcurrent, targets.count) {
+                let target = targets[next]
+                next += 1
+                group.addTask { await Self.measureDelay(for: target, request: request) }
             }
 
-            guard runningTasks.isEmpty == false else { break }
-            let result = await runningTasks.removeFirst().value
-            completed += 1
-            if let delay = result.delay {
-                succeeded += 1
-                updateDelay(proxy: result.proxy, delay: delay)
-                recordDelayResult(proxyName: result.proxy, delay: delay)
-            } else if result.skippedMessage != nil {
-                skipped += 1
-                recordDelayResult(proxyName: result.proxy, delay: nil, skippedReason: result.skippedMessage)
-            } else {
-                failed += 1
-                let reason = friendlyDelayError(result.errorMessage ?? "未知错误")
-                failureReasons[reason, default: 0] += 1
-                recordDelayResult(proxyName: result.proxy, delay: nil, failureReason: reason)
+            // `group.next()` yields in completion order. Awaiting the hand-rolled task array in
+            // submission order meant one slow node stalled every free slot behind it.
+            while let result = await group.next() {
+                completed += 1
+                if let delay = result.delay {
+                    succeeded += 1
+                    pendingDelays[result.proxy] = delay
+                    recordDelayResult(proxyName: result.proxy, delay: delay)
+                } else if let skippedMessage = result.skippedMessage {
+                    skipped += 1
+                    recordDelayResult(proxyName: result.proxy, delay: nil, skippedReason: skippedMessage)
+                } else {
+                    failed += 1
+                    let reason = friendlyDelayError(result.errorMessage ?? "未知错误")
+                    failureReasons[reason, default: 0] += 1
+                    recordDelayResult(proxyName: result.proxy, delay: nil, failureReason: reason)
+                }
+
+                // Coalesce delay writes: one publish per ~200 ms instead of one per node.
+                let now = Date()
+                if pendingDelays.isEmpty == false, now.timeIntervalSince(lastDelayFlushAt) >= 0.2 {
+                    lastDelayFlushAt = now
+                    applyDelays(pendingDelays)
+                    pendingDelays.removeAll()
+                }
+                delayTestFailureSummary = delayFailureSummary(failureReasons)
+                delayTestStatus = "\(label)：\(completed)/\(targets.count)，成功 \(succeeded)，失败 \(failed)，跳过 \(skipped)"
+
+                if Task.isCancelled {
+                    wasCancelled = true
+                    group.cancelAll()
+                } else if next < targets.count {
+                    let target = targets[next]
+                    next += 1
+                    group.addTask { await Self.measureDelay(for: target, request: request) }
+                }
             }
-            let summary = delayFailureSummary(failureReasons)
-            delayTestFailureSummary = summary
-            delayTestStatus = "\(label)：\(completed)/\(targets.count)，成功 \(succeeded)，失败 \(failed)，跳过 \(skipped)"
         }
+
+        applyDelays(pendingDelays)
 
         if failed > 0 {
             appendLog("warning", "\(label) 测速失败原因：\(delayFailureSummary(failureReasons))")
+        }
+        if wasCancelled || completed < targets.count {
+            delayTestStatus = "\(label) 测速已取消：完成 \(completed)/\(targets.count)"
+            appendLog("warning", delayTestStatus)
+            return
         }
         appendLog("info", "\(label) 测速完成：成功 \(succeeded)，失败 \(failed)，跳过 \(skipped)")
     }
@@ -215,54 +236,6 @@ extension AppStore {
             .all
             .first { $0.name == proxy }?
             .type ?? proxy
-    }
-
-    nonisolated private static func isDirectProxy(type: String, name: String) -> Bool {
-        type.localizedCaseInsensitiveCompare("direct") == .orderedSame
-            || name.localizedCaseInsensitiveCompare("direct") == .orderedSame
-    }
-
-    nonisolated private static func isRejectProxy(type: String, name: String) -> Bool {
-        type.localizedCaseInsensitiveCompare("reject") == .orderedSame
-            || name.localizedCaseInsensitiveCompare("reject") == .orderedSame
-    }
-
-    nonisolated private static func measureDirectDelay(urls: [String], timeout: Int) async throws -> Int {
-        var failures: [String] = []
-        for urlString in urls {
-            guard let url = URL(string: urlString) else {
-                failures.append("测速 URL 无效")
-                continue
-            }
-
-            do {
-                var request = URLRequest(url: url)
-                request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-                request.timeoutInterval = TimeInterval(timeout) / 1000
-
-                let configuration = URLSessionConfiguration.ephemeral
-                configuration.timeoutIntervalForRequest = TimeInterval(timeout) / 1000
-                configuration.timeoutIntervalForResource = TimeInterval(timeout) / 1000
-                configuration.waitsForConnectivity = false
-                configuration.connectionProxyDictionary = [
-                    kCFNetworkProxiesHTTPEnable as String: false,
-                    kCFNetworkProxiesHTTPSEnable as String: false,
-                    kCFNetworkProxiesSOCKSEnable as String: false
-                ]
-
-                let session = URLSession(configuration: configuration)
-                defer { session.finishTasksAndInvalidate() }
-                let startedAt = Date()
-                _ = try await session.data(for: request)
-                return max(1, Int(Date().timeIntervalSince(startedAt) * 1000))
-            } catch {
-                failures.append(error.localizedDescription)
-            }
-        }
-
-        throw NSError(domain: "DirectDelay", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: failures.isEmpty ? "DIRECT 直连测速失败" : failures.joined(separator: "，")
-        ])
     }
 
     private func friendlyDelayError(_ message: String) -> String {
@@ -298,43 +271,4 @@ extension AppStore {
             .map { "\($0.key) x\($0.value)" }
             .joined(separator: "，")
     }
-}
-
-enum DelayTestURLSelection {
-    static func proxyURLs(settings: AppSettings) -> [String] {
-        let configured = settings.delayTestURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let primary = configured.isEmpty ? AppSettings.default.delayTestURL : configured
-        return unique([
-            primary,
-            AppSettings.default.delayTestURL,
-            "https://www.gstatic.com/generate_204"
-        ])
-    }
-
-    static func directURLs(settings: AppSettings) -> [String] {
-        let configured = settings.directDelayTestURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let primary = configured.isEmpty ? AppSettings.default.directDelayTestURL : configured
-        return unique([primary, AppSettings.default.directDelayTestURL])
-    }
-
-    private static func unique(_ candidates: [String]) -> [String] {
-        var seen: Set<String> = []
-        return candidates.compactMap { candidate in
-            let value = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard value.isEmpty == false, seen.insert(value).inserted else { return nil }
-            return value
-        }
-    }
-}
-
-private struct ProxyDelayResult {
-    var proxy: String
-    var delay: Int?
-    var errorMessage: String?
-    var skippedMessage: String?
-}
-
-private struct ProxyDelayTarget {
-    var proxy: String
-    var type: String
 }

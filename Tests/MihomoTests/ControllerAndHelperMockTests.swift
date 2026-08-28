@@ -62,6 +62,20 @@ final class ControllerAndHelperMockTests: XCTestCase {
         XCTAssertNotNil(connections.first?.start)
     }
 
+    func testControllerEndpointPreservesEncodedProxyNames() throws {
+        let url = try MihomoControllerClient.endpointURL(
+            host: "127.0.0.1",
+            port: 9090,
+            path: "/proxies/%E8%8A%82%E7%82%B9%2F%E5%A4%87%E7%94%A8?url=https%3A%2F%2Fexample.com"
+        )
+
+        XCTAssertEqual(
+            url.absoluteString,
+            "http://127.0.0.1:9090/proxies/%E8%8A%82%E7%82%B9%2F%E5%A4%87%E7%94%A8?url=https%3A%2F%2Fexample.com"
+        )
+        XCTAssertFalse(url.absoluteString.contains("%252F"))
+    }
+
     func testConnectionParsingUsesSniffHostAndNormalizesInnerProcess() throws {
         let payload: [String: Any] = [
             "connections": [[

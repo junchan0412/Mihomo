@@ -131,6 +131,37 @@ final class BackupAndDiagnosticSecurityTests: XCTestCase {
         XCTAssertTrue(redacted.contains("keep=1"))
     }
 
+    func testGistURLRejectsIdentifiersThatWouldCrashOrRetargetTheRequest() throws {
+        // The gist ID is free text in settings; interpolating it into a URL and force-unwrapping
+        // trapped on anything URL(string:) could not parse.
+        XCTAssertThrowsError(try BackupManager.gistURL(id: "8fe1 a2b3"))
+        XCTAssertThrowsError(try BackupManager.gistURL(id: ""))
+        XCTAssertThrowsError(try BackupManager.gistURL(id: "   "))
+        XCTAssertThrowsError(try BackupManager.gistURL(id: "../../users/octocat"))
+        XCTAssertThrowsError(try BackupManager.gistURL(id: "abc?foo=bar"))
+
+        XCTAssertEqual(
+            try BackupManager.gistURL(id: " 8fe1a2b3c4 ").absoluteString,
+            "https://api.github.com/gists/8fe1a2b3c4"
+        )
+        XCTAssertEqual(BackupManager.gistsEndpoint.absoluteString, "https://api.github.com/gists")
+    }
+
+    func testDownloadGistRejectsInvalidIdentifierBeforeSendingRequest() async {
+        let root = temporaryDirectory()
+        let manager = BackupManager(
+            supportDirectory: root.appendingPathComponent("Support", isDirectory: true),
+            backupsDirectory: root.appendingPathComponent("Backups", isDirectory: true)
+        )
+
+        do {
+            _ = try await manager.downloadGist(token: "token", gistID: "not a gist id")
+            XCTFail("Expected an invalid gist ID to be rejected")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Gist ID 无效"))
+        }
+    }
+
     private func zip(archive: URL, paths: [String], workDirectory: URL) throws {
         let result = try Shell.run("/usr/bin/zip", ["-qry", archive.path] + paths, workDirectory: workDirectory)
         XCTAssertEqual(result.status, 0, result.stderr.isEmpty ? result.stdout : result.stderr)

@@ -82,7 +82,9 @@ extension AppStore {
     }
 
     private func persistLog(_ entry: LogEntry) {
-        let line = "\(Formatters.shortDate.string(from: entry.date)) [\(entry.level.uppercased())] \(entry.message)\n"
+        // Persisted lines use a fixed sortable stamp; `Formatters.shortDate` follows the user
+        // locale and is only appropriate for on-screen text.
+        let line = "\(Formatters.logTimestamp.string(from: entry.date)) [\(entry.level.uppercased())] \(entry.message)\n"
         let policy = LogPersistencePolicy(
             maxFileSizeBytes: Int64(settings.logMaxFileSizeMB) * 1_024 * 1_024,
             retentionDays: settings.logRetentionDays
