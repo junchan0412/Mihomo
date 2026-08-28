@@ -60,6 +60,7 @@ struct ActivityView: View {
             : activityStore.connectionsRevision
         let nextInput = ActivityConnectionTableRowsInput(
             sourceRevision: sourceRevision,
+            activeConnectionsRevision: activityStore.activeConnectionsRevision,
             filterText: appliedFilterText,
             selectedFilterID: selectedFilterID,
             moduleTab: moduleTab,
@@ -112,7 +113,7 @@ struct ActivityView: View {
             ? ActivityTrafficPresentation.rows(
                 samples: activityStore.policyTrafficSamples,
                 grouping: trafficGrouping,
-                searchText: filterText
+                searchText: appliedFilterText
             )
             : []
 
@@ -137,6 +138,7 @@ struct ActivityView: View {
         .onAppear { rebuildTableRowsIfNeeded() }
         .onChange(of: activityStore.connectionsRevision) { rebuildTableRowsIfNeeded() }
         .onChange(of: activityStore.recentConnectionsRevision) { rebuildTableRowsIfNeeded() }
+        .onChange(of: activityStore.activeConnectionsRevision) { rebuildTableRowsIfNeeded() }
         .onChange(of: filterText) { scheduleFilterApply() }
         .onChange(of: appliedFilterText) {
             rebuildTableRowsIfNeeded()

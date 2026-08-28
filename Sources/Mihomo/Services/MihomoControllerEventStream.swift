@@ -33,7 +33,7 @@ struct MihomoControllerEventStream {
     var host: String
     var port: Int
     var secret: String = ""
-    var session: URLSession = NetworkSessionFactory.session(for: .controller)
+    var session: URLSession = NetworkSessionFactory.eventStreamSession
 
     func trafficEvents() -> AsyncThrowingStream<ControllerStreamEvent, Error> {
         eventStream(path: "/traffic", transform: Self.parseTrafficEvent)

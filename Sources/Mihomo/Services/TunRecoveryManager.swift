@@ -94,8 +94,11 @@ final class TunRecoveryManager {
     }
 
     private func routes(family: String) -> [RouteEntry] {
-        guard let result = try? Shell.run("/usr/sbin/netstat", ["-rn", "-f", family]),
-              result.status == 0
+        guard let result = try? Shell.run(
+            "/usr/sbin/netstat",
+            ["-rn", "-f", family],
+            forcesPOSIXLocale: true
+        ), result.status == 0
         else { return [] }
 
         return result.stdout
@@ -124,8 +127,11 @@ final class TunRecoveryManager {
     }
 
     private func defaultRoute() -> DefaultRouteState? {
-        guard let result = try? Shell.run("/sbin/route", ["-n", "get", "default"]),
-              result.status == 0
+        guard let result = try? Shell.run(
+            "/sbin/route",
+            ["-n", "get", "default"],
+            forcesPOSIXLocale: true
+        ), result.status == 0
         else { return nil }
         let lines = result.stdout.split(separator: "\n").map(String.init)
         let gateway = value(after: "gateway:", in: lines)

@@ -87,7 +87,7 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
         var parent: AppKitTable
         private var columnSignature: [String] = []
         private var lastRows: [Row] = []
-        private var rowSignature: [String] = []
+        private var hasLoadedRows = false
         private var isApplyingSelection = false
         private weak var currentTableView: NSTableView?
 
@@ -246,33 +246,28 @@ struct AppKitTable<Row: Identifiable & Hashable>: NSViewRepresentable where Row.
             }
             columnSignature = nextSignature
             lastRows = []
-            rowSignature = []
+            hasLoadedRows = false
         }
 
         func reloadDataIfNeeded(on tableView: NSTableView) {
-            guard parent.rows != lastRows || rowSignature.isEmpty else { return }
+            guard parent.rows != lastRows || hasLoadedRows == false else { return }
 
-            let nextSignature = parent.rows.map { row in
-                let values = parent.columns.map { $0.value(row) }.joined(separator: "\u{1f}")
-                return "\(row.id)\u{1e}\(values)"
-            }
-            guard nextSignature != rowSignature else {
-                lastRows = parent.rows
-                return
-            }
-
-            let previousSignature = rowSignature
             let previousRows = lastRows
             lastRows = parent.rows
-            rowSignature = nextSignature
+            hasLoadedRows = true
 
             // Prefer in-place row reloads when the set of IDs is stable.
             // This keeps scroll position and selection visually smooth under high-frequency traffic updates.
-            if previousSignature.isEmpty == false,
+            //
+            // Rows are Equatable and every column value is derived from the row, so equal rows render
+            // identically — the same assumption the early return above already relies on. Comparing
+            // rows directly avoids rebuilding a string per cell (rows x columns `column.value` calls,
+            // each doing byte/date/URL formatting) on every SwiftUI update pass.
+            if previousRows.isEmpty == false,
                previousRows.count == parent.rows.count,
                zip(previousRows, parent.rows).allSatisfy({ $0.id == $1.id }) {
                 var changed = IndexSet()
-                for index in previousSignature.indices where previousSignature[index] != nextSignature[index] {
+                for index in parent.rows.indices where previousRows[index] != parent.rows[index] {
                     changed.insert(index)
                 }
                 if changed.isEmpty {

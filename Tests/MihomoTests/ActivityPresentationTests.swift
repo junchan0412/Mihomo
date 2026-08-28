@@ -25,6 +25,40 @@ final class ActivityPresentationTests: XCTestCase {
         XCTAssertFalse(rows[1].isActive)
     }
 
+    /// `AppKitTable` decides which rows to reload by comparing rows, so anything the table renders
+    /// has to be part of row equality. A duration read from `Date()` at cell-render time is not,
+    /// and an idle connection's 时长 column silently stopped advancing.
+    func testConnectionRowDurationIsBakedInSoElapsedTimeChangesRowEquality() {
+        var item = connection(id: "idle")
+        let start = Date(timeIntervalSinceReferenceDate: 1_000)
+        item.start = start
+
+        let early = ActivityConnectionTableRows.make(
+            from: [item],
+            activeConnectionIDs: ["idle"],
+            now: start.addingTimeInterval(5)
+        )
+        let later = ActivityConnectionTableRows.make(
+            from: [item],
+            activeConnectionIDs: ["idle"],
+            now: start.addingTimeInterval(90)
+        )
+
+        XCTAssertEqual(early[0].durationText, "5 s")
+        XCTAssertEqual(later[0].durationText, "1 m")
+        XCTAssertNotEqual(early[0], later[0], "时长变化必须让行不相等，否则表格不会重绘该行")
+    }
+
+    func testConnectionRowsWithoutStartRenderPlaceholderDuration() {
+        let rows = ActivityConnectionTableRows.make(
+            from: [connection(id: "no-start")],
+            activeConnectionIDs: [],
+            now: Date()
+        )
+
+        XCTAssertEqual(rows[0].durationText, "-")
+    }
+
     func testLogPresentationSplitsTitleAndDetail() {
         let row = LogPresentationRow(entry: LogEntry(level: "info", message: "系统代理已开启：端口 7890"))
 

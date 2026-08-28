@@ -4,56 +4,63 @@ import MihomoShared
 
 extension AppStore {
     func bootstrap() async {
+        // Every load is isolated. A single unreadable file used to abort the whole sequence, so a
+        // corrupt profiles.json meant polling never started, auto-start never ran and the Geo and
+        // helper status stayed blank — with nothing but one log line to explain it.
+        bootstrapStep("准备数据目录") { try AppPaths.ensureBaseDirectories() }
+        bootstrapStep("读取设置") { settings = try profileStore.loadSettings() }
+        bootstrapStep("迁移设置") { try migrateSettingsIfNeeded() }
+        bootstrapStep("读取配置列表") { profiles = try profileStore.loadProfiles(settings: settings) }
+        bootstrapStep("读取覆写") { configFragments = try configFragmentStore.loadFragments() }
+        bootstrapStep("读取版本历史") { configRevisions = try configRevisionStore.loadIndex() }
+        bootstrapStep("读取节点提供商") { nodeProviders = try nodeProviderStore.load() }
+        bootstrapStep("导入 Profile 节点提供商") { try importNodeProviders(from: profiles) }
+        bootstrapStep("读取禁用规则") { disabledRules = try configFragmentStore.loadDisabledRules() }
+        providerUpdateHistory = loadProviderUpdateHistory()
+        loadPolicyInteractionHistory()
+
+        if settings.activeProfileID == nil {
+            settings.activeProfileID = profiles.first?.id
+        }
+        if let activeProfile {
+            bootstrapStep("同步当前配置设置") { try synchronizeAppSettings(from: activeProfile) }
+        } else {
+            bootstrapStep("保存设置") { try profileStore.saveSettings(settings) }
+        }
+
+        lastSystemProxySnapshot = systemProxy.loadSnapshot()
+        lastSystemDNSSnapshot = systemProxy.loadDNSSnapshot()
+        lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
+        tunRecoveryStatus = lastTunRecoverySnapshot == nil ? "未捕获 TUN 回滚快照" : "已有 TUN 回滚快照"
+        refreshNetworkTakeoverStates(force: true)
+        refreshManagedCoreStatus()
+        refreshGeoDataStatus()
+        bootstrapStep("同步 Geo 数据到运行目录") { try syncGeoDataToRuntimeDirectory() }
+
+        ageStatus = settings.profileEncryptionEnabled ? "Profile 加密已启用" : "Profile 加密未启用"
+        launchDaemonStatus = MihomoHelperConstants.coreLaunchDaemonPlistPath
+        helperStatus = helperInstallationDescription
+        await resumeHelperRegistrationAfterUpdateIfNeeded()
+        refreshConfigArtifacts()
+        syncLaunchAtLoginSetting(reportSuccess: false)
+        appendLog("info", "已加载 \(profiles.count) 个配置")
+
+        startPolling()
+        startProfileAutoRefreshIfNeeded()
+        if settings.autoStartCore {
+            await startCore()
+        }
+        if settings.lightweightMode {
+            enterLightweightMode()
+        }
+        await refreshController()
+    }
+
+    private func bootstrapStep(_ description: String, _ work: () throws -> Void) {
         do {
-            try AppPaths.ensureBaseDirectories()
-            settings = try profileStore.loadSettings()
-            try migrateSettingsIfNeeded()
-            profiles = try profileStore.loadProfiles(settings: settings)
-            configFragments = try configFragmentStore.loadFragments()
-            configRevisions = try configRevisionStore.loadIndex()
-            nodeProviders = try nodeProviderStore.load()
-            try importNodeProviders(from: profiles)
-            disabledRules = try configFragmentStore.loadDisabledRules()
-            providerUpdateHistory = loadProviderUpdateHistory()
-            loadPolicyInteractionHistory()
-            if settings.activeProfileID == nil {
-                settings.activeProfileID = profiles.first?.id
-            }
-            if let activeProfile {
-                try synchronizeAppSettings(from: activeProfile)
-            } else {
-                try profileStore.saveSettings(settings)
-            }
-            lastSystemProxySnapshot = systemProxy.loadSnapshot()
-            lastSystemDNSSnapshot = systemProxy.loadDNSSnapshot()
-            lastTunRecoverySnapshot = tunRecovery.loadSnapshot()
-            tunRecoveryStatus = lastTunRecoverySnapshot == nil ? "未捕获 TUN 回滚快照" : "已有 TUN 回滚快照"
-            refreshNetworkTakeoverStates(force: true)
-            refreshManagedCoreStatus()
-            refreshGeoDataStatus()
-            do {
-                try syncGeoDataToRuntimeDirectory()
-            } catch {
-                appendLog("warning", "同步 Geo 数据到运行目录失败：\(error.localizedDescription)")
-            }
-            ageStatus = settings.profileEncryptionEnabled ? "Profile 加密已启用" : "Profile 加密未启用"
-            launchDaemonStatus = MihomoHelperConstants.coreLaunchDaemonPlistPath
-            helperStatus = helperInstallationDescription
-            await resumeHelperRegistrationAfterUpdateIfNeeded()
-            refreshConfigArtifacts()
-            syncLaunchAtLoginSetting(reportSuccess: false)
-            appendLog("info", "已加载 \(profiles.count) 个配置")
-            startPolling()
-            startProfileAutoRefreshIfNeeded()
-            if settings.autoStartCore {
-                await startCore()
-            }
-            if settings.lightweightMode {
-                enterLightweightMode()
-            }
-            await refreshController()
+            try work()
         } catch {
-            appendLog("error", "初始化失败：\(error.localizedDescription)")
+            appendLog("error", "初始化步骤失败（\(description)）：\(error.localizedDescription)")
         }
     }
 

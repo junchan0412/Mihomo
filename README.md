@@ -2,7 +2,29 @@
 
 Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在保持桌面端信息密度的同时，把日常代理操作、配置管理、网络恢复和维护工具清晰分层。
 
-当前版本：`v1.25.12`
+当前版本：`v1.25.14`
+
+## v1.25.14 更新重点
+
+- 修复 `Shell`/`HelperShell` 子进程管道死锁：备份打包、Helper 内 `mihomo -t` 校验和主线程路由采集在输出超过 64 KiB 时会永久挂起。
+- 修复三处崩溃：订阅链接含重复 query 参数、Gist ID 含非法字符、菜单文本截断长度过小。
+- 修复含空格或中文的策略组/节点名被二次百分号编码，导致选择节点与单点测速静默失败。
+- 修复「异常退出后自动恢复」开关完全失效，以及核心启动失败后界面仍显示运行中的状态不一致。
+- 修复初始化流程单点失败即跳过后续全部步骤（轮询、自动启动核心、状态刷新）。
+- 修复连接表「时长」列对空闲连接停止走动；DNS 页移除永远为空的「本地」「系统」筛选并修正列名。
+- WebSocket 实时事件流不再被 15 秒资源超时截断；接管状态采集全部移出主线程。
+- 下载改用分块读取、表格差异不再逐格构建字符串、`networksetup` 探测并行化、批量测速改用完成序调度。
+- 系统命令解析固定 `LC_ALL=C`，落盘文件名与日志时间戳固定为 POSIX 公历格式。
+
+完整变更见 [v1.25.14 Release Notes](docs/releases/v1.25.14.md)。
+
+## v1.25.13 更新重点
+
+- 启动时检测同一 bundle identifier 的已有 Mihomo 进程，激活已有实例并退出重复启动的进程。
+- 策略流量历史保留最近 24 小时数据，并限制最多 50,000 条样本。
+- 发布 bundle 写入 `LSMultipleInstancesProhibited`。
+
+完整变更见 [v1.25.13 Release Notes](docs/releases/v1.25.13.md)。
 
 ## v1.25.12 更新重点
 
@@ -210,11 +232,20 @@ Mihomo 是一个 SwiftUI-first 的 macOS 原生 mihomo 客户端，目标是在�
 
 - macOS 14 或更新版本。
 - Swift 5.9+。
-- 项目默认使用：
+- **必须使用 Xcode 的工具链，不能用 Command Line Tools。** 新版 macOS SDK 把 SwiftUI 的 `@State`、`@Binding` 等实现成了宏，对应的 `libSwiftUIMacros.dylib` 只随 Xcode 分发。若 `xcode-select -p` 指向 `/Library/Developer/CommandLineTools`，本项目的每一个 SwiftUI 视图都会编译失败：
+
+```text
+error: external macro implementation type 'SwiftUIMacros.StateMacro' could not be found
+       for macro 'State()'; plugin for module 'SwiftUIMacros' not found
+```
+
+- 项目默认使用（`swift build`、`swift test` 和 `script/` 下的脚本都需要）：
 
 ```bash
 export DEVELOPER_DIR='/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer'
 ```
+
+  该路径位于外置卷，未挂载时命令行构建会以 `xcrun: error: missing DEVELOPER_DIR path` 失败。换机器时按实际位置调整，或改用 `sudo xcode-select -s <Xcode>/Contents/Developer` 永久切换。
 
 - 网络下载可使用：
 
@@ -247,7 +278,11 @@ pgrep -fl '/Mihomo.app/Contents/MacOS/Mihomo'
 
 ## 测试与质量门禁
 
+先确认工具链指向 Xcode（见[系统要求](#系统要求)），否则 SwiftUI 宏会让构建整体失败：
+
 ```bash
+export DEVELOPER_DIR='/Volumes/TR 5000/macOS/Applications/Xcode-beta.app/Contents/Developer'
+
 swift test
 git diff --check
 ./script/maintainability_audit.sh

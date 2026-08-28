@@ -108,6 +108,29 @@ final class ProviderResourceManagerTests: XCTestCase {
         XCTAssertTrue(normalized.contains("password: password"))
     }
 
+    func testRefreshLocalAcceptsShareLinksWithRepeatedQueryParameters() throws {
+        let root = temporaryDirectory()
+        let runtime = root.appendingPathComponent("Runtime", isDirectory: true)
+        let directory = runtime.appendingPathComponent("proxy_providers", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("remote.yaml")
+        // Real subscriptions repeat parameters; this used to trap in Dictionary(uniqueKeysWithValues:).
+        let link = "vless://11111111-2222-3333-4444-555555555555@127.0.0.1:443"
+            + "?type=ws&type=grpc&security=tls&security=tls&sni=example.com#Demo"
+        try link.write(to: file, atomically: true, encoding: .utf8)
+        let manager = ProviderResourceManager(runtimeDirectory: runtime, backupsDirectory: root.appendingPathComponent("Backups"))
+        let provider = ProviderItem(kind: "Proxy", name: "Remote", detail: "", providerType: "file", path: "proxy_providers/remote.yaml")
+
+        let result = try manager.refreshLocal(provider)
+
+        XCTAssertTrue(result.validationSummary.contains("1 项"))
+        let normalized = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertTrue(normalized.contains("type: vless"))
+        XCTAssertTrue(normalized.contains("server: 127.0.0.1"))
+        // Last value wins, matching how servers read repeated query parameters.
+        XCTAssertTrue(normalized.contains("network: grpc"))
+    }
+
     func testTargetURLRejectsParentTraversal() throws {
         let root = temporaryDirectory()
         let manager = ProviderResourceManager(

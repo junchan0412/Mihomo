@@ -52,6 +52,17 @@ enum NetworkSessionFactory {
     private static let apiSession = URLSession(configuration: configuration(for: .api))
     private static let downloadSession = URLSession(configuration: configuration(for: .download))
     private static let controllerSession = URLSession(configuration: configuration(for: .controller))
+
+    /// Long-lived WebSocket tasks need their own session. `timeoutIntervalForResource` bounds a
+    /// task's *total* lifetime, so reusing the controller session would tear every event stream
+    /// down after 15 seconds and permanently fall back to polling.
+    static let eventStreamSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = NetworkRequestKind.controller.requestTimeout
+        configuration.waitsForConnectivity = false
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
+    }()
 }
 
 enum NetworkClient {
@@ -62,26 +73,19 @@ enum NetworkClient {
     ) async throws -> (Data, URLResponse) {
         var request = request
         request.timeoutInterval = kind.requestTimeout
-        let session = NetworkSessionFactory.session(for: kind)
         guard let maxBytes else {
-            return try await session.data(for: request)
+            return try await NetworkSessionFactory.session(for: kind).data(for: request)
         }
-        let (bytes, response) = try await session.bytes(for: request)
-        let expected = response.expectedContentLength
-        if expected > Int64(maxBytes) {
-            throw networkSizeError(maxBytes: maxBytes)
+
+        let buffer = DataAccumulator()
+        let reader = BoundedResponseReader(maxBytes: maxBytes) { chunk in
+            buffer.append(chunk)
         }
-        var data = Data()
-        if expected > 0 {
-            data.reserveCapacity(min(Int(expected), maxBytes))
-        }
-        for try await byte in bytes {
-            data.append(byte)
-            if data.count > maxBytes {
-                throw networkSizeError(maxBytes: maxBytes)
-            }
-        }
-        return (data, response)
+        let response = try await reader.load(
+            request: request,
+            configuration: NetworkSessionFactory.configuration(for: kind)
+        )
+        return (buffer.data, response)
     }
 
     static func data(
@@ -101,36 +105,23 @@ enum NetworkClient {
     ) async throws -> (URL, URLResponse) {
         var request = request
         request.timeoutInterval = kind.requestTimeout
-        let session = NetworkSessionFactory.session(for: kind)
         guard let maxBytes else {
-            return try await session.download(for: request)
+            return try await NetworkSessionFactory.session(for: kind).download(for: request)
         }
-        let (bytes, response) = try await session.bytes(for: request)
-        if response.expectedContentLength > Int64(maxBytes) {
-            throw networkSizeError(maxBytes: maxBytes)
-        }
+
         let destination = FileManager.default.temporaryDirectory
             .appendingPathComponent("mihomo-download-\(UUID().uuidString)")
         FileManager.default.createFile(atPath: destination.path, contents: nil)
         let handle = try FileHandle(forWritingTo: destination)
-        var buffer = Data()
-        buffer.reserveCapacity(64 * 1024)
-        var total = 0
+
+        let reader = BoundedResponseReader(maxBytes: maxBytes) { chunk in
+            try handle.write(contentsOf: chunk)
+        }
         do {
-            for try await byte in bytes {
-                total += 1
-                if total > maxBytes {
-                    throw networkSizeError(maxBytes: maxBytes)
-                }
-                buffer.append(byte)
-                if buffer.count >= 64 * 1024 {
-                    try handle.write(contentsOf: buffer)
-                    buffer.removeAll(keepingCapacity: true)
-                }
-            }
-            if buffer.isEmpty == false {
-                try handle.write(contentsOf: buffer)
-            }
+            let response = try await reader.load(
+                request: request,
+                configuration: NetworkSessionFactory.configuration(for: kind)
+            )
             try handle.close()
             return (destination, response)
         } catch {
@@ -150,9 +141,28 @@ enum NetworkClient {
         return try await download(for: request, kind: kind, maxBytes: maxBytes)
     }
 
-    private static func networkSizeError(maxBytes: Int) -> NSError {
+    static func sizeLimitError(maxBytes: Int) -> NSError {
         NSError(domain: "Mihomo.Network", code: 413, userInfo: [
             NSLocalizedDescriptionKey: "远程内容超过 \(maxBytes / 1024 / 1024) MiB，已拒绝读取。"
         ])
+    }
+}
+
+/// Collects delegate chunks for the in-memory `data(for:maxBytes:)` path. The reader's callbacks
+/// arrive on a serial delegate queue, but the lock keeps the handoff to the caller explicit.
+final class DataAccumulator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
+
+    func append(_ chunk: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        storage.append(chunk)
+    }
+
+    var data: Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
     }
 }

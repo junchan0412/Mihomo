@@ -18,7 +18,14 @@ final class WorkCancellationToken: @unchecked Sendable {
 }
 
 enum BoundedConcurrentWork {
-    /// Executes at most `maxConcurrent` operations at a time and preserves input order in its output.
+    /// Executes at most `maxConcurrent` operations at a time, in input order.
+    ///
+    /// The result array is **not** index-aligned with `inputs`: when `shouldScheduleNext` turns
+    /// false the remaining work is cancelled and those entries are simply absent, so the output can
+    /// be shorter than the input. Relative order of the results that did complete is preserved.
+    /// Callers that need to attribute a result back to its input must carry the input inside
+    /// `Output` (as every caller here does) rather than zipping by index, and callers that report
+    /// counts must derive "cancelled" from `inputs.count - results.count`.
     static func map<Input: Sendable, Output: Sendable>(
         _ inputs: [Input],
         maxConcurrent: Int,

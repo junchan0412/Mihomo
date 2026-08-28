@@ -91,9 +91,9 @@ actor LogPersistenceWriter {
               size.int64Value + incomingBytes >= maxFileSizeBytes
         else { return }
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
-        let rotated = logsDirectory.appendingPathComponent("\(prefix)-\(formatter.string(from: Date())).log")
+        let rotated = logsDirectory.appendingPathComponent(
+            "\(prefix)-\(Formatters.fileStampWithMilliseconds.string(from: Date())).log"
+        )
         try? FileManager.default.moveItem(at: url, to: rotated)
     }
 

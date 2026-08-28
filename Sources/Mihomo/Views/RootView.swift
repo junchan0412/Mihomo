@@ -42,7 +42,10 @@ struct RootView: View {
                 ) {
                     Task { await store.toggleSystemProxy() }
                 }
-                .disabled(!store.isCoreRunning && !store.systemProxyEnabled)
+                .disabled(
+                    (!store.isCoreRunning && !store.systemProxyEnabled)
+                        || store.isNetworkOperationRunning(.systemProxy)
+                )
             }
 
             ToolbarItem(id: "tun-control", placement: .primaryAction) {
@@ -55,6 +58,7 @@ struct RootView: View {
                 ) {
                     Task { await store.setTunEnabled(!store.settings.tunEnabled) }
                 }
+                .disabled(store.isNetworkOperationRunning(.tun))
             }
 
             ToolbarItem(id: "mode-control", placement: .principal) {

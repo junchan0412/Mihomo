@@ -11,51 +11,84 @@ extension AppStore {
         includeTakeover: Bool
     ) async {
         let client = controllerClient()
-        do {
-            async let versionTask: String? = includeMetadata ? client.version() : nil
-            async let modeTask: String? = includeMetadata ? client.configMode() : nil
-            async let groupsTask: [ProxyGroup]? = includeMetadata ? client.proxyGroups() : nil
-            async let connectionTask: ([ConnectionItem], Int64, Int64)? = includeConnections ? client.connections() : nil
 
-            if includeMetadata {
-                if let version = try await versionTask {
-                    publishIfChanged(\.coreVersion, version)
-                }
-                if let mode = try await modeTask {
-                    publishIfChanged(\.currentMode, mode)
-                }
-                if let loadedGroups = try await groupsTask {
-                    await preloadPolicyGroupIcons(for: loadedGroups)
-                    publishIfChanged(\.proxyGroups, loadedGroups)
-                }
+        // Each request is awaited independently. Sharing one do/catch meant a single failing
+        // `/version` discarded the connection snapshot fetched in the same cycle, freezing the
+        // activity table until the next successful full pass.
+        async let versionResult = includeMetadata ? captureResult { try await client.version() } : nil
+        async let modeResult = includeMetadata ? captureResult { try await client.configMode() } : nil
+        async let groupsResult = includeMetadata ? captureResult { try await client.proxyGroups() } : nil
+        async let connectionResult = includeConnections ? captureResult { try await client.connections() } : nil
+
+        var reachable = false
+        var failed = false
+
+        if let versionResult = await versionResult {
+            switch versionResult {
+            case .success(let version):
+                reachable = true
+                publishIfChanged(\.coreVersion, version)
+            case .failure:
+                failed = true
             }
-
-            if includeConnections, let (items, up, down) = try await connectionTask {
+        }
+        if let modeResult = await modeResult {
+            switch modeResult {
+            case .success(let mode):
+                reachable = true
+                publishIfChanged(\.currentMode, mode)
+            case .failure:
+                failed = true
+            }
+        }
+        if let groupsResult = await groupsResult {
+            switch groupsResult {
+            case .success(let loadedGroups):
+                reachable = true
+                await preloadPolicyGroupIcons(for: loadedGroups)
+                publishIfChanged(\.proxyGroups, loadedGroups)
+            case .failure:
+                failed = true
+            }
+        }
+        if let connectionResult = await connectionResult {
+            switch connectionResult {
+            case .success(let (items, up, down)):
+                reachable = true
                 let structureChanged = activityStore.connectionStructureChanged(from: connections, to: items)
                 activityStore.replaceConnections(items)
                 if structureChanged {
                     updateRuleProviderHitStatistics()
                 }
                 updateTrafficRates(uploadTotal: up, downloadTotal: down)
-            }
-
-            if isCoreRunning {
-                crashRestartCount = 0
-                publishIfChanged(\.coreStatus, "运行中")
-            }
-            if includeTakeover {
-                refreshNetworkTakeoverStates()
-                await reconcileSystemProxyGuard()
-            }
-        } catch {
-            if isCoreRunning {
-                publishIfChanged(\.coreStatus, "控制器不可用")
-            }
-            if includeTakeover {
-                refreshNetworkTakeoverStates()
-                await reconcileSystemProxyGuard()
+            case .failure:
+                failed = true
             }
         }
+
+        if isCoreRunning {
+            if reachable {
+                crashRestartCount = 0
+                consecutiveControllerFailures = 0
+                publishIfChanged(\.coreStatus, "运行中")
+            } else if failed {
+                publishIfChanged(\.coreStatus, "控制器不可用")
+                noteControllerUnreachable()
+            }
+        }
+        if includeTakeover {
+            refreshNetworkTakeoverStates()
+            await reconcileSystemProxyGuard()
+        }
+    }
+
+    /// Loopback controller failures are the only signal we get that a helper-managed core died.
+    /// One blip is not proof, so only a short run of consecutive failures counts as an exit.
+    private func noteControllerUnreachable() {
+        guard isExpectedCoreExit == false, shutdownRequested == false else { return }
+        consecutiveControllerFailures &+= 1
+        guard consecutiveControllerFailures >= Self.controllerFailureExitThreshold else { return }
+        handleCoreExit(reason: "控制通道连续 \(consecutiveControllerFailures) 次不可达")
     }
 
     func closeAllConnections() async {
@@ -118,10 +151,10 @@ extension AppStore {
             var cycle = 0
             while !Task.isCancelled {
                 guard let self else { return }
-                let streamHealthy = self.isControllerStreamHealthy
-                let includeConnections = streamHealthy == false
+                let connectionStreamHealthy = self.isControllerConnectionStreamHealthy
+                let includeConnections = connectionStreamHealthy == false
                 // Metadata (mode/groups/version) is lower priority than live connections.
-                let includeMetadata = cycle % (streamHealthy ? 3 : 1) == 0
+                let includeMetadata = cycle % (self.isControllerStreamHealthy ? 3 : 1) == 0
                 await self.refreshController(
                     includeMetadata: includeMetadata,
                     includeConnections: includeConnections,
@@ -134,5 +167,18 @@ extension AppStore {
                 try? await Task.sleep(nanoseconds: interval)
             }
         }
+    }
+}
+
+/// Captures an async throwing call as a `Result`.
+///
+/// `Result.init(catching:)` gained its `async` overload in a stdlib newer than the Xcode the CI
+/// workflow pins, so the stdlib initializer compiles locally and fails the build on CI. Spelling
+/// the capture out keeps both toolchains happy.
+private func captureResult<Value>(_ work: () async throws -> Value) async -> Result<Value, Error> {
+    do {
+        return .success(try await work())
+    } catch {
+        return .failure(error)
     }
 }

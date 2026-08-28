@@ -125,9 +125,7 @@ enum AppPaths {
     }
 
     static func rotatedLogFile(prefix: String, date: Date = Date()) -> URL {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        return logsDirectory.appendingPathComponent("\(prefix)-\(formatter.string(from: date)).log")
+        logsDirectory.appendingPathComponent("\(prefix)-\(Formatters.fileStamp.string(from: date)).log")
     }
 
     static func ensureBaseDirectories() throws {

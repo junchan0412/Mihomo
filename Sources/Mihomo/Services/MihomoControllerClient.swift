@@ -36,9 +36,9 @@ struct MihomoControllerClient {
             return Int(Self.number(delay))
         }
         if let message = json["message"] as? String, message.isEmpty == false {
-            throw controllerError(message)
+            throw Self.controllerError(message)
         }
-        throw controllerError("mihomo 未返回延迟结果。")
+        throw Self.controllerError("mihomo 未返回延迟结果。")
     }
 
     func closeConnections() async throws {
@@ -96,9 +96,13 @@ struct MihomoControllerClient {
     }
 
     private func endpointURL(_ path: String) throws -> URL {
+        try Self.endpointURL(host: host, port: port, path: path)
+    }
+
+    static func endpointURL(host: String, port: Int, path: String) throws -> URL {
         let normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
         guard normalizedHost.isEmpty == false, (1...65_535).contains(port) else {
-            throw controllerError("核心控制地址无效：\(host):\(port)")
+            throw Self.controllerError("核心控制地址无效：\(host):\(port)")
         }
 
         var components = URLComponents()
@@ -108,14 +112,14 @@ struct MihomoControllerClient {
 
         let rawPath = path.hasPrefix("/") ? path : "/\(path)"
         if let queryStart = rawPath.firstIndex(of: "?") {
-            components.path = String(rawPath[..<queryStart])
+            components.percentEncodedPath = String(rawPath[..<queryStart])
             components.percentEncodedQuery = String(rawPath[rawPath.index(after: queryStart)...])
         } else {
-            components.path = rawPath
+            components.percentEncodedPath = rawPath
         }
 
         guard let url = components.url else {
-            throw controllerError("核心控制地址无效：\(host):\(port)")
+            throw Self.controllerError("核心控制地址无效：\(host):\(port)")
         }
         return url
     }
@@ -128,11 +132,11 @@ struct MihomoControllerClient {
 
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
-            throw controllerError("运行中的核心返回了无效的网络响应。")
+            throw Self.controllerError("运行中的核心返回了无效的网络响应。")
         }
         guard (200..<300).contains(http.statusCode) else {
             let fallback = String(data: data, encoding: .utf8) ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
-            throw controllerError(parsedErrorMessage(data: data, fallback: fallback), code: http.statusCode)
+            throw Self.controllerError(parsedErrorMessage(data: data, fallback: fallback), code: http.statusCode)
         }
     }
 
@@ -149,7 +153,7 @@ struct MihomoControllerClient {
         return fallback
     }
 
-    private func controllerError(_ message: String, code: Int = 1) -> NSError {
+    private static func controllerError(_ message: String, code: Int = 1) -> NSError {
         NSError(domain: "MihomoController", code: code, userInfo: [NSLocalizedDescriptionKey: message])
     }
 

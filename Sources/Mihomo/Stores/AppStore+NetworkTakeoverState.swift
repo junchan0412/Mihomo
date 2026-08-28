@@ -1,5 +1,16 @@
 import Foundation
 
+/// One off-main sampling of everything the takeover panel needs, so the main actor does a single
+/// hop instead of interleaving blocking `networksetup` probes with UI updates.
+struct NetworkTakeoverObservation: Sendable {
+    var current: SystemProxySnapshot?
+    var readError: String?
+    var proxySnapshot: SystemProxySnapshot?
+    var dnsSnapshot: SystemProxySnapshot?
+    var tunSnapshot: TunRecoverySnapshot?
+    var addedTunRouteCount: Int = 0
+}
+
 extension AppStore {
     func networkTakeoverState(for kind: NetworkTakeoverKind) -> NetworkTakeoverState {
         networkTakeoverStates.first { $0.kind == kind } ?? NetworkTakeoverState(
@@ -36,24 +47,65 @@ extension AppStore {
            now.timeIntervalSince(lastNetworkTakeoverRefreshAt) < 20 {
             return
         }
+        guard networkTakeoverRefreshTask == nil else { return }
         lastNetworkTakeoverRefreshAt = now
 
+        networkTakeoverRefreshGeneration &+= 1
+        let generation = networkTakeoverRefreshGeneration
+        networkTakeoverRefreshTask = Task { [weak self] in
+            let observation = await Self.captureNetworkTakeoverObservation()
+
+            guard let self else { return }
+            // Retire only our own handle. `shutdown()` may already have cancelled this run and a
+            // newer refresh may be in flight; clearing unconditionally would orphan that task and
+            // leave it uncancellable.
+            if networkTakeoverRefreshGeneration == generation {
+                networkTakeoverRefreshTask = nil
+            }
+            guard Task.isCancelled == false else { return }
+
+            publishIfChanged(\.lastSystemProxySnapshot, observation.proxySnapshot)
+            publishIfChanged(\.lastSystemDNSSnapshot, observation.dnsSnapshot)
+            publishIfChanged(\.lastTunRecoverySnapshot, observation.tunSnapshot)
+            publishIfChanged(\.networkTakeoverStates, [
+                systemProxyTakeoverState(current: observation.current, readError: observation.readError, checkedAt: now),
+                systemDNSTakeoverState(
+                    current: observation.current,
+                    readError: observation.readError,
+                    dnsSnapshot: observation.dnsSnapshot,
+                    checkedAt: now
+                ),
+                tunTakeoverState(addedTunRouteCount: observation.addedTunRouteCount, checkedAt: now)
+            ])
+        }
+    }
+
+    /// Runs off the main actor. Unlike `Task.detached` this inherits cancellation, so `shutdown()`
+    /// can actually stop a refresh that is still spawning `networksetup` probes.
+    nonisolated private static func captureNetworkTakeoverObservation() async -> NetworkTakeoverObservation {
+        let proxyManager = SystemProxyManager()
         var current: SystemProxySnapshot?
         var readError: String?
         do {
-            current = try systemProxy.captureSnapshot()
+            current = try proxyManager.captureSnapshot()
         } catch {
             readError = error.localizedDescription
         }
-        publishIfChanged(\.lastSystemProxySnapshot, systemProxy.loadSnapshot())
-        publishIfChanged(\.lastSystemDNSSnapshot, systemProxy.loadDNSSnapshot())
-        publishIfChanged(\.lastTunRecoverySnapshot, tunRecovery.loadSnapshot())
+        let tunRecovery = TunRecoveryManager()
+        return NetworkTakeoverObservation(
+            current: current,
+            readError: readError,
+            proxySnapshot: proxyManager.loadSnapshot(),
+            dnsSnapshot: proxyManager.loadDNSSnapshot(),
+            tunSnapshot: tunRecovery.loadSnapshot(),
+            // Spawns two `netstat -rn` probes; it used to run inline in `tunTakeoverState` and
+            // therefore blocked the main thread on every takeover refresh.
+            addedTunRouteCount: tunRecovery.currentAddedTunRouteCount()
+        )
+    }
 
-        publishIfChanged(\.networkTakeoverStates, [
-            systemProxyTakeoverState(current: current, readError: readError, checkedAt: now),
-            systemDNSTakeoverState(current: current, readError: readError, checkedAt: now),
-            tunTakeoverState(checkedAt: now)
-        ])
+    nonisolated private static func captureSystemProxySnapshot() async -> SystemProxySnapshot? {
+        try? SystemProxyManager().captureSnapshot()
     }
 
     func reconcileSystemProxyGuard() async {
@@ -64,14 +116,27 @@ extension AppStore {
               Date().timeIntervalSince(lastSystemProxyGuardAttemptAt) >= 15
         else { return }
 
-        guard let current = try? systemProxy.captureSnapshot(),
-              SystemProxyManager.matchReport(snapshot: current, mixedPort: settings.mixedPort, socksPort: settings.socksPort).isFullyMatched == false
-        else { return }
-
         lastSystemProxyGuardAttemptAt = Date()
+        systemProxyGuardGeneration &+= 1
+        let generation = systemProxyGuardGeneration
         systemProxyGuardTask = Task { [weak self] in
             guard let self else { return }
-            defer { systemProxyGuardTask = nil }
+            defer {
+                if systemProxyGuardGeneration == generation {
+                    systemProxyGuardTask = nil
+                }
+            }
+
+            let current = await Self.captureSystemProxySnapshot()
+            guard Task.isCancelled == false,
+                  let current,
+                  SystemProxyManager.matchReport(
+                      snapshot: current,
+                      mixedPort: settings.mixedPort,
+                      socksPort: settings.socksPort
+                  ).isFullyMatched == false
+            else { return }
+
             do {
                 let result = try await helperClient.setSystemProxy(host: "127.0.0.1", mixedPort: settings.mixedPort, socksPort: settings.socksPort)
                 recordNetworkOperation(.systemProxy, result: result)
@@ -130,6 +195,7 @@ extension AppStore {
     private func systemDNSTakeoverState(
         current: SystemProxySnapshot?,
         readError: String?,
+        dnsSnapshot: SystemProxySnapshot?,
         checkedAt: Date
     ) -> NetworkTakeoverState {
         let services = current?.services ?? []
@@ -146,7 +212,8 @@ extension AppStore {
             guard desiredServers.isEmpty == false else { return false }
             return Set(desiredServers).isSubset(of: Set(service.dnsServers))
         }
-        let dnsSnapshot = systemProxy.loadDNSSnapshot()
+        // `dnsSnapshot` arrives from the off-main observation; reading it here repeated a disk read
+        // on the main thread that the background pass had already done.
         let actual: String
         if let readError {
             actual = "无法检查网络服务：\(readError)"
@@ -178,9 +245,8 @@ extension AppStore {
         )
     }
 
-    private func tunTakeoverState(checkedAt: Date) -> NetworkTakeoverState {
+    private func tunTakeoverState(addedTunRouteCount routeCount: Int, checkedAt: Date) -> NetworkTakeoverState {
         let snapshot = lastTunRecoverySnapshot
-        let routeCount = tunRecovery.currentAddedTunRouteCount()
         let desired: String
         if settings.tunEnabled {
             desired = isCoreRunning ? "期望运行中，并可回滚 DNS/路由" : "期望下次核心启动时启用"
