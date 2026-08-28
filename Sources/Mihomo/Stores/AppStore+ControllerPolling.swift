@@ -15,10 +15,10 @@ extension AppStore {
         // Each request is awaited independently. Sharing one do/catch meant a single failing
         // `/version` discarded the connection snapshot fetched in the same cycle, freezing the
         // activity table until the next successful full pass.
-        async let versionResult = includeMetadata ? Result { try await client.version() } : nil
-        async let modeResult = includeMetadata ? Result { try await client.configMode() } : nil
-        async let groupsResult = includeMetadata ? Result { try await client.proxyGroups() } : nil
-        async let connectionResult = includeConnections ? Result { try await client.connections() } : nil
+        async let versionResult = includeMetadata ? captureResult { try await client.version() } : nil
+        async let modeResult = includeMetadata ? captureResult { try await client.configMode() } : nil
+        async let groupsResult = includeMetadata ? captureResult { try await client.proxyGroups() } : nil
+        async let connectionResult = includeConnections ? captureResult { try await client.connections() } : nil
 
         var reachable = false
         var failed = false
@@ -167,5 +167,18 @@ extension AppStore {
                 try? await Task.sleep(nanoseconds: interval)
             }
         }
+    }
+}
+
+/// Captures an async throwing call as a `Result`.
+///
+/// `Result.init(catching:)` gained its `async` overload in a stdlib newer than the Xcode the CI
+/// workflow pins, so the stdlib initializer compiles locally and fails the build on CI. Spelling
+/// the capture out keeps both toolchains happy.
+private func captureResult<Value>(_ work: () async throws -> Value) async -> Result<Value, Error> {
+    do {
+        return .success(try await work())
+    } catch {
+        return .failure(error)
     }
 }
